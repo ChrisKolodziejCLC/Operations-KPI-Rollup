@@ -1,0 +1,178 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operations KPI Rollup — {{ report_date }}</title>
+</head>
+<body style="margin:0;padding:0;background:#edf2f5;font-family:Segoe UI,Arial,sans-serif;color:#1d2d3d;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;background:#edf2f5;">
+    <tr>
+      <td align="center" style="padding:28px 12px;">
+        <table role="presentation" width="920" cellspacing="0" cellpadding="0" border="0" style="width:920px;max-width:100%;border-collapse:collapse;background:#ffffff;">
+          <tr>
+            <td style="background:#102a43;padding:26px 30px;color:#ffffff;">
+              <div style="font-size:11px;letter-spacing:2px;font-weight:700;color:#9fe7e7;">CREATIVE LIQUID COATINGS</div>
+              <div style="font-size:30px;line-height:36px;font-weight:700;margin-top:5px;">Operations KPI Rollup</div>
+              <div style="font-size:13px;line-height:20px;color:#d9e6ef;margin-top:4px;">Operations | Quality | Shipping · report date {{ report_date }}</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:18px 26px 0 26px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;background:#fff3d8;border-left:4px solid #d78d23;">
+                <tr>
+                  <td style="padding:12px 14px;font-size:12px;line-height:18px;color:#594214;">
+                    <strong>Reproducible snapshot:</strong> {{ scope.label }}. Generated {{ generated_at }} using {{ scope.method_version }}. Period averages use represented production days; every yield retains its numerator and denominator.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          {% if data_quality_notes %}
+          <tr>
+            <td style="padding:12px 26px 0 26px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;background:#edf6f7;border-left:4px solid #147d86;">
+                <tr>
+                  <td style="padding:11px 14px;font-size:12px;line-height:18px;color:#274c56;">
+                    <strong>Data-quality controls</strong><br>
+                    {% for note in data_quality_notes %}{{ loop.index }}. {{ note }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          {% endif %}
+
+          <tr>
+            <td style="padding:18px 26px 4px 26px;">
+              {% for card_row in cards|batch(4) %}
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="5" border="0" style="width:100%;border-collapse:separate;table-layout:fixed;">
+                <tr>
+                  {% for card in card_row %}
+                  <td width="25%" valign="top" style="width:25%;padding:5px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;border:1px solid #d7e2e8;border-top:4px solid {{ card.color }};">
+                      <tr><td style="padding:10px 11px 2px 11px;font-size:10px;line-height:13px;text-transform:uppercase;color:#627d98;">{{ card.label }}{% if card.status %} · {{ card.status }}{% endif %}</td></tr>
+                      <tr><td style="padding:0 11px;font-size:22px;line-height:27px;font-weight:700;color:#102a43;">{{ card.value }}</td></tr>
+                      <tr><td style="padding:2px 11px 10px 11px;font-size:10px;line-height:14px;color:#627d98;">{{ card.detail }}</td></tr>
+                    </table>
+                  </td>
+                  {% endfor %}
+                </tr>
+              </table>
+              {% endfor %}
+            </td>
+          </tr>
+
+          <tr><td style="padding:14px 30px 4px 30px;"><div style="font-size:22px;font-weight:700;color:#102a43;border-bottom:3px solid #147d86;padding-bottom:7px;">Daily performance</div></td></tr>
+          <tr>
+            <td style="padding:8px 30px 12px 30px;">
+              <table width="100%" cellspacing="0" cellpadding="7" border="0" style="width:100%;border-collapse:collapse;font-size:11px;">
+                <tr style="background:#e7f0f4;color:#294e63;text-transform:uppercase;">
+                  <th align="left" style="border:1px solid #ccdbe3;">Day</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">Loaded</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">Paint carts</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">Paint pieces</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">EOL</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">Paint ship</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">Total ship</th>
+                </tr>
+                {% for row in daily %}
+                <tr style="background:{% if row.production_day %}#ffffff{% else %}#f7fafc{% endif %};color:{% if row.production_day %}#1d2d3d{% else %}#829ab1{% endif %};">
+                  <td style="border:1px solid #d7e2e8;">{{ row.date }}{% if not row.production_day %} · No production{% endif %}</td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ format_int(row.parts_loaded) }}</td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ format_int(row.paint_carts) }}</td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ format_int(row.paint_pieces_processed) }}</td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ format_int(row.eol_inspected) }}</td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ format_int(row.painted_parts_shipped) }}</td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ format_int(row.parts_shipped) }}</td>
+                </tr>
+                {% endfor %}
+              </table>
+            </td>
+          </tr>
+
+          {% for key, chart in charts.items() %}
+          {% if key in ['daily-throughput', 'daily-yield'] %}
+          <tr><td align="center" style="padding:8px 30px;"><img src="{{ chart.src }}" width="860" alt="{{ chart.alt }}" style="display:block;width:100%;max-width:860px;height:auto;border:0;"></td></tr>
+          {% endif %}
+          {% endfor %}
+
+          <tr><td style="padding:18px 30px 4px 30px;"><div style="font-size:22px;font-weight:700;color:#102a43;border-bottom:3px solid #147d86;padding-bottom:7px;">Period rollups</div></td></tr>
+          <tr>
+            <td style="padding:8px 30px 12px 30px;">
+              <table width="100%" cellspacing="0" cellpadding="6" border="0" style="width:100%;border-collapse:collapse;font-size:10px;">
+                <tr style="background:#e7f0f4;color:#294e63;text-transform:uppercase;">
+                  <th align="left" style="border:1px solid #ccdbe3;">Period</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">Prod days</th>
+                  {% for header in throughput_headers %}<th align="right" style="border:1px solid #ccdbe3;">{{ header }}</th>{% endfor %}
+                  <th align="right" style="border:1px solid #ccdbe3;">PPY</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">Paint FTY</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">Repaint</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">Composite</th>
+                </tr>
+                {% for row in periods %}
+                <tr>
+                  <td style="border:1px solid #d7e2e8;"><strong>{{ row.label }}</strong><br><span style="color:#829ab1;">{{ row.period_type|lower }}</span></td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ row.data_days }}</td>
+                  {% for average in row.averages %}<td align="right" style="border:1px solid #d7e2e8;">{{ average }}</td>{% endfor %}
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ row.ppy_text }}</td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ row.paint_fty_text }}</td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ row.repaint_text }}</td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ row.composite_text }}</td>
+                </tr>
+                {% endfor %}
+              </table>
+              <div style="font-size:10px;line-height:15px;color:#627d98;margin-top:7px;">Averages intentionally exclude no-production dates. Monthly and quarterly rows remain separate from weekly and daily trend charts.</div>
+            </td>
+          </tr>
+
+          <tr><td style="padding:18px 30px 4px 30px;"><div style="font-size:22px;font-weight:700;color:#102a43;border-bottom:3px solid #147d86;padding-bottom:7px;">Operations</div></td></tr>
+          {% if charts.get('painter-throughput') %}<tr><td align="center" style="padding:8px 30px;"><img src="{{ charts['painter-throughput'].src }}" width="860" alt="{{ charts['painter-throughput'].alt }}" style="display:block;width:100%;max-width:860px;height:auto;border:0;"></td></tr>{% endif %}
+          <tr>
+            <td style="padding:8px 30px 12px 30px;">
+              <table width="100%" cellspacing="0" cellpadding="6" border="0" style="width:100%;border-collapse:collapse;font-size:10px;">
+                <tr style="background:#e7f0f4;color:#294e63;text-transform:uppercase;"><th align="left" style="border:1px solid #ccdbe3;">Date</th><th align="left" style="border:1px solid #ccdbe3;">Painter</th><th align="right" style="border:1px solid #ccdbe3;">Booth</th><th align="right" style="border:1px solid #ccdbe3;">Parts</th><th align="right" style="border:1px solid #ccdbe3;">Minutes</th><th align="right" style="border:1px solid #ccdbe3;">Parts/hr</th></tr>
+                {% for row in painters %}
+                <tr><td style="border:1px solid #d7e2e8;">{{ row.date }}</td><td style="border:1px solid #d7e2e8;">{{ row.painter }}</td><td align="right" style="border:1px solid #d7e2e8;">{{ row.booth }}</td><td align="right" style="border:1px solid #d7e2e8;">{{ format_int(row.parts) }}</td><td align="right" style="border:1px solid #d7e2e8;">{{ format_int(row.minutes) }}</td><td align="right" style="border:1px solid #d7e2e8;">{{ '%.1f'|format(row.parts_per_hour) }}</td></tr>
+                {% endfor %}
+              </table>
+            </td>
+          </tr>
+
+          <tr><td style="padding:18px 30px 4px 30px;"><div style="font-size:22px;font-weight:700;color:#102a43;border-bottom:3px solid #147d86;padding-bottom:7px;">Quality and shipping</div></td></tr>
+          {% if charts.get('shipping') %}<tr><td align="center" style="padding:8px 30px;"><img src="{{ charts['shipping'].src }}" width="860" alt="{{ charts['shipping'].alt }}" style="display:block;width:100%;max-width:860px;height:auto;border:0;"></td></tr>{% endif %}
+          <tr>
+            <td style="padding:8px 30px 12px 30px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;table-layout:fixed;">
+                <tr>
+                  <td width="50%" valign="top" style="width:50%;padding-right:7px;">
+                    <div style="font-size:14px;font-weight:700;color:#294e63;margin-bottom:7px;">Top defects on report date</div>
+                    <table width="100%" cellspacing="0" cellpadding="6" border="0" style="width:100%;border-collapse:collapse;font-size:10px;">
+                      <tr style="background:#e7f0f4;color:#294e63;text-transform:uppercase;"><th align="left" style="border:1px solid #ccdbe3;">Step</th><th align="left" style="border:1px solid #ccdbe3;">Defect</th><th align="right" style="border:1px solid #ccdbe3;">Count</th></tr>
+                      {% for row in top_defects %}<tr><td style="border:1px solid #d7e2e8;">{{ row.step }}</td><td style="border:1px solid #d7e2e8;">{{ row.description }}</td><td align="right" style="border:1px solid #d7e2e8;">{{ row.count }}</td></tr>{% endfor %}
+                    </table>
+                  </td>
+                  <td width="50%" valign="top" style="width:50%;padding-left:7px;">
+                    <div style="font-size:14px;font-weight:700;color:#294e63;margin-bottom:7px;">Attention items</div>
+                    <table width="100%" cellspacing="0" cellpadding="8" border="0" style="width:100%;border-collapse:collapse;background:#fff8e8;font-size:11px;line-height:16px;">
+                      {% for item in attention.get('items', []) %}<tr><td style="border-bottom:1px solid #ead9b3;"><strong>{{ item.title }}</strong><br>{{ item.detail }}</td></tr>{% endfor %}
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="background:#f4f7f9;padding:18px 30px;font-size:10px;line-height:15px;color:#627d98;border-top:1px solid #d7e2e8;">
+              <strong style="color:#294e63;">Method summary:</strong> PPY = approved paint decisions / all paint decisions. Paint FTY = approved initial passes / all initial passes. Receiving and Final FTY use the first applicable decision per part. The Paint plan composite is schedule attainment × no-repaint quality × bounded active-hour coverage; it is not standard OEE. Historical values are reproducible from the attached build snapshot, not recomputed from later mutable QPTS state.<br><br>
+              Preview build only. No email was sent and no QPTS data was modified.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
