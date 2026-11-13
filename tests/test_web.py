@@ -71,7 +71,11 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "splitMetricCard('Pieces painted', current.paint_pieces_processed" in javascript
             assert "unique === undefined ? '—' : integer(unique)" in javascript
             assert "metric-split-total" in javascript
-            assert "rateBreakdown(current, 'ppy_approved', 'paint_decision_pieces')" in javascript
+            assert "dualYieldCard('PPY (Paint Process Yield)'" in javascript
+            assert "dualYieldCard('FTY (First Time Yield)'" in javascript
+            assert "reject_ppy_approved" in javascript
+            assert "reject_fty_approved" in javascript
+            assert "yieldRatio(metric.numerator, metric.denominator)" in javascript
             assert "fuka_trailers_prepared" in javascript
 
         with urlopen(base + "/styles.css", timeout=5) as response:
@@ -80,6 +84,8 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert ".split-count-card{container-type:inline-size}" in styles
             assert "font-size:min(7.5cqw,1.75rem)" in styles
             assert "font-size:min(7.5cqw,2.2rem)" in styles
+            assert ".dual-yield-grid{display:grid;grid-template-columns:1fr 1fr" in styles
+            assert ".dual-yield-value" in styles
             assert "white-space:nowrap" in styles
     finally:
         server.shutdown()

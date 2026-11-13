@@ -19,6 +19,16 @@ def safe_ratio(numerator: Any, denominator: Any) -> Optional[Decimal]:
     return as_decimal(numerator) / denominator_value
 
 
+def bounded_yield_ratio(numerator: Any, denominator: Any) -> Optional[Decimal]:
+    """Return a yield only when the saved counts form a valid 0..1 ratio."""
+
+    denominator_value = as_decimal(denominator)
+    numerator_value = as_decimal(numerator)
+    if denominator_value <= 0 or numerator_value < 0 or numerator_value > denominator_value:
+        return None
+    return numerator_value / denominator_value
+
+
 def average_per_data_day(total: Any, data_days: Any) -> Optional[Decimal]:
     return safe_ratio(total, data_days)
 
@@ -37,7 +47,7 @@ def paint_plan_composite(row: Dict[str, Any]) -> Optional[Decimal]:
     """
 
     attainment = clamp(safe_ratio(row.get("paint_pieces_processed"), row.get("pieces_scheduled")))
-    quality = safe_ratio(
+    quality = bounded_yield_ratio(
         as_decimal(row.get("paint_fty_total")) - as_decimal(row.get("paint_fty_repaint_count")),
         row.get("paint_fty_total"),
     )
@@ -81,8 +91,21 @@ def enrich_metric_row(row: Dict[str, Any]) -> Dict[str, Any]:
     ):
         enriched[field + "_avg"] = average_per_data_day(row.get(field, 0), data_days)
 
-    enriched["ppy"] = safe_ratio(row.get("ppy_approved"), row.get("paint_decision_pieces"))
-    enriched["paint_fty"] = safe_ratio(row.get("paint_fty_approved"), row.get("paint_fty_total"))
+    enriched["repaint_ppy"] = bounded_yield_ratio(
+        row.get("ppy_approved"), row.get("paint_decision_pieces")
+    )
+    enriched["repaint_fty"] = bounded_yield_ratio(
+        row.get("paint_fty_approved"), row.get("paint_fty_total")
+    )
+    enriched["reject_ppy"] = bounded_yield_ratio(
+        row.get("reject_ppy_approved"), row.get("reject_ppy_total")
+    )
+    enriched["reject_fty"] = bounded_yield_ratio(
+        row.get("reject_fty_approved"), row.get("reject_fty_total")
+    )
+    # Compatibility aliases retained for older report templates and saved snapshots.
+    enriched["ppy"] = enriched["repaint_ppy"]
+    enriched["paint_fty"] = enriched["repaint_fty"]
     enriched["receiving_fty"] = safe_ratio(row.get("receiving_approved"), row.get("receiving_total"))
     enriched["final_fty"] = safe_ratio(row.get("final_approved"), row.get("final_total"))
     enriched["repaint_percentage"] = safe_ratio(

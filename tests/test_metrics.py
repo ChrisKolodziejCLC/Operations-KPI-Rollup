@@ -2,7 +2,7 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-from operations_kpi_rollup.metrics import average_per_data_day, enrich_metric_row, safe_ratio
+from operations_kpi_rollup.metrics import average_per_data_day, bounded_yield_ratio, enrich_metric_row, safe_ratio
 
 
 FIXTURE = Path(__file__).parents[1] / "examples" / "2026-09-16.json"
@@ -15,6 +15,30 @@ def load_fixture():
 def test_zero_denominator_is_no_data():
     assert safe_ratio(0, 0) is None
     assert average_per_data_day(100, 0) is None
+
+
+def test_invalid_exit_day_yield_is_no_data_instead_of_negative():
+    assert bounded_yield_ratio(-1, 1) is None
+    assert bounded_yield_ratio(2, 1) is None
+    assert bounded_yield_ratio(8, 10) == Decimal("0.8")
+
+
+def test_repaint_and_reject_yields_use_saved_exit_day_counts():
+    enriched = enrich_metric_row({
+        "paint_decision_pieces": 279,
+        "ppy_approved": 271,
+        "paint_fty_total": 271,
+        "paint_fty_approved": 263,
+        "paint_fty_repaint_count": 8,
+        "reject_ppy_total": 279,
+        "reject_ppy_approved": 269,
+        "reject_fty_total": 271,
+        "reject_fty_approved": 262,
+    })
+    assert enriched["repaint_ppy"] == Decimal("271") / Decimal("279")
+    assert enriched["repaint_fty"] == Decimal("263") / Decimal("271")
+    assert enriched["reject_ppy"] == Decimal("269") / Decimal("279")
+    assert enriched["reject_fty"] == Decimal("262") / Decimal("271")
 
 
 def test_partial_week_uses_three_production_days():

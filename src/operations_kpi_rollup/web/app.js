@@ -14,6 +14,10 @@ const svgNode = (name, attributes = {}) => {
 const text = (value) => document.createTextNode(String(value ?? ''));
 const integer = (value) => Number(value || 0).toLocaleString();
 const ratio = (numerator, denominator) => Number(denominator) > 0 ? Number(numerator || 0) / Number(denominator) : null;
+const yieldRatio = (numerator, denominator) => {
+  const top = Number(numerator || 0), bottom = Number(denominator || 0);
+  return bottom > 0 && top >= 0 && top <= bottom ? top / bottom : null;
+};
 const percent = (value) => value === null || !Number.isFinite(value) ? 'No Data' : `${(value * 100).toFixed(1)}%`;
 const average = (total, days) => Number(days) > 0 ? (Number(total || 0) / Number(days)).toFixed(1) : 'No Data';
 const dateLabel = (value) => value ? new Date(`${value}T12:00:00`).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '';
@@ -53,7 +57,7 @@ function rateBreakdown(row, numerator, denominator) {
 
 function composite(row) {
   const attainment = ratio(row.paint_pieces_processed, row.pieces_scheduled);
-  const quality = ratio(Number(row.paint_fty_total || 0) - Number(row.paint_fty_repaint_count || 0), row.paint_fty_total);
+  const quality = yieldRatio(Number(row.paint_fty_total || 0) - Number(row.paint_fty_repaint_count || 0), row.paint_fty_total);
   const coverage = ratio(row.paint_hours, row.hours_scheduled);
   if ([attainment, quality, coverage].some(value => value === null)) return null;
   return Math.min(attainment, 1) * quality * Math.min(coverage, 1);
@@ -95,6 +99,23 @@ function splitMetricCard(label, total, unique, rows, color) {
   return card;
 }
 
+function dualYieldCard(label, repaint, reject, color) {
+  const card = document.createElement('article');
+  card.className = 'metric-card dual-yield-card';
+  card.style.setProperty('--accent', color);
+  const labelNode = document.createElement('span'); labelNode.append(text(label));
+  const grid = document.createElement('div'); grid.className = 'dual-yield-grid';
+  [{label:'Repaint', ...repaint}, {label:'Reject', ...reject}].forEach(metric => {
+    const column = document.createElement('div'); column.className = 'dual-yield-column';
+    const metricLabel = document.createElement('span'); metricLabel.className = 'dual-yield-label'; metricLabel.append(text(metric.label));
+    const value = document.createElement('strong'); value.className = 'dual-yield-value'; value.append(text(percent(yieldRatio(metric.numerator, metric.denominator))));
+    const detail = document.createElement('small'); detail.className = 'dual-yield-detail'; detail.append(text(metric.detail));
+    column.append(metricLabel, value, detail); grid.append(column);
+  });
+  card.append(labelNode, grid);
+  return card;
+}
+
 function renderCards(snapshot) {
   const current = snapshot.daily.find(row => row.date === snapshot.report_date);
   if (!current) return;
@@ -105,11 +126,8 @@ function renderCards(snapshot) {
   let trailerDetail = `${integer(current.fuka_trailers_prepared)} FUKA / ${integer(current.bumper_trailers_prepared)} Bumpers / ${integer(current.fairing_trailers_prepared)} Fairings`;
   if (Number(current.other_trailers_prepared || 0) > 0) trailerDetail += ` / ${integer(current.other_trailers_prepared)} Other`;
   const cards = [
-    ['PPY (Paint Process Yield)', percent(ratio(current.ppy_approved, current.paint_decision_pieces)), rateBreakdown(current, 'ppy_approved', 'paint_decision_pieces'), palette.amber],
-    ['Paint FTY', percent(ratio(current.paint_fty_approved, current.paint_fty_total)), rateBreakdown(current, 'paint_fty_approved', 'paint_fty_total'), palette.blue],
     ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} first decisions · Qty ${integer(current.receiving_quantity)} by receive stamp`, palette.green],
     ['Final FTY', percent(ratio(current.final_approved, current.final_total)), `${integer(current.final_approved)} / ${integer(current.final_total)} first decisions · Qty ${integer(current.final_quantity)} by final stamp`, palette.purple],
-    ['Repaint', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)), `${integer(current.paint_fty_repaint_count)} first repaint-loop passes`, palette.red],
     ['Paint plan composite', percent(composite(current)), 'provisional · not standard OEE', palette.purple],
     ['Pieces shipped', integer(current.parts_shipped), 'non-service total', palette.red],
     ['Complete assy sets', integer(current.complete_assy_sets), 'N33 / Chassis Fairing · dated by last assembled piece', palette.teal],
@@ -125,6 +143,20 @@ function renderCards(snapshot) {
     {label:'Carts', production:paintCarts.production, bv:paintCarts.bv, service:paintCarts.service},
     {label:'Pieces', production:paintPieces.production, bv:paintPieces.bv, service:paintPieces.service}
   ], palette.blue));
+  container.append(dualYieldCard('PPY (Paint Process Yield)', {
+    numerator:current.ppy_approved, denominator:current.paint_decision_pieces,
+    detail:`${integer(current.ppy_approved)} / ${integer(current.paint_decision_pieces)} · ${integer(Number(current.paint_decision_pieces || 0) - Number(current.ppy_approved || 0))} repaint`
+  }, {
+    numerator:current.reject_ppy_approved, denominator:current.reject_ppy_total,
+    detail:`${integer(current.reject_ppy_approved)} / ${integer(current.reject_ppy_total)} · ${integer(current.reject_ppy_rejected_count)} rejected · ${integer(current.reject_ppy_pending_count)} pending`
+  }, palette.amber));
+  container.append(dualYieldCard('FTY (First Time Yield)', {
+    numerator:current.paint_fty_approved, denominator:current.paint_fty_total,
+    detail:`${integer(current.paint_fty_approved)} / ${integer(current.paint_fty_total)} · ${integer(current.paint_fty_repaint_count)} first repaint`
+  }, {
+    numerator:current.reject_fty_approved, denominator:current.reject_fty_total,
+    detail:`${integer(current.reject_fty_approved)} / ${integer(current.reject_fty_total)} · ${integer(current.reject_fty_rejected_count)} rejected · ${integer(current.reject_fty_pending_count)} pending`
+  }, palette.blue));
   cards.forEach(card => container.append(metricCard(...card)));
 }
 
@@ -192,10 +224,10 @@ function renderDaily(snapshot) {
     {label:'Paint shipped', color:palette.red, value:row => Number(row.painted_parts_shipped)}
   ]);
   renderLineChart($('#quality-chart'), active, [
-    {label:'PPY (Paint Process Yield)', color:palette.teal, value:row => ratio(row.ppy_approved, row.paint_decision_pieces)},
-    {label:'Paint FTY', color:palette.blue, value:row => ratio(row.paint_fty_approved, row.paint_fty_total)},
-    {label:'Receiving FTY', color:palette.green, value:row => ratio(row.receiving_approved, row.receiving_total)},
-    {label:'Final FTY', color:palette.purple, value:row => ratio(row.final_approved, row.final_total)}
+    {label:'Repaint PPY', color:palette.teal, value:row => yieldRatio(row.ppy_approved, row.paint_decision_pieces)},
+    {label:'Reject PPY', color:palette.red, value:row => yieldRatio(row.reject_ppy_approved, row.reject_ppy_total)},
+    {label:'Repaint FTY', color:palette.blue, value:row => yieldRatio(row.paint_fty_approved, row.paint_fty_total)},
+    {label:'Reject FTY', color:palette.purple, value:row => yieldRatio(row.reject_fty_approved, row.reject_fty_total)}
   ], true);
   renderTable($('#daily-table'), [
     {label:'Day', value:row => `${row.date}${row.production_day ? '' : ' · No production'}`},
@@ -216,9 +248,10 @@ function renderPeriods(snapshot) {
     {label:'EOL avg/day', value:row => average(row.eol_inspected, row.data_days)},
     {label:'Paint ship avg/day', value:row => average(row.painted_parts_shipped, row.data_days)},
     {label:'Bumpers avg/day', value:row => average(row.bumpers_shipped, row.data_days)},
-    {label:'PPY (Paint Process Yield)', value:row => percent(ratio(row.ppy_approved, row.paint_decision_pieces))},
-    {label:'Paint FTY', value:row => percent(ratio(row.paint_fty_approved, row.paint_fty_total))},
-    {label:'Repaint', value:row => percent(ratio(row.paint_fty_repaint_count, row.paint_fty_total))},
+    {label:'Repaint PPY', value:row => percent(yieldRatio(row.ppy_approved, row.paint_decision_pieces))},
+    {label:'Reject PPY', value:row => percent(yieldRatio(row.reject_ppy_approved, row.reject_ppy_total))},
+    {label:'Repaint FTY', value:row => percent(yieldRatio(row.paint_fty_approved, row.paint_fty_total))},
+    {label:'Reject FTY', value:row => percent(yieldRatio(row.reject_fty_approved, row.reject_fty_total))},
     {label:'Composite', value:row => percent(composite(row))}
   ], snapshot.periods);
 }

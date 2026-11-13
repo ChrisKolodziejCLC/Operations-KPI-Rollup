@@ -33,9 +33,13 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `unique_pieces_processed` | Distinct QPTS Part IDs represented by paint oven-exit events on that report date. For aggregate periods, this is the sum of the represented daily distinct counts, not a cross-day deduplication. |
 | `production_paint_carts` / `bv_paint_carts` / `service_paint_carts` | Distinct oven-exit carts split into Prd, BV, and Svc using the same exclusive cart precedence. |
 | `production_paint_pieces_processed` / `bv_paint_pieces_processed` / `service_paint_pieces_processed` | Oven-exit piece events split into Prd, BV, and Svc. |
-| `paint_decision_pieces` / `ppy_approved` | Compatibility field names for all physical paint passes and physical initial passes. Their ratio is PPY (Paint Process Yield). The matching `production_`, `bv_`, and `service_` fields retain each class numerator and denominator. |
-| `paint_fty_total` / `paint_fty_approved` | Physical initial plus first-repaint passes, and physical initial passes. Their ratio is Paint FTY. The matching class fields retain each class numerator and denominator. |
-| `paint_fty_repaint_count` | Physical first-repaint-loop passes on the report date. Second and later repaint loops affect PPY but are excluded from Paint FTY. |
+| `paint_decision_pieces` / `ppy_approved` | Compatibility field names for all physical paint passes and physical initial passes. Their ratio is Repaint PPY. The matching `production_`, `bv_`, and `service_` fields retain each class numerator and denominator. |
+| `paint_fty_total` / `paint_fty_approved` | Physical initial passes, and initial passes minus first physical repaint-loop exits on that report date. Their ratio is Repaint FTY when the numerator is within `0..total`. |
+| `paint_fty_repaint_count` | Physical first-repaint-loop exits on the report date. Second and later repaint loops affect Repaint PPY but do not alter Repaint FTY. |
+| `reject_ppy_total` / `reject_ppy_approved` | All physical paint passes, and those passes minus non-approved EOL outcomes. Their ratio is Reject PPY. |
+| `reject_ppy_rejected_count` / `reject_ppy_pending_count` | All EOL Repair, Repaint, Direct Repaint, or Reject outcomes for those passes; and passes with no EOL outcome yet. |
+| `reject_fty_total` / `reject_fty_approved` | Initial physical passes, and initial passes minus non-approved EOL outcomes. Their ratio is Reject FTY. |
+| `reject_fty_rejected_count` / `reject_fty_pending_count` | Non-approved and pending EOL outcomes restricted to initial physical passes. |
 | `receiving_total` / `receiving_approved` | Parts with a first receiving decision and those approved first pass. |
 | `receiving_quantity` | Distinct non-service parts dated by `insp_receive_stamp`. |
 | `final_total` / `final_approved` | Parts with a first final decision and those approved first pass. |
@@ -59,14 +63,17 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 - `paint_pieces_processed = production_paint_pieces_processed + bv_paint_pieces_processed + service_paint_pieces_processed`
 - `0 <= unique_pieces_loaded <= parts_loaded`
 - `0 <= unique_pieces_processed <= paint_pieces_processed`
-- each PPY and Paint FTY class rate uses its saved class numerator and denominator
+- legacy class splits remain auditable, but the wallboard displays overall exit-day yield because a narrow class can have repaint exits without initial exits on that day
 - `trailers_prepared = FUKA + Bumpers + Fairings + internal Other`
-- `PPY = ppy_approved / paint_decision_pieces`
-- `Paint FTY = paint_fty_approved / paint_fty_total`
+- `Repaint PPY = ppy_approved / paint_decision_pieces`
+- `Repaint FTY = (paint_fty_total - paint_fty_repaint_count) / paint_fty_total`
+- `Reject PPY = reject_ppy_approved / reject_ppy_total`
+- `Reject FTY = reject_fty_approved / reject_fty_total`
 - `Receiving FTY = receiving_approved / receiving_total`
 - `Final FTY = final_approved / final_total`
-- `Repaint percentage = physical first-repaint-loop passes / (physical initial + first-repaint-loop passes)`, grouped by physical oven-exit date
 - `Paint plan composite = min(paint pieces / scheduled pieces, 1) × ((paint FTY total - repaint count) / paint FTY total) × min(active paint hours / scheduled hours, 1)`
+
+Every pass and its first EOL outcome is attributed to the physical oven-exit date. A pending outcome is not silently classified as rejected; its pending count remains visible and a later refresh can restate that oven-exit day. If first-repaint exits exceed initial exits for a daily grain, Repaint FTY is `No Data` rather than a negative rate. Period rows still use their summed numerator and denominator when the aggregate counts form a valid ratio.
 
 The last value is an inherited proxy and must not be renamed OEE without a separate approved definition for runtime, ideal cycle time, and good count.
 
@@ -87,7 +94,7 @@ The live SQL adapter is read-only and emits this contract. It must:
 
 ## Validation invariants
 
-- All count fields are non-negative integers.
+- Reject count fields are non-negative integers. The compatibility Repaint FTY numerator can be negative only for an incoherent daily exit mix and must render as `No Data`.
 - Every displayed rate retains a denominator greater than or equal to its numerator where the outcome classes are exclusive.
 - `data_days <= calendar_days` for period rows.
 - Daily rows include the exact `report_date`.

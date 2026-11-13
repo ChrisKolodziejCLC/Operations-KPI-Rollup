@@ -48,12 +48,14 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v6-original-paint-repaint-cohort",
         "operations-kpi-live-v7-daily-unique-pieces",
         "operations-kpi-live-v8-physical-pass-metrics",
+        "operations-kpi-live-v9-repaint-reject-yields",
     }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
             if snapshot.get("scope", {}).get("method_version") in {
                 "operations-kpi-live-v7-daily-unique-pieces",
                 "operations-kpi-live-v8-physical-pass-metrics",
+                "operations-kpi-live-v9-repaint-reject-yields",
             }:
                 for unique_field, total_field, label in (
                     ("unique_pieces_loaded", "parts_loaded", "loaded unique-piece"),
@@ -64,12 +66,42 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     unique_value = int(row.get(unique_field, 0))
                     if unique_value < 0 or unique_value > int(row.get(total_field, 0)):
                         raise ValueError(f"{collection} {label} count is outside its total")
-            if snapshot.get("scope", {}).get("method_version") == "operations-kpi-live-v8-physical-pass-metrics":
+            if snapshot.get("scope", {}).get("method_version") in {
+                "operations-kpi-live-v8-physical-pass-metrics",
+                "operations-kpi-live-v9-repaint-reject-yields",
+            }:
                 for quantity_field in ("receiving_quantity", "final_quantity"):
                     if quantity_field not in row:
                         raise ValueError(f"{collection} {quantity_field} is missing")
                     if int(row.get(quantity_field, 0)) < 0:
                         raise ValueError(f"{collection} {quantity_field} is negative")
+            if snapshot.get("scope", {}).get("method_version") == "operations-kpi-live-v9-repaint-reject-yields":
+                required_yield_fields = (
+                    "reject_ppy_total", "reject_ppy_approved", "reject_ppy_rejected_count",
+                    "reject_ppy_pending_count", "reject_fty_total", "reject_fty_approved",
+                    "reject_fty_rejected_count", "reject_fty_pending_count",
+                )
+                missing_yield_fields = [field for field in required_yield_fields if field not in row]
+                if missing_yield_fields:
+                    raise ValueError(
+                        f"{collection} reject yield fields are missing: " + ", ".join(missing_yield_fields)
+                    )
+                if any(int(row[field]) < 0 for field in required_yield_fields):
+                    raise ValueError(f"{collection} reject yield count is negative")
+                if int(row["reject_ppy_total"]) != int(row.get("paint_decision_pieces", 0)):
+                    raise ValueError(f"{collection} reject PPY total does not equal physical paint passes")
+                if int(row["reject_fty_total"]) != int(row.get("paint_fty_total", 0)):
+                    raise ValueError(f"{collection} reject FTY total does not equal initial paint passes")
+                if int(row["reject_ppy_approved"]) + int(row["reject_ppy_rejected_count"]) != int(row["reject_ppy_total"]):
+                    raise ValueError(f"{collection} reject PPY outcomes do not equal its total")
+                if int(row["reject_fty_approved"]) + int(row["reject_fty_rejected_count"]) != int(row["reject_fty_total"]):
+                    raise ValueError(f"{collection} reject FTY outcomes do not equal its total")
+                if int(row["reject_ppy_pending_count"]) > int(row["reject_ppy_total"]):
+                    raise ValueError(f"{collection} reject PPY pending count exceeds its total")
+                if int(row["reject_fty_pending_count"]) > int(row["reject_fty_total"]):
+                    raise ValueError(f"{collection} reject FTY pending count exceeds its total")
+                if int(row.get("paint_fty_approved", 0)) != int(row.get("paint_fty_total", 0)) - int(row.get("paint_fty_repaint_count", 0)):
+                    raise ValueError(f"{collection} repaint FTY counts do not match the exit-day formula")
             _validate_split(
                 row, collection, "parts_loaded",
                 ("production_parts_loaded", "bv_parts_loaded", "service_parts_loaded"), "load", require_complete_splits,
@@ -214,11 +246,12 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
             f"Carts {format_int(production_paint_carts)} Prd / {format_int(bv_paint_carts)} BV / {format_int(service_paint_carts)} Svc · Pieces {format_int(production_paint_pieces)} Prd / {format_int(bv_paint_pieces)} BV / {format_int(service_paint_pieces)} Svc",
             "#2f6f9f",
         ),
-        _card("PPY (Paint Process Yield)", format_percent(current["ppy"]), _rate_split(current, "ppy_approved", "paint_decision_pieces"), "#d78d23"),
-        _card("Paint FTY", format_percent(current["paint_fty"]), _rate_split(current, "paint_fty_approved", "paint_fty_total"), "#2f6f9f"),
+        _card("Repaint PPY", format_percent(current["repaint_ppy"]), f"{format_int(current.get('ppy_approved'))} / {format_int(current.get('paint_decision_pieces'))} exits", "#d78d23"),
+        _card("Reject PPY", format_percent(current["reject_ppy"]), f"{format_int(current.get('reject_ppy_approved'))} / {format_int(current.get('reject_ppy_total'))} exits · {format_int(current.get('reject_ppy_pending_count'))} pending", "#bb514b"),
+        _card("Repaint FTY", format_percent(current["repaint_fty"]), f"{format_int(current.get('paint_fty_approved'))} / {format_int(current.get('paint_fty_total'))} first exits", "#2f6f9f"),
+        _card("Reject FTY", format_percent(current["reject_fty"]), f"{format_int(current.get('reject_fty_approved'))} / {format_int(current.get('reject_fty_total'))} first exits · {format_int(current.get('reject_fty_pending_count'))} pending", "#8a6aa8"),
         _card("Receiving FTY", format_percent(current["receiving_fty"]), f"{format_int(current.get('receiving_approved'))} / {format_int(current.get('receiving_total'))} first decisions · Qty {format_int(current.get('receiving_quantity'))} by receive stamp", "#38856d"),
         _card("Final FTY", format_percent(current["final_fty"]), f"{format_int(current.get('final_approved'))} / {format_int(current.get('final_total'))} first decisions · Qty {format_int(current.get('final_quantity'))} by final stamp", "#8a6aa8"),
-        _card("Repaint", format_percent(current["repaint_percentage"]), f"{format_int(current.get('paint_fty_repaint_count'))} first repaint-loop passes", "#bb514b"),
         _card("Paint plan composite", format_percent(current["paint_plan_composite"]), "proxy — not standard OEE", "#8a6aa8", "PROVISIONAL"),
         _card("Pieces shipped", format_int(current.get("parts_shipped")), "non-service total", "#bb514b"),
         _card("Complete assy sets", format_int(current.get("complete_assy_sets")), "N33 / Chassis Fairing · dated by last assembled piece", "#147d86"),
@@ -238,8 +271,10 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
             {
                 **row,
                 "averages": [format_decimal(row[field + "_avg"], 1) for field, _ in throughput_fields],
-                "ppy_text": format_percent(row["ppy"]),
-                "paint_fty_text": format_percent(row["paint_fty"]),
+                "repaint_ppy_text": format_percent(row["repaint_ppy"]),
+                "reject_ppy_text": format_percent(row["reject_ppy"]),
+                "repaint_fty_text": format_percent(row["repaint_fty"]),
+                "reject_fty_text": format_percent(row["reject_fty"]),
                 "receiving_fty_text": format_percent(row["receiving_fty"]),
                 "final_fty_text": format_percent(row["final_fty"]),
                 "repaint_text": format_percent(row["repaint_percentage"]),

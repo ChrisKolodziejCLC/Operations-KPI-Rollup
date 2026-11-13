@@ -51,6 +51,13 @@ button.secondary{border-color:#b6c7d0;background:#eef4f6;color:var(--navy)}
 .metric-split-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:.35rem;align-items:baseline}
 .metric-card .metric-split-label{font-size:.62rem}
 .metric-card .metric-split-value{margin:0;font-size:.76rem;font-weight:400;letter-spacing:-.01em;white-space:nowrap}
+.dual-yield-card{container-type:inline-size}
+.dual-yield-grid{display:grid;grid-template-columns:1fr 1fr;gap:.45rem;margin-top:.35rem}
+.dual-yield-column{min-width:0;padding-right:.3rem}
+.dual-yield-column+ .dual-yield-column{padding:0 0 0 .55rem;border-left:1px solid var(--line)}
+.metric-card .dual-yield-label{font-size:.58rem;color:var(--muted)}
+.metric-card .dual-yield-value{margin:.12rem 0;font-size:1.35rem;font-size:min(10.5cqw,1.35rem);line-height:1.05;white-space:nowrap}
+.metric-card .dual-yield-detail{font-size:.62rem;line-height:1.25}
 .panel{margin-top:1rem;padding:1.2rem;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow)}
 .section-heading{display:flex;justify-content:space-between;gap:2rem;align-items:end;padding-bottom:.8rem;border-bottom:3px solid var(--teal)}
 .section-heading.compact{border-bottom-width:2px}
@@ -88,10 +95,13 @@ body.wallboard main{max-width:none}
 body.wallboard .cards{grid-template-columns:repeat(6,minmax(0,1fr))}
 body.wallboard .metric-card strong{font-size:2.2rem}
 body.wallboard .metric-card .metric-split-total{font-size:1.1rem;font-size:min(7.5cqw,2.2rem)}
+body.wallboard .metric-card .dual-yield-value{font-size:1.45rem;font-size:min(10.5cqw,1.45rem)}
 body.wallboard .metric-card small,body.wallboard .metric-card .metric-split-value{font-size:.82rem}
+body.wallboard .metric-card .dual-yield-detail{font-size:.68rem}
 
 @media(max-width:1100px){
   .cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+  body.wallboard .cards{grid-template-columns:repeat(3,minmax(0,1fr))}
   .control-bar{grid-template-columns:1fr 1fr auto auto}
   #status{grid-column:1/-1}
   .chart-grid{grid-template-columns:1fr}
@@ -102,6 +112,7 @@ body.wallboard .metric-card small,body.wallboard .metric-card .metric-split-valu
   main{padding:1rem}
   .control-bar{grid-template-columns:1fr}
   .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  body.wallboard .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
   .split-panel,.notes-panel{grid-template-columns:1fr}
   .section-heading{align-items:flex-start;flex-direction:column;gap:.3rem}
   .section-heading>p{text-align:left}

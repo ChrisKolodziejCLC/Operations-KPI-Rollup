@@ -42,15 +42,23 @@ def metric_row(period_type, start, end, available=1, days=1):
         "production_ppy_approved": "75",
         "bv_ppy_approved": "5",
         "service_ppy_approved": "10",
-        "paint_fty_total": "92",
-        "production_paint_fty_total": "77",
+        "paint_fty_total": "90",
+        "production_paint_fty_total": "75",
         "bv_paint_fty_total": "5",
         "service_paint_fty_total": "10",
-        "paint_fty_approved": "88",
-        "production_paint_fty_approved": "73",
+        "paint_fty_approved": "87",
+        "production_paint_fty_approved": "72",
         "bv_paint_fty_approved": "5",
         "service_paint_fty_approved": "10",
         "paint_fty_repaint_count": "3",
+        "reject_ppy_total": "95",
+        "reject_ppy_approved": "91",
+        "reject_ppy_rejected_count": "4",
+        "reject_ppy_pending_count": "1",
+        "reject_fty_total": "90",
+        "reject_fty_approved": "87",
+        "reject_fty_rejected_count": "3",
+        "reject_fty_pending_count": "1",
         "receiving_total": "99",
         "receiving_approved": "97",
         "receiving_quantity": "98",
@@ -94,7 +102,7 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
 
 
 def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
-    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "4dfa932d94bf9cc9ff3991ea1787f95eeb43efaf3b0b4559373734255ece3ed9")
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "a425832e9f652f84e55401dd45e917a8d421132442bbba3ee37fd5136f4b26f5")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -123,19 +131,26 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert cards[1]["label"] == "Pieces painted"
     assert cards[1]["value"] == "96 Total / 84 Unique"
     assert cards[1]["detail"] == "Carts 20 Prd / 5 BV / 10 Svc · Pieces 65 Prd / 5 BV / 26 Svc"
-    assert cards[2]["label"] == "PPY (Paint Process Yield)"
-    assert cards[2]["detail"] == "Prd 93.8% / BV 100.0% / Svc 100.0%"
-    assert cards[3]["detail"] == "Prd 94.8% / BV 100.0% / Svc 100.0%"
-    assert cards[4]["detail"] == "97 / 99 first decisions · Qty 98 by receive stamp"
-    assert cards[5]["detail"] == "100 / 101 first decisions · Qty 100 by final stamp"
+    assert cards[2]["label"] == "Repaint PPY"
+    assert cards[2]["value"] == "94.7%"
+    assert cards[2]["detail"] == "90 / 95 exits"
+    assert cards[3]["label"] == "Reject PPY"
+    assert cards[3]["value"] == "95.8%"
+    assert cards[3]["detail"] == "91 / 95 exits · 1 pending"
+    assert cards[4]["label"] == "Repaint FTY"
+    assert cards[4]["value"] == "96.7%"
+    assert cards[5]["label"] == "Reject FTY"
+    assert cards[5]["value"] == "96.7%"
+    assert cards[6]["detail"] == "97 / 99 first decisions · Qty 98 by receive stamp"
+    assert cards[7]["detail"] == "100 / 101 first decisions · Qty 100 by final stamp"
     assert cards[-1]["detail"] == "2 FUKA / 1 Bumpers / 1 Fairings"
     assert [row["period_type"] for row in snapshot["periods"]] == ["WEEK", "MONTH", "QUARTER"]
     assert snapshot["top_defects"] == [{"step": "End of Line", "description": "Dirt", "count": 7}]
     assert snapshot["shipping"][0]["pieces"] == 55
     assert snapshot["painters"] == []
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
-    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "4DFA932D94BF9CC9FF3991EA1787F95EEB43EFAF3B0B4559373734255ECE3ED9"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v8-physical-pass-metrics"
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "A425832E9F652F84E55401DD45E917A8D421132442BBBA3EE37FD5136F4B26F5"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v9-repaint-reject-yields"
 
 
 def test_load_split_must_equal_total():
@@ -276,6 +291,30 @@ def test_v7_saved_snapshot_can_load_before_first_v8_refresh():
     validate_snapshot(snapshot)
 
 
+def test_v8_saved_snapshot_can_load_before_first_v9_refresh():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["scope"]["method_version"] = "operations-kpi-live-v8-physical-pass-metrics"
+    for collection in ("daily", "periods"):
+        for row in snapshot[collection]:
+            for field in tuple(row):
+                if field.startswith("reject_ppy_") or field.startswith("reject_fty_"):
+                    row.pop(field)
+    validate_snapshot(snapshot)
+
+
+def test_v9_snapshot_requires_complete_reject_yield_counts():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["daily"][-1].pop("reject_ppy_pending_count")
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily reject yield fields are missing: reject_ppy_pending_count"
+    else:
+        raise AssertionError("missing v9 reject yield count was accepted")
+
+
 def test_v8_snapshot_requires_stamp_quantities():
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
@@ -311,6 +350,6 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "4DFA932D94BF9CC9FF3991EA1787F95EEB43EFAF3B0B4559373734255ECE3ED9" in captured["query"]
+    assert "A425832E9F652F84E55401DD45E917A8D421132442BBBA3EE37FD5136F4B26F5" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]

@@ -106,9 +106,10 @@
                   <th align="left" style="border:1px solid #ccdbe3;">Period</th>
                   <th align="right" style="border:1px solid #ccdbe3;">Prod days</th>
                   {% for header in throughput_headers %}<th align="right" style="border:1px solid #ccdbe3;">{{ header }}</th>{% endfor %}
-                  <th align="right" style="border:1px solid #ccdbe3;">PPY (Paint Process Yield)</th>
-                  <th align="right" style="border:1px solid #ccdbe3;">Paint FTY</th>
-                  <th align="right" style="border:1px solid #ccdbe3;">Repaint</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">Repaint PPY</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">Reject PPY</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">Repaint FTY</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">Reject FTY</th>
                   <th align="right" style="border:1px solid #ccdbe3;">Composite</th>
                 </tr>
                 {% for row in periods %}
@@ -116,9 +117,10 @@
                   <td style="border:1px solid #d7e2e8;"><strong>{{ row.label }}</strong><br><span style="color:#829ab1;">{{ row.period_type|lower }}</span></td>
                   <td align="right" style="border:1px solid #d7e2e8;">{{ row.data_days }}</td>
                   {% for average in row.averages %}<td align="right" style="border:1px solid #d7e2e8;">{{ average }}</td>{% endfor %}
-                  <td align="right" style="border:1px solid #d7e2e8;">{{ row.ppy_text }}</td>
-                  <td align="right" style="border:1px solid #d7e2e8;">{{ row.paint_fty_text }}</td>
-                  <td align="right" style="border:1px solid #d7e2e8;">{{ row.repaint_text }}</td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ row.repaint_ppy_text }}</td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ row.reject_ppy_text }}</td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ row.repaint_fty_text }}</td>
+                  <td align="right" style="border:1px solid #d7e2e8;">{{ row.reject_fty_text }}</td>
                   <td align="right" style="border:1px solid #d7e2e8;">{{ row.composite_text }}</td>
                 </tr>
                 {% endfor %}
@@ -166,7 +168,7 @@
 
           <tr>
             <td style="background:#f4f7f9;padding:18px 30px;font-size:10px;line-height:15px;color:#627d98;border-top:1px solid #d7e2e8;">
-              <strong style="color:#294e63;">Method summary:</strong> PPY (Paint Process Yield) = physical initial paint passes / all physical paint passes, including every repaint loop. Paint FTY = physical initial passes / physical initial plus first-repaint passes; second and later repaint loops are PPY-only. Every pass is assigned to the day it physically exits the oven, not the day a repaint is designated. Receiving and Final FTY use the first applicable decision per part; their quantities use the receive and final inspection stamps. The Paint plan composite is schedule attainment × first-pass quality × bounded active-hour coverage; it is not standard OEE. Historical values are reproducible from the attached build snapshot, not recomputed from later mutable QPTS state.<br><br>
+              <strong style="color:#294e63;">Method summary:</strong> Repaint PPY = physical initial exits / all physical oven exits. Repaint FTY = (initial exits − first repaint-loop exits) / initial exits. Reject PPY and FTY subtract EOL Repair, Repaint, Direct Repaint, and Reject outcomes from all exits or initial exits respectively. Every pass and outcome is assigned to the date the physical pass exits the oven; pending EOL outcomes remain visible. Reject yield is monitoring-only and does not feed the Paint plan composite. Receiving and Final FTY use the first applicable decision per part; their quantities use the receive and final inspection stamps. The Paint plan composite is schedule attainment × Repaint FTY × bounded active-hour coverage; it is not standard OEE. Historical values are reproducible from the attached build snapshot, not recomputed from later mutable QPTS state.<br><br>
               Preview build only. No email was sent and no QPTS data was modified.
             </td>
           </tr>

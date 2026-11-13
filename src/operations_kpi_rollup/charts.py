@@ -62,13 +62,13 @@ def _daily_throughput(rows: List[Dict[str, Any]], path: Path) -> None:
 
 
 def _daily_yield(rows: List[Dict[str, Any]], path: Path) -> None:
-    fig, ax = _new_figure("Daily First-Pass Quality", "Weighted outcomes retain their numerator and denominator.")
+    fig, ax = _new_figure("Daily Paint Yield", "Every pass and outcome is assigned to its physical oven-exit date.")
     x = np.arange(len(rows))
     series = [
-        ("PPY (Paint Process Yield)", "ppy", COLORS["teal"]),
-        ("Paint FTY", "paint_fty", COLORS["blue"]),
-        ("Receiving FTY", "receiving_fty", COLORS["green"]),
-        ("Final FTY", "final_fty", COLORS["purple"]),
+        ("Repaint PPY", "repaint_ppy", COLORS["teal"]),
+        ("Reject PPY", "reject_ppy", COLORS["red"]),
+        ("Repaint FTY", "repaint_fty", COLORS["blue"]),
+        ("Reject FTY", "reject_fty", COLORS["purple"]),
     ]
     for label, field, color in series:
         values = [float(row[field] * 100) if row.get(field) is not None else np.nan for row in rows]
