@@ -90,7 +90,7 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
 
 
 def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
-    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "41f316cfbc2b882984ecf6c316eeecf2fe9a3d7ef2042fd911134054649a3bc7")
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "7d1034139e5ae0a008cfd39a8403a26c260fd6ac6b1bde758e03eab78867d7f8")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -123,7 +123,7 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert snapshot["shipping"][0]["pieces"] == 55
     assert snapshot["painters"] == []
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
-    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "41F316CFBC2B882984ECF6C316EEECF2FE9A3D7EF2042FD911134054649A3BC7"
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "7D1034139E5AE0A008CFD39A8403A26C260FD6AC6B1BDE758E03EAB78867D7F8"
     assert snapshot["scope"]["method_version"] == "operations-kpi-live-v5-bv-quality-trailer-split"
 
 
@@ -251,6 +251,6 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "41F316CFBC2B882984ECF6C316EEECF2FE9A3D7EF2042FD911134054649A3BC7" in captured["query"]
+    assert "7D1034139E5AE0A008CFD39A8403A26C260FD6AC6B1BDE758E03EAB78867D7F8" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]
