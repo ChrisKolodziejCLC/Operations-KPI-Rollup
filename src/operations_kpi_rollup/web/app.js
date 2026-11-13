@@ -25,6 +25,13 @@ function loadSplit(row) {
   return {production: row.production_parts_loaded, service: row.service_parts_loaded};
 }
 
+function cartSplit(row) {
+  if (row.production_carts_loaded === undefined && row.service_carts_loaded === undefined) {
+    return {production: row.carts_loaded, service: 0};
+  }
+  return {production: row.production_carts_loaded, service: row.service_carts_loaded};
+}
+
 function composite(row) {
   const attainment = ratio(row.paint_pieces_processed, row.pieces_scheduled);
   const quality = ratio(Number(row.paint_fty_total || 0) - Number(row.paint_fty_repaint_count || 0), row.paint_fty_total);
@@ -54,8 +61,9 @@ function renderCards(snapshot) {
   const current = snapshot.daily.find(row => row.date === snapshot.report_date);
   if (!current) return;
   const loaded = loadSplit(current);
+  const carts = cartSplit(current);
   const cards = [
-    ['Parts loaded', integer(current.parts_loaded), `${integer(current.carts_loaded)} Carts / ${integer(loaded.production)} Prd / ${integer(loaded.service)} Svc`, palette.teal],
+    ['Parts loaded', integer(current.parts_loaded), `${integer(current.carts_loaded)} Carts: ${integer(carts.production)} Prd / ${integer(carts.service)} Svc · ${integer(current.parts_loaded)} Parts: ${integer(loaded.production)} Prd / ${integer(loaded.service)} Svc`, palette.teal],
     ['Paint processed', integer(current.paint_carts), `${integer(current.paint_pieces_processed)} pieces`, palette.blue],
     ['PPY', percent(ratio(current.ppy_approved, current.paint_decision_pieces)), `${integer(current.ppy_approved)} / ${integer(current.paint_decision_pieces)} dispositions`, palette.amber],
     ['Paint FTY', percent(ratio(current.paint_fty_approved, current.paint_fty_total)), `${integer(current.paint_fty_approved)} / ${integer(current.paint_fty_total)} first-pass`, palette.blue],

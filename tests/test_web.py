@@ -55,7 +55,10 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert response.status == 200
             assert "production_parts_loaded" in javascript
             assert "service_parts_loaded" in javascript
-            assert "Carts / ${integer(loaded.production)} Prd / ${integer(loaded.service)} Svc" in javascript
+            assert "production_carts_loaded" in javascript
+            assert "service_carts_loaded" in javascript
+            assert "Carts: ${integer(carts.production)} Prd / ${integer(carts.service)} Svc" in javascript
+            assert "Parts: ${integer(loaded.production)} Prd / ${integer(loaded.service)} Svc" in javascript
     finally:
         server.shutdown()
         server.server_close()

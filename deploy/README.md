@@ -39,6 +39,8 @@ Never place either value in Git, a unit `Environment=` line, a change record, co
 
 Any approved procedure change must be committed as a hash-gated migration, previewed in a rolled-back SQL transaction, and paired with a reviewed reverse migration before it is applied. Update the pinned procedure hash in both source and the deployed unit only after the candidate hash is recorded.
 
+The live extractor enforces both load splits before saving a snapshot: production plus service pieces must equal total loaded pieces, and production plus service carts must equal total loaded carts. A violation blocks refresh because production and service use different layering systems and cannot share a cart.
+
 ## Rollback
 
 - If an earlier release exists, repoint `current` to it and restart the service.

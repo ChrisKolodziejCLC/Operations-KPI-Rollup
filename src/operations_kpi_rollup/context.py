@@ -37,6 +37,15 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 != int(row.get("parts_loaded", 0))
             ):
                 raise ValueError(f"{collection} load split does not equal parts_loaded")
+            has_production_carts = "production_carts_loaded" in row
+            has_service_carts = "service_carts_loaded" in row
+            if has_production_carts != has_service_carts:
+                raise ValueError(f"{collection} cart split is incomplete")
+            if has_production_carts and (
+                int(row["production_carts_loaded"]) + int(row["service_carts_loaded"])
+                != int(row.get("carts_loaded", 0))
+            ):
+                raise ValueError(f"{collection} cart split does not equal carts_loaded")
 
 
 def _sort_by(rows: Iterable[Dict[str, Any]], key: str) -> List[Dict[str, Any]]:
@@ -53,6 +62,12 @@ def _load_split(row: Dict[str, Any]) -> tuple[Any, Any]:
     return row.get("production_parts_loaded", 0), row.get("service_parts_loaded", 0)
 
 
+def _cart_split(row: Dict[str, Any]) -> tuple[Any, Any]:
+    if "production_carts_loaded" not in row and "service_carts_loaded" not in row:
+        return row.get("carts_loaded", 0), 0
+    return row.get("production_carts_loaded", 0), row.get("service_carts_loaded", 0)
+
+
 def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     validate_snapshot(snapshot)
     report_date = snapshot["report_date"]
@@ -65,12 +80,15 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     quarters = [row for row in periods if row.get("period_type") == "QUARTER"]
     current_week = max(weeks, key=lambda row: row.get("period_start", "")) if weeks else None
     production_loaded, service_loaded = _load_split(current)
+    production_carts, service_carts = _cart_split(current)
 
     cards = [
         _card(
             "Parts loaded",
             format_int(current.get("parts_loaded")),
-            f"{format_int(current.get('carts_loaded'))} Carts / "
+            f"{format_int(current.get('carts_loaded'))} Carts: "
+            f"{format_int(production_carts)} Prd / {format_int(service_carts)} Svc · "
+            f"{format_int(current.get('parts_loaded'))} Parts: "
             f"{format_int(production_loaded)} Prd / {format_int(service_loaded)} Svc",
             "#147d86",
         ),

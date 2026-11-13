@@ -27,6 +27,7 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `data_days` | Represented production days with reportable activity. |
 | `parts_loaded` / `carts_loaded` | Loaded piece events (including repaint loads) and distinct non-null loaded carts. |
 | `production_parts_loaded` / `service_parts_loaded` | The same loaded piece events split by whether QPTS classifies the part with `Model = Service`; the two fields must sum to `parts_loaded`. |
+| `production_carts_loaded` / `service_carts_loaded` | Distinct loaded carts split by that same service classification. The layering systems make the buckets mutually exclusive, so the two fields must sum to `carts_loaded`. |
 | `paint_carts` / `paint_pieces_processed` | Distinct paint carts and oven-exit pieces under the approved scope. |
 | `paint_decision_pieces` / `ppy_approved` | PPY denominator and approved numerator. |
 | `paint_fty_total` / `paint_fty_approved` | Initial paint passes and approved initial passes. |
@@ -47,6 +48,7 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 
 - `average per production day = period total / data_days`
 - `parts_loaded = production_parts_loaded + service_parts_loaded`
+- `carts_loaded = production_carts_loaded + service_carts_loaded`
 - `PPY = ppy_approved / paint_decision_pieces`
 - `Paint FTY = paint_fty_approved / paint_fty_total`
 - `Receiving FTY = receiving_approved / receiving_total`

@@ -20,6 +20,8 @@ def metric_row(period_type, start, end, available=1, days=1):
         "production_parts_loaded": "75",
         "service_parts_loaded": "25",
         "carts_loaded": "40",
+        "production_carts_loaded": "30",
+        "service_carts_loaded": "10",
         "paint_processed": "35",
         "paint_pieces_processed": "96",
         "paint_decision_pieces": "95",
@@ -64,7 +66,7 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
 
 
 def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
-    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "5351ef835346688e38430fdbc06f6ef35c314a7da1bc5e9240d1379c08ca7a36")
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "a733058bf6f816a07d9d6249bc0b1bccc00efa26ecea1f98a0390e682aa9ab88")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -74,14 +76,16 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert snapshot["daily"][-1]["paint_pieces_processed"] == 96
     assert snapshot["daily"][-1]["production_parts_loaded"] == 75
     assert snapshot["daily"][-1]["service_parts_loaded"] == 25
-    assert prepare_context(snapshot)["cards"][0]["detail"] == "40 Carts / 75 Prd / 25 Svc"
+    assert snapshot["daily"][-1]["production_carts_loaded"] == 30
+    assert snapshot["daily"][-1]["service_carts_loaded"] == 10
+    assert prepare_context(snapshot)["cards"][0]["detail"] == "40 Carts: 30 Prd / 10 Svc · 100 Parts: 75 Prd / 25 Svc"
     assert [row["period_type"] for row in snapshot["periods"]] == ["WEEK", "MONTH", "QUARTER"]
     assert snapshot["top_defects"] == [{"step": "End of Line", "description": "Dirt", "count": 7}]
     assert snapshot["shipping"][0]["pieces"] == 55
     assert snapshot["painters"] == []
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
-    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "5351EF835346688E38430FDBC06F6EF35C314A7DA1BC5E9240D1379C08CA7A36"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v2-load-service-split"
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "A733058BF6F816A07D9D6249BC0B1BCCC00EFA26ECEA1F98A0390E682AA9AB88"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v3-load-cart-service-split"
 
 
 def test_load_split_must_equal_total():
@@ -97,6 +101,19 @@ def test_load_split_must_equal_total():
         raise AssertionError("invalid load split was accepted")
 
 
+def test_cart_split_must_equal_total():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["daily"][-1]["service_carts_loaded"] = 9
+
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily cart split does not equal carts_loaded"
+    else:
+        raise AssertionError("invalid cart split was accepted")
+
+
 def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monkeypatch):
     captured = {}
 
@@ -108,6 +125,6 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "5351EF835346688E38430FDBC06F6EF35C314A7DA1BC5E9240D1379C08CA7A36" in captured["query"]
+    assert "A733058BF6F816A07D9D6249BC0B1BCCC00EFA26ECEA1F98A0390E682AA9AB88" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]
