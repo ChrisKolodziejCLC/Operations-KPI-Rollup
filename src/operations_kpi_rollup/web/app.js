@@ -1,0 +1,267 @@
+'use strict';
+
+const palette = {
+  teal: '#13858c', blue: '#3478ad', green: '#37856e', purple: '#826aa4',
+  amber: '#df922a', red: '#bd524d', navy: '#0b2239', grid: '#d9e3e8', muted: '#607487'
+};
+
+const $ = (selector) => document.querySelector(selector);
+const svgNode = (name, attributes = {}) => {
+  const node = document.createElementNS('http://www.w3.org/2000/svg', name);
+  Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
+  return node;
+};
+const text = (value) => document.createTextNode(String(value ?? ''));
+const integer = (value) => Number(value || 0).toLocaleString();
+const ratio = (numerator, denominator) => Number(denominator) > 0 ? Number(numerator || 0) / Number(denominator) : null;
+const percent = (value) => value === null || !Number.isFinite(value) ? 'No Data' : `${(value * 100).toFixed(1)}%`;
+const average = (total, days) => Number(days) > 0 ? (Number(total || 0) / Number(days)).toFixed(1) : 'No Data';
+const dateLabel = (value) => value ? new Date(`${value}T12:00:00`).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '';
+
+function composite(row) {
+  const attainment = ratio(row.paint_pieces_processed, row.pieces_scheduled);
+  const quality = ratio(Number(row.paint_fty_total || 0) - Number(row.paint_fty_repaint_count || 0), row.paint_fty_total);
+  const coverage = ratio(row.paint_hours, row.hours_scheduled);
+  if ([attainment, quality, coverage].some(value => value === null)) return null;
+  return Math.min(attainment, 1) * quality * Math.min(coverage, 1);
+}
+
+function setStatus(message, error = false) {
+  const node = $('#status');
+  node.textContent = message;
+  node.classList.toggle('error', error);
+}
+
+function metricCard(label, value, detail, color) {
+  const card = document.createElement('article');
+  card.className = 'metric-card';
+  card.style.setProperty('--accent', color);
+  const labelNode = document.createElement('span'); labelNode.append(text(label));
+  const valueNode = document.createElement('strong'); valueNode.append(text(value));
+  const detailNode = document.createElement('small'); detailNode.append(text(detail));
+  card.append(labelNode, valueNode, detailNode);
+  return card;
+}
+
+function renderCards(snapshot) {
+  const current = snapshot.daily.find(row => row.date === snapshot.report_date);
+  if (!current) return;
+  const cards = [
+    ['Parts loaded', integer(current.parts_loaded), `${integer(current.carts_loaded)} carts`, palette.teal],
+    ['Paint processed', integer(current.paint_carts), `${integer(current.paint_pieces_processed)} pieces`, palette.blue],
+    ['PPY', percent(ratio(current.ppy_approved, current.paint_decision_pieces)), `${integer(current.ppy_approved)} / ${integer(current.paint_decision_pieces)} dispositions`, palette.amber],
+    ['Paint FTY', percent(ratio(current.paint_fty_approved, current.paint_fty_total)), `${integer(current.paint_fty_approved)} / ${integer(current.paint_fty_total)} first-pass`, palette.blue],
+    ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} first decisions`, palette.green],
+    ['Final FTY', percent(ratio(current.final_approved, current.final_total)), `${integer(current.final_approved)} / ${integer(current.final_total)} first decisions`, palette.purple],
+    ['Repaint', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)), `${integer(current.paint_fty_repaint_count)} first-pass repaints`, palette.red],
+    ['Paint plan composite', percent(composite(current)), 'provisional · not standard OEE', palette.purple],
+    ['Pieces shipped', integer(current.parts_shipped), 'non-service total', palette.red],
+    ['Complete assy sets', integer(current.complete_assy_sets), 'N33 four-piece patterns', palette.teal],
+    ['Assembled bumpers', integer(current.assembled_bumper_count), 'N71-6171', palette.blue],
+    ['Trailers prepared', integer(current.trailers_prepared), 'snapshot value', palette.amber]
+  ];
+  const container = $('#cards'); container.replaceChildren();
+  cards.forEach(card => container.append(metricCard(...card)));
+}
+
+function renderTable(table, headers, rows, rowClass = () => '') {
+  const thead = document.createElement('thead');
+  const heading = document.createElement('tr');
+  headers.forEach(item => { const th = document.createElement('th'); th.append(text(item.label)); heading.append(th); });
+  thead.append(heading);
+  const tbody = document.createElement('tbody');
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.className = rowClass(row);
+    headers.forEach(item => { const td = document.createElement('td'); td.append(text(item.value(row))); tr.append(td); });
+    tbody.append(tr);
+  });
+  table.replaceChildren(thead, tbody);
+}
+
+function renderLineChart(container, rows, series, asPercent = false) {
+  container.replaceChildren();
+  if (rows.length < 2) {
+    const empty = document.createElement('div'); empty.className = 'empty-state'; empty.append(text('Not enough production-day data to chart.')); container.append(empty); return;
+  }
+  const width = 720, height = 250, left = 48, right = 18, top = 18, bottom = 38;
+  const values = series.flatMap(item => rows.map(row => item.value(row))).filter(value => value !== null && Number.isFinite(value));
+  let minimum = asPercent ? Math.max(0, Math.floor((Math.min(...values) - 0.05) * 10) / 10) : 0;
+  let maximum = asPercent ? 1 : Math.max(...values, 1) * 1.08;
+  if (maximum <= minimum) maximum = minimum + 1;
+  const x = index => left + (index * (width - left - right) / Math.max(rows.length - 1, 1));
+  const y = value => top + (maximum - value) * (height - top - bottom) / (maximum - minimum);
+  const svg = svgNode('svg', {viewBox: `0 0 ${width} ${height}`, role: 'img'});
+  for (let index = 0; index <= 4; index += 1) {
+    const value = minimum + ((maximum - minimum) * index / 4);
+    const yy = y(value);
+    svg.append(svgNode('line', {x1: left, x2: width - right, y1: yy, y2: yy, stroke: palette.grid, 'stroke-width': 1}));
+    const label = svgNode('text', {x: left - 8, y: yy + 4, 'text-anchor': 'end', fill: palette.muted, 'font-size': 10});
+    label.append(text(asPercent ? `${Math.round(value * 100)}%` : Math.round(value)));
+    svg.append(label);
+  }
+  rows.forEach((row, index) => {
+    const label = svgNode('text', {x: x(index), y: height - 12, 'text-anchor': 'middle', fill: palette.muted, 'font-size': 10});
+    label.append(text(dateLabel(row.date))); svg.append(label);
+  });
+  series.forEach(item => {
+    const usable = rows.map((row, index) => ({value: item.value(row), index})).filter(point => point.value !== null && Number.isFinite(point.value));
+    const points = usable.map(point => `${x(point.index)},${y(point.value)}`).join(' ');
+    svg.append(svgNode('polyline', {points, fill: 'none', stroke: item.color, 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round'}));
+    usable.forEach(point => svg.append(svgNode('circle', {cx: x(point.index), cy: y(point.value), r: 4, fill: item.color, stroke: '#fff', 'stroke-width': 1.5})));
+  });
+  const legend = document.createElement('div'); legend.className = 'chart-legend';
+  series.forEach(item => {
+    const key = document.createElement('span'); key.className = 'legend-key';
+    const swatch = document.createElement('span'); swatch.className = 'legend-swatch'; swatch.style.background = item.color;
+    key.append(swatch, text(item.label)); legend.append(key);
+  });
+  container.append(svg, legend);
+}
+
+function renderDaily(snapshot) {
+  const active = snapshot.daily.filter(row => row.production_day);
+  renderLineChart($('#throughput-chart'), active, [
+    {label:'Loaded', color:palette.teal, value:row => Number(row.parts_loaded)},
+    {label:'Painted', color:palette.blue, value:row => Number(row.paint_pieces_processed)},
+    {label:'EOL', color:palette.purple, value:row => Number(row.eol_inspected)},
+    {label:'Paint shipped', color:palette.red, value:row => Number(row.painted_parts_shipped)}
+  ]);
+  renderLineChart($('#quality-chart'), active, [
+    {label:'PPY', color:palette.teal, value:row => ratio(row.ppy_approved, row.paint_decision_pieces)},
+    {label:'Paint FTY', color:palette.blue, value:row => ratio(row.paint_fty_approved, row.paint_fty_total)},
+    {label:'Receiving FTY', color:palette.green, value:row => ratio(row.receiving_approved, row.receiving_total)},
+    {label:'Final FTY', color:palette.purple, value:row => ratio(row.final_approved, row.final_total)}
+  ], true);
+  renderTable($('#daily-table'), [
+    {label:'Day', value:row => `${row.date}${row.production_day ? '' : ' · No production'}`},
+    {label:'Loaded', value:row => integer(row.parts_loaded)},
+    {label:'Paint carts', value:row => integer(row.paint_carts)},
+    {label:'Paint pieces', value:row => integer(row.paint_pieces_processed)},
+    {label:'EOL', value:row => integer(row.eol_inspected)},
+    {label:'Paint ship', value:row => integer(row.painted_parts_shipped)},
+    {label:'Total ship', value:row => integer(row.parts_shipped)}
+  ], snapshot.daily, row => row.production_day ? '' : 'no-production');
+}
+
+function renderPeriods(snapshot) {
+  renderTable($('#period-table'), [
+    {label:'Period', value:row => row.label},
+    {label:'Production days', value:row => integer(row.data_days)},
+    {label:'Paint avg/day', value:row => average(row.paint_pieces_processed, row.data_days)},
+    {label:'EOL avg/day', value:row => average(row.eol_inspected, row.data_days)},
+    {label:'Paint ship avg/day', value:row => average(row.painted_parts_shipped, row.data_days)},
+    {label:'Bumpers avg/day', value:row => average(row.bumpers_shipped, row.data_days)},
+    {label:'PPY', value:row => percent(ratio(row.ppy_approved, row.paint_decision_pieces))},
+    {label:'Paint FTY', value:row => percent(ratio(row.paint_fty_approved, row.paint_fty_total))},
+    {label:'Repaint', value:row => percent(ratio(row.paint_fty_repaint_count, row.paint_fty_total))},
+    {label:'Composite', value:row => percent(composite(row))}
+  ], snapshot.periods);
+}
+
+function renderDefects(snapshot) {
+  renderTable($('#defect-table'), [
+    {label:'Step', value:row => row.step},
+    {label:'Defect', value:row => row.description},
+    {label:'Count', value:row => integer(row.count)}
+  ], snapshot.top_defects);
+}
+
+function renderShipping(snapshot) {
+  const grouped = new Map();
+  snapshot.shipping.forEach(row => {
+    if (!grouped.has(row.date)) grouped.set(row.date, []);
+    grouped.get(row.date).push(row);
+  });
+  const totals = [...grouped.values()].map(rows => rows.reduce((sum, row) => sum + Number(row.pieces), 0));
+  const maximum = Math.max(...totals, 1);
+  const colors = {'Bumpers':palette.red, 'Chassis Fairings':palette.blue, 'Fenders':palette.teal};
+  const container = $('#shipping-chart'); container.replaceChildren();
+  [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).forEach(([day, rows]) => {
+    const total = rows.reduce((sum, row) => sum + Number(row.pieces), 0);
+    const line = document.createElement('div'); line.className = 'shipping-day';
+    const label = document.createElement('span'); label.append(text(dateLabel(day)));
+    const track = document.createElement('div'); track.className = 'shipping-track'; track.style.width = `${Math.max(total / maximum * 100, 8)}%`;
+    rows.forEach(row => { const segment = document.createElement('span'); segment.className = 'shipping-segment'; segment.title = `${row.line_set}: ${integer(row.pieces)}`; segment.style.width = `${Number(row.pieces) / Math.max(total, 1) * 100}%`; segment.style.background = colors[row.line_set] || palette.amber; track.append(segment); });
+    const totalNode = document.createElement('span'); totalNode.className = 'shipping-total'; totalNode.append(text(integer(total)));
+    line.append(label, track, totalNode); container.append(line);
+  });
+}
+
+function renderPainters(snapshot) {
+  const panel = $('#painter-panel');
+  panel.hidden = !snapshot.painters.length;
+  if (!snapshot.painters.length) return;
+  renderTable($('#painter-table'), [
+    {label:'Date', value:row => row.date}, {label:'Painter', value:row => row.painter},
+    {label:'Booth', value:row => integer(row.booth)}, {label:'Parts', value:row => integer(row.parts)},
+    {label:'Minutes', value:row => integer(row.minutes)}, {label:'Parts/hr', value:row => Number(row.parts_per_hour).toFixed(1)}
+  ], snapshot.painters);
+}
+
+function renderNotes(snapshot) {
+  const notes = $('#quality-notes'); notes.replaceChildren();
+  snapshot.data_quality_notes.forEach(item => { const li = document.createElement('li'); li.append(text(item)); notes.append(li); });
+  const attention = $('#attention-items'); attention.replaceChildren();
+  (snapshot.attention?.items || []).forEach(item => {
+    const card = document.createElement('article'); card.className = 'attention-card';
+    const heading = document.createElement('strong'); heading.append(text(item.title));
+    const detail = document.createElement('p'); detail.append(text(item.detail));
+    card.append(heading, detail); attention.append(card);
+  });
+}
+
+function render(snapshot) {
+  $('#report-date').textContent = `Report date ${snapshot.report_date}`;
+  $('#generated-at').textContent = `Snapshot ${new Date(snapshot.generated_at).toLocaleString()}`;
+  $('#scope-label').textContent = `${snapshot.scope.label}. Method: ${snapshot.scope.method_version}.`;
+  $('#date-input').value = snapshot.report_date;
+  renderCards(snapshot); renderDaily(snapshot); renderPeriods(snapshot); renderDefects(snapshot); renderShipping(snapshot); renderPainters(snapshot); renderNotes(snapshot);
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, options);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || `Request failed with HTTP ${response.status}`);
+  return payload;
+}
+
+async function loadLatest(quiet = false) {
+  try {
+    const snapshot = await api('/api/snapshot'); render(snapshot);
+    if (!quiet) setStatus('Latest saved snapshot loaded.');
+  } catch (error) {
+    if (!quiet) setStatus(error.message, true);
+  }
+  try {
+    const health = await api('/api/health'); $('#health-state').textContent = `${health.status} · ${health.mode} mode`;
+  } catch (_) { $('#health-state').textContent = 'Health endpoint unavailable'; }
+}
+
+async function refreshReport() {
+  const button = $('#refresh-button'); button.disabled = true; setStatus('Running the bounded read-only rollup…');
+  const key = $('#refresh-key').value; if (key) sessionStorage.setItem('operations-kpi-refresh-key', key);
+  try {
+    const snapshot = await api('/api/refresh', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'X-Operations-KPI-Action':'refresh', 'X-Operations-KPI-Refresh-Key':key},
+      body: JSON.stringify({report_date: $('#date-input').value})
+    });
+    render(snapshot); setStatus('Fresh snapshot saved and displayed.');
+  } catch (error) { setStatus(error.message, true); }
+  finally { button.disabled = false; }
+}
+
+function initialize() {
+  const today = new Date(); $('#date-input').max = today.toISOString().slice(0, 10);
+  const yesterday = new Date(today.getTime() - 86400000); $('#date-input').value = yesterday.toISOString().slice(0, 10);
+  $('#refresh-key').value = sessionStorage.getItem('operations-kpi-refresh-key') || '';
+  $('#refresh-button').addEventListener('click', refreshReport);
+  $('#wallboard-button').addEventListener('click', () => { const url = new URL(location.href); url.searchParams.set('wallboard', '1'); location.href = url.toString(); });
+  const wallboard = new URLSearchParams(location.search).get('wallboard') === '1';
+  document.body.classList.toggle('wallboard', wallboard);
+  loadLatest();
+  if (wallboard) setInterval(() => loadLatest(true), 60000);
+}
+
+initialize();

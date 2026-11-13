@@ -32,6 +32,29 @@ Open `build/2026-09-16/report.html`. The build also produces a preview-only `.em
 
 See [docs/reverse-engineering.md](docs/reverse-engineering.md) and [docs/data-contract.md](docs/data-contract.md).
 
-## Planned live-data boundary
+## Live-data boundary
 
-The renderer consumes a versioned JSON snapshot. A future read-only extractor can produce that snapshot from SQL after the corrected source query is reviewed. Email delivery remains a separate, explicitly enabled transport; preview builds cannot send.
+The renderer consumes a versioned JSON snapshot. The included live adapter can produce that snapshot through a dedicated execute-only SQL identity while intentionally discarding part-level result sets. Email delivery remains a separate, explicitly enabled transport; preview and wallboard builds cannot send.
+
+## On-demand dashboard pilot
+
+Version 0.2 adds a dependency-free web service intended for an isolated GP-AI01 pilot. The browser view renders the same KPI contract without email and supports a cached leadership-wallboard mode. Live refreshes:
+
+- execute only `dbo.usp_QPTS_GetOperationsQualityShippingRollup` through a dedicated login with object-scoped execute and definition-check permissions;
+- request no part-level rejection or unbounded high-repaint result sets;
+- require a separate refresh key;
+- save an immutable aggregate JSON snapshot before displaying it;
+- perform no QPTS writes and send no mail;
+- omit employee-level painter detail unless explicitly enabled.
+
+Run the safe local fixture mode:
+
+```bash
+KPI_DATA_MODE=fixture \
+KPI_FIXTURE_PATH=examples/2026-09-16.json \
+KPI_SNAPSHOT_DIR=build/web-snapshots \
+KPI_PORT=5193 \
+.venv/bin/operations-kpi-wallboard
+```
+
+Then open `http://127.0.0.1:5193/`. Live GP-AI01 deployment details and rollback boundaries are in [deploy/README.md](deploy/README.md).

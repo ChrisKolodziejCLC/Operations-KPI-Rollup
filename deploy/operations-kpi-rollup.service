@@ -1,0 +1,49 @@
+[Unit]
+Description=CLC Operations KPI Rollup read-only pilot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=operations-kpi
+Group=operations-kpi
+WorkingDirectory=/opt/clc/operations-kpi-rollup/current
+Environment=PYTHONPATH=/opt/clc/operations-kpi-rollup/current/src
+Environment=KPI_DATA_MODE=live
+Environment=KPI_BIND_HOST=0.0.0.0
+Environment=KPI_PORT=5193
+Environment=KPI_TIMEZONE=America/Indiana/Indianapolis
+Environment=KPI_SNAPSHOT_DIR=/var/lib/operations-kpi-rollup/snapshots
+Environment=KPI_SQL_CREDENTIAL_NAME=operations-kpi-qpts-ro
+Environment=KPI_REFRESH_CREDENTIAL_NAME=operations-kpi-refresh-key
+Environment=KPI_SQL_EXPECTED_SERVER=brak
+Environment="KPI_SQL_EXPECTED_DATABASE=Production Tracking (Version 1.0.0)SQL"
+Environment=KPI_SQL_EXPECTED_USER=OperationsKpiRollup_RO
+Environment=KPI_SQL_PROCEDURE_HASH=E4A53C4F86BA1CEBBA303A6CC51E42AE8F43D73371E9924E1BD02F631031C78C
+Environment=KPI_INCLUDE_PAINTERS=false
+LoadCredentialEncrypted=operations-kpi-qpts-ro:/etc/credstore.encrypted/operations-kpi-qpts-ro
+LoadCredentialEncrypted=operations-kpi-refresh-key:/etc/credstore.encrypted/operations-kpi-refresh-key
+StateDirectory=operations-kpi-rollup
+StateDirectoryMode=0700
+ExecStart=/usr/bin/python3 -m operations_kpi_rollup.web
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
