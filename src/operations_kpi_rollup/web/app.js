@@ -94,16 +94,22 @@ function rateBreakdown(row, numerator, denominator) {
 }
 
 function shippedPieceDetail(snapshot) {
-  const counts = {bumpers:0, fenders:0, fairings:0};
+  const counts = {fuka:0, bumpers:0, fairings:0};
   (snapshot.shipping || []).forEach(row => {
     if (row.date !== snapshot.report_date) return;
     const lineSet = String(row.line_set || '').trim().toLowerCase();
     const pieces = Number(row.pieces || 0);
     if (lineSet === 'bumpers') counts.bumpers += pieces;
-    else if (lineSet === 'fenders') counts.fenders += pieces;
+    else if (lineSet === 'fenders' || lineSet === 'fuka') counts.fuka += pieces;
     else if (lineSet === 'chassis fairings' || lineSet === 'fairings') counts.fairings += pieces;
   });
-  return `${integer(counts.bumpers)} Bumpers / ${integer(counts.fenders)} Fenders / ${integer(counts.fairings)} Fairings`;
+  return `${integer(counts.fuka)} FUKA / ${integer(counts.bumpers)} Bumpers / ${integer(counts.fairings)} Fairings`;
+}
+
+function repaintLineSetDetail(row) {
+  const fields = ['fuka_paint_fty_repaint_count', 'bumper_paint_fty_repaint_count', 'fairing_paint_fty_repaint_count'];
+  if (!fields.every(field => row[field] !== undefined)) return 'Line-set detail pending refresh';
+  return `${integer(row.fuka_paint_fty_repaint_count)} FUKA / ${integer(row.bumper_paint_fty_repaint_count)} Bumpers / ${integer(row.fairing_paint_fty_repaint_count)} Fairings`;
 }
 
 function composite(row) {
@@ -120,7 +126,7 @@ function setStatus(message, error = false) {
   node.classList.toggle('error', error);
 }
 
-function metricCard(label, value, detail, color) {
+function metricCard(label, value, detail, color, secondaryDetail = '') {
   const card = document.createElement('article');
   card.className = 'metric-card';
   card.style.setProperty('--accent', color);
@@ -128,6 +134,12 @@ function metricCard(label, value, detail, color) {
   const valueNode = document.createElement('strong'); valueNode.append(text(value));
   const detailNode = document.createElement('small'); detailNode.append(text(detail));
   card.append(labelNode, valueNode, detailNode);
+  if (secondaryDetail) {
+    const secondaryDetailNode = document.createElement('small');
+    secondaryDetailNode.className = 'metric-detail-secondary';
+    secondaryDetailNode.append(text(secondaryDetail));
+    card.append(secondaryDetailNode);
+  }
   return card;
 }
 
@@ -178,7 +190,7 @@ function renderCards(snapshot) {
   let trailerDetail = `${integer(current.fuka_trailers_prepared)} FUKA / ${integer(current.bumper_trailers_prepared)} Bumpers / ${integer(current.fairing_trailers_prepared)} Fairings`;
   if (Number(current.other_trailers_prepared || 0) > 0) trailerDetail += ` / ${integer(current.other_trailers_prepared)} Other`;
   const cards = [
-    ['Repaint %', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)), `${integer(current.paint_fty_repaint_count)} / ${integer(current.paint_fty_total)} initial passes`, palette.amber],
+    ['Repaint %', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)), `${integer(current.paint_fty_repaint_count)} / ${integer(current.paint_fty_total)} initial passes`, palette.amber, repaintLineSetDetail(current)],
     ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} first decisions · Qty ${integer(current.receiving_quantity)} by receive stamp`, palette.green],
     ['Final FTY', percent(ratio(current.final_approved, current.final_total)), `${integer(current.final_approved)} / ${integer(current.final_total)} first decisions · Qty ${integer(current.final_quantity)} by final stamp`, palette.purple],
     ['Paint plan composite', percent(composite(current)), 'provisional · not standard OEE', palette.purple],

@@ -37,6 +37,7 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `ppy_repaint_count` | Physical passes whose EOL outcome is Repaint or Direct Repaint. Together with pending outcomes and `ppy_approved`, it reconciles to all paint passes. |
 | `paint_fty_total` / `paint_fty_approved` | Physical initial passes, and initial passes with a resolved non-repaint outcome. Their ratio is Repaint FTY. |
 | `paint_fty_repaint_count` | Initial passes whose preserved first EOL disposition is Repaint or Direct Repaint. Its ratio to `paint_fty_total` is the standalone Repaint %. |
+| `fuka_paint_fty_repaint_count` / `bumper_paint_fty_repaint_count` / `fairing_paint_fty_repaint_count` | Aggregate line-set split of `paint_fty_repaint_count`, displayed in FUKA / Bumpers / Fairings order. Bumpers use Origin B; Fairings use Origin F with N71/N33 part numbers; the remaining paint-scope parts are the FUKA bucket. These fields expose no part-level rows and do not change the Repaint % formula. |
 | `reject_ppy_total` / `reject_ppy_approved` | All physical paint passes, and passes with an Approved EOL outcome. Their ratio is Reject PPY. |
 | `reject_ppy_rejected_count` / `reject_ppy_pending_count` | All EOL Repair, Repaint, Direct Repaint, or Reject outcomes for those passes; and passes with no EOL outcome yet. |
 | `reject_fty_total` / `reject_fty_approved` | Initial physical passes, and initial passes with an Approved preserved first EOL disposition. Their ratio is Reject FTY. |
@@ -69,6 +70,7 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 - `Repaint PPY = ppy_approved / paint_decision_pieces`
 - `Repaint FTY = paint_fty_approved / paint_fty_total`
 - `Repaint % = paint_fty_repaint_count / paint_fty_total`
+- `fuka_paint_fty_repaint_count + bumper_paint_fty_repaint_count + fairing_paint_fty_repaint_count = paint_fty_repaint_count`
 - `Reject PPY = reject_ppy_approved / reject_ppy_total`
 - `Reject FTY = reject_fty_approved / reject_fty_total`
 - `Receiving FTY = receiving_approved / receiving_total`
@@ -99,6 +101,7 @@ The live SQL adapter is read-only and emits this contract. It must:
 - Reject and repaint count fields are non-negative integers.
 - `ppy_approved + ppy_repaint_count + reject_ppy_pending_count = paint_decision_pieces`.
 - `paint_fty_approved + paint_fty_repaint_count + reject_fty_pending_count = paint_fty_total`.
+- `fuka_paint_fty_repaint_count + bumper_paint_fty_repaint_count + fairing_paint_fty_repaint_count = paint_fty_repaint_count` for every daily and aggregate metric row.
 - `reject_ppy_approved + reject_ppy_rejected_count + reject_ppy_pending_count = reject_ppy_total`.
 - `reject_fty_approved + reject_fty_rejected_count + reject_fty_pending_count = reject_fty_total`.
 - Every displayed rate retains a denominator greater than or equal to its numerator where the outcome classes are exclusive.

@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
 from .context import validate_snapshot
-from .live import refresh_live_snapshot
+from .live import CURRENT_METHOD_VERSION, refresh_live_snapshot
 
 
 STATIC_ROOT = Path(__file__).parent / "web"
@@ -129,6 +129,8 @@ class AppState:
     def _cached_snapshot(self, report_date: date, today: date) -> Optional[Dict[str, Any]]:
         snapshot = self.snapshot(report_date)
         if snapshot is None:
+            return None
+        if self.mode == "live" and snapshot.get("scope", {}).get("method_version") != CURRENT_METHOD_VERSION:
             return None
         if report_date < today:
             return snapshot
@@ -314,7 +316,7 @@ class AppServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPI/0.12"
+    server_version = "OperationsKPI/0.13"
     sys_version = ""
 
     @property

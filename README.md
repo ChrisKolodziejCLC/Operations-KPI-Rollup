@@ -57,6 +57,8 @@ Version 0.11.0 makes refresh ownership server-side. Historical navigation reuses
 
 Version 0.12.0 makes that server-owned schedule visible. The header counts down to the next ten-minute current-day refresh, shows when the bounded query is running, and resynchronizes from the health endpoint while the wallboard continues to display and poll the saved snapshot. Pieces Shipped now sits immediately left of the rightmost Trailers Prepared tile and lists the saved Bumpers, Fenders, and Chassis Fairings mix beneath its unchanged non-service total. No SQL, KPI formula, snapshot grain, or database permission changes are involved.
 
+Version 0.13.0 keeps the Repaint % tile's existing total-repaint / initial-pass detail and adds a second small line with the aggregate FUKA, Bumpers, and Fairings repaint counts. Pieces Shipped presents its existing aggregate mix in that same FUKA / Bumpers / Fairings order. The rollup procedure adds only the three aggregate repaint line-set counts; the Repaint % numerator, denominator, formula, snapshot grain, and database permissions remain unchanged. Every accepted snapshot must reconcile the three line-set counts exactly to `paint_fty_repaint_count`.
+
 Run the safe local fixture mode:
 
 ```bash

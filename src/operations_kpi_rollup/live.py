@@ -15,6 +15,7 @@ from .odbc import execute_operations_rollup
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
 PERIOD_TYPE_ORDER = {"WEEK": 1, "MONTH": 2, "QUARTER": 3}
+CURRENT_METHOD_VERSION = "operations-kpi-live-v11-repaint-line-set-counts"
 
 
 def _integer(value: Any) -> int:
@@ -84,6 +85,9 @@ def _metric_fields(row: Mapping[str, Any]) -> Dict[str, int]:
         "bv_paint_fty_approved": "bv_paint_fty_approved",
         "service_paint_fty_approved": "service_paint_fty_approved",
         "paint_fty_repaint_count": "paint_fty_repaint_count",
+        "fuka_paint_fty_repaint_count": "fuka_paint_fty_repaint_count",
+        "bumper_paint_fty_repaint_count": "bumper_paint_fty_repaint_count",
+        "fairing_paint_fty_repaint_count": "fairing_paint_fty_repaint_count",
         "reject_ppy_total": "reject_ppy_total",
         "reject_ppy_approved": "reject_ppy_approved",
         "reject_ppy_rejected_count": "reject_ppy_rejected_count",
@@ -198,7 +202,7 @@ def snapshot_from_rollup(
         "generated_at": observed_at.isoformat(timespec="seconds"),
         "scope": {
             "label": "Grand Prairie operations; read-only on-demand pilot",
-            "method_version": "operations-kpi-live-v10-master-repaintcount-yields",
+            "method_version": CURRENT_METHOD_VERSION,
             "history_start": history_start,
             "timezone": timezone_name,
         },
@@ -239,7 +243,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "87B95E7AF33FCAE6F9FD3C9BC0D5F76D3E270ACDB1115A4E5E7C1F407A9D3422",
+                "80689CEC1019830F14445EB5AE5B4CBE35A9CFFB7494688BB12D8481413B0C7A",
             ).upper(),
             "detail_result_sets_requested": False,
         },

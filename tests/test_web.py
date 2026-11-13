@@ -6,6 +6,7 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 import operations_kpi_rollup.web as web
+from operations_kpi_rollup.live import CURRENT_METHOD_VERSION
 from operations_kpi_rollup.web import AppState, _is_private_address, create_server
 
 
@@ -25,6 +26,7 @@ def snapshot_for(report_date):
     snapshot["report_date"] = date_text
     snapshot["generated_at"] = datetime.now(ZoneInfo("America/Indiana/Indianapolis")).isoformat(timespec="seconds")
     snapshot["daily"][-1]["date"] = date_text
+    snapshot["scope"]["method_version"] = CURRENT_METHOD_VERSION
     return snapshot
 
 
@@ -74,7 +76,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.12.0-shipment-countdown" in html
+            assert "0.13.0-repaint-line-set" in html
             assert 'id="refresh-countdown"' in html
 
         with urlopen(base + "/app.js", timeout=5) as response:
@@ -107,7 +109,9 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "yieldRatio(metric.numerator, metric.denominator)" in javascript
             assert "fuka_trailers_prepared" in javascript
             assert "shippedPieceDetail(snapshot)" in javascript
-            assert "Bumpers / ${integer(counts.fenders)} Fenders / ${integer(counts.fairings)} Fairings" in javascript
+            assert "${integer(counts.fuka)} FUKA / ${integer(counts.bumpers)} Bumpers / ${integer(counts.fairings)} Fairings" in javascript
+            assert "repaintLineSetDetail(current)" in javascript
+            assert "metric-detail-secondary" in javascript
             assert "rangeLabel(snapshot.daily)" in javascript
             assert "WALLBOARD_POLL_MS = 30 * 1000" in javascript
             assert "HEALTH_POLL_MS = 5 * 1000" in javascript
@@ -133,6 +137,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert ".dual-yield-value" in styles
             assert "white-space:nowrap" in styles
             assert ".header-status .refresh-countdown" in styles
+            assert ".metric-card .metric-detail-secondary" in styles
             assert "font-variant-numeric:tabular-nums" in styles
     finally:
         server.shutdown()
@@ -143,6 +148,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
 def test_live_refresh_uses_private_lan_boundary_without_browser_key(tmp_path, monkeypatch):
     monkeypatch.setenv("KPI_MIN_REFRESH_SECONDS", "0")
     source = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    source["scope"]["method_version"] = CURRENT_METHOD_VERSION
     monkeypatch.setattr(web, "refresh_live_snapshot", lambda report_date: source)
     state = AppState("live", tmp_path / "snapshots", FIXTURE)
     server = create_server("127.0.0.1", 0, state)
@@ -180,6 +186,7 @@ def test_refresh_private_address_boundary():
 def test_historical_refresh_reuses_newest_immutable_snapshot(tmp_path, monkeypatch):
     monkeypatch.setenv("KPI_MIN_REFRESH_SECONDS", "0")
     source = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    source["scope"]["method_version"] = CURRENT_METHOD_VERSION
     report_date = datetime.fromisoformat(source["report_date"]).date()
     calls = []
 
@@ -230,10 +237,13 @@ def test_historical_cache_is_recovered_after_a_newer_current_snapshot(tmp_path, 
     monkeypatch.setenv("KPI_MIN_REFRESH_SECONDS", "0")
     snapshot_dir = tmp_path / "snapshots"
     historical = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    legacy_method = historical["scope"]["method_version"]
+    monkeypatch.setattr(web, "CURRENT_METHOD_VERSION", legacy_method)
     historical_date = datetime.fromisoformat(historical["report_date"]).date()
     first_state = AppState("live", snapshot_dir)
     today = first_state._today()
     current = snapshot_for(today)
+    current["scope"]["method_version"] = legacy_method
 
     def first_refresh(requested_date):
         source = historical if requested_date == historical_date else current
