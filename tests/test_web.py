@@ -73,6 +73,14 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "metric-split-total" in javascript
             assert "rateBreakdown(current, 'ppy_approved', 'paint_decision_pieces')" in javascript
             assert "fuka_trailers_prepared" in javascript
+
+        with urlopen(base + "/styles.css", timeout=5) as response:
+            styles = response.read().decode("utf-8")
+            assert response.status == 200
+            assert ".split-count-card{container-type:inline-size}" in styles
+            assert "font-size:min(7.5cqw,1.75rem)" in styles
+            assert "font-size:min(7.5cqw,2.2rem)" in styles
+            assert "white-space:nowrap" in styles
     finally:
         server.shutdown()
         server.server_close()
