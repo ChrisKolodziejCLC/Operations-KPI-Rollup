@@ -18,12 +18,19 @@ REQUIRED_TOP_LEVEL = {
 
 
 def _validate_split(
-    row: Dict[str, Any], collection: str, total_field: str, split_fields: tuple[str, ...], label: str
+    row: Dict[str, Any], collection: str, total_field: str, split_fields: tuple[str, ...], label: str,
+    require_complete: bool,
 ) -> None:
     present = [field in row for field in split_fields]
-    if any(present) and not all(present):
+    if not any(present):
+        if require_complete:
+            raise ValueError(f"{collection} {label} split is incomplete")
+        return
+    missing = [field for field in split_fields if field not in row]
+    legacy_bv_gap = not require_complete and missing and all(field.startswith("bv_") for field in missing)
+    if missing and not legacy_bv_gap:
         raise ValueError(f"{collection} {label} split is incomplete")
-    if all(present) and sum(int(row[field]) for field in split_fields) != int(row.get(total_field, 0)):
+    if sum(int(row.get(field, 0)) for field in split_fields) != int(row.get(total_field, 0)):
         raise ValueError(f"{collection} {label} split does not equal {total_field}")
 
 
@@ -36,19 +43,20 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
     date.fromisoformat(snapshot["report_date"])
     if not any(row.get("date") == snapshot["report_date"] for row in snapshot["daily"]):
         raise ValueError("snapshot daily rows do not include report_date")
+    require_complete_splits = snapshot.get("scope", {}).get("method_version") == "operations-kpi-live-v5-bv-quality-trailer-split"
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
             _validate_split(
                 row, collection, "parts_loaded",
-                ("production_parts_loaded", "bv_parts_loaded", "service_parts_loaded"), "load",
+                ("production_parts_loaded", "bv_parts_loaded", "service_parts_loaded"), "load", require_complete_splits,
             )
             _validate_split(
                 row, collection, "carts_loaded",
-                ("production_carts_loaded", "bv_carts_loaded", "service_carts_loaded"), "cart",
+                ("production_carts_loaded", "bv_carts_loaded", "service_carts_loaded"), "cart", require_complete_splits,
             )
             _validate_split(
                 row, collection, "paint_carts",
-                ("production_paint_carts", "bv_paint_carts", "service_paint_carts"), "paint cart",
+                ("production_paint_carts", "bv_paint_carts", "service_paint_carts"), "paint cart", require_complete_splits,
             )
             _validate_split(
                 row, collection, "paint_pieces_processed",
@@ -57,7 +65,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "bv_paint_pieces_processed",
                     "service_paint_pieces_processed",
                 ),
-                "paint piece",
+                "paint piece", require_complete_splits,
             )
             _validate_split(
                 row, collection, "paint_decision_pieces",
@@ -66,17 +74,17 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "bv_paint_decision_pieces",
                     "service_paint_decision_pieces",
                 ),
-                "PPY denominator",
+                "PPY denominator", require_complete_splits,
             )
             _validate_split(
                 row, collection, "ppy_approved",
                 ("production_ppy_approved", "bv_ppy_approved", "service_ppy_approved"),
-                "PPY numerator",
+                "PPY numerator", require_complete_splits,
             )
             _validate_split(
                 row, collection, "paint_fty_total",
                 ("production_paint_fty_total", "bv_paint_fty_total", "service_paint_fty_total"),
-                "paint FTY denominator",
+                "paint FTY denominator", require_complete_splits,
             )
             _validate_split(
                 row, collection, "paint_fty_approved",
@@ -85,7 +93,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "bv_paint_fty_approved",
                     "service_paint_fty_approved",
                 ),
-                "paint FTY numerator",
+                "paint FTY numerator", require_complete_splits,
             )
             _validate_split(
                 row, collection, "trailers_prepared",
@@ -95,7 +103,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "fairing_trailers_prepared",
                     "other_trailers_prepared",
                 ),
-                "trailer type",
+                "trailer type", require_complete_splits,
             )
 
 

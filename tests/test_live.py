@@ -200,6 +200,46 @@ def test_quality_and_trailer_splits_must_equal_totals():
         raise AssertionError("invalid trailer split was accepted")
 
 
+def test_v4_saved_snapshot_can_load_before_first_v5_refresh():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["scope"]["method_version"] = "operations-kpi-live-v4-paint-service-split"
+    for collection in ("daily", "periods"):
+        for row in snapshot[collection]:
+            for production_field, bv_field in (
+                ("production_parts_loaded", "bv_parts_loaded"),
+                ("production_carts_loaded", "bv_carts_loaded"),
+                ("production_paint_carts", "bv_paint_carts"),
+                ("production_paint_pieces_processed", "bv_paint_pieces_processed"),
+            ):
+                row[production_field] += row[bv_field]
+            for field in tuple(row):
+                if field.startswith("bv_"):
+                    row.pop(field)
+            for field in (
+                "production_paint_decision_pieces", "service_paint_decision_pieces",
+                "production_ppy_approved", "service_ppy_approved",
+                "production_paint_fty_total", "service_paint_fty_total",
+                "production_paint_fty_approved", "service_paint_fty_approved",
+                "fuka_trailers_prepared", "bumper_trailers_prepared",
+                "fairing_trailers_prepared", "other_trailers_prepared",
+            ):
+                row.pop(field, None)
+    validate_snapshot(snapshot)
+
+
+def test_v5_snapshot_requires_bv_fields():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["daily"][-1].pop("bv_parts_loaded")
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily load split is incomplete"
+    else:
+        raise AssertionError("incomplete v5 split was accepted")
+
+
 def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monkeypatch):
     captured = {}
 
