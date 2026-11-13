@@ -30,7 +30,7 @@ Open `build/2026-09-16/report.html`. The build also produces a preview-only `.em
 6. The legacy "Paint OEE" value is presented as a **paint plan composite** until a true OEE contract is approved.
 7. Every generated report saves its source snapshot so a historical email does not drift with mutable QPTS columns.
 
-See [docs/reverse-engineering.md](docs/reverse-engineering.md) and [docs/data-contract.md](docs/data-contract.md).
+See [docs/reverse-engineering.md](docs/reverse-engineering.md), [docs/data-contract.md](docs/data-contract.md), and the retained [future charting requirements](docs/future-charting-requirements.md).
 
 ## Live-data boundary
 
