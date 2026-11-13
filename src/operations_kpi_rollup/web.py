@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-import hmac
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import ipaddress
 import json
 import mimetypes
 import os
@@ -66,7 +66,7 @@ class AppState:
             "mode": self.mode,
             "report_date": current.get("report_date") if current else None,
             "generated_at": current.get("generated_at") if current else None,
-            "refresh_auth": "required" if self.mode == "live" else "fixture-only",
+            "refresh_boundary": "private-lan-bounded" if self.mode == "live" else "fixture-only",
         }
 
     def refresh(self, report_date: date) -> Dict[str, Any]:
@@ -113,13 +113,14 @@ class AppState:
         os.replace(temporary, self.snapshot_dir / "latest.json")
 
 
-def _refresh_key() -> str:
-    credential_dir = os.environ.get("CREDENTIALS_DIRECTORY", "")
-    credential_name = os.environ.get("KPI_REFRESH_CREDENTIAL_NAME", "operations-kpi-refresh-key")
-    if not credential_dir:
-        return ""
-    path = Path(credential_dir) / credential_name
-    return path.read_text(encoding="utf-8").strip() if path.is_file() else ""
+def _is_private_address(value: str) -> bool:
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    return address.is_private or address.is_loopback
 
 
 class AppServer(ThreadingHTTPServer):
@@ -131,7 +132,7 @@ class AppServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPI/0.9"
+    server_version = "OperationsKPI/0.10"
     sys_version = ""
 
     @property
@@ -191,12 +192,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("X-Operations-KPI-Action") != "refresh":
             self._json(HTTPStatus.FORBIDDEN, {"error": "The refresh action header is required."})
             return
-        if self.state.mode == "live":
-            expected = _refresh_key()
-            supplied = self.headers.get("X-Operations-KPI-Refresh-Key", "")
-            if not expected or not supplied or not hmac.compare_digest(expected, supplied):
-                self._json(HTTPStatus.UNAUTHORIZED, {"error": "A valid refresh key is required."})
-                return
+        if not _is_private_address(self.client_address[0]):
+            self._json(HTTPStatus.FORBIDDEN, {"error": "Report refresh is limited to private-network clients."})
+            return
         try:
             content_length = int(self.headers.get("Content-Length", "0"))
         except ValueError:

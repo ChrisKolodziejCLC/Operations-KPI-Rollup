@@ -5,6 +5,11 @@ const palette = {
   amber: '#df922a', red: '#bd524d', navy: '#0b2239', grid: '#d9e3e8', muted: '#607487'
 };
 
+const EARLIEST_REPORT_DATE = '2026-09-08';
+const WALLBOARD_REFRESH_MS = 5 * 60 * 1000;
+let refreshInProgress = false;
+let displayedReportDate = '';
+
 const $ = (selector) => document.querySelector(selector);
 const svgNode = (name, attributes = {}) => {
   const node = document.createElementNS('http://www.w3.org/2000/svg', name);
@@ -21,6 +26,33 @@ const yieldRatio = (numerator, denominator) => {
 const percent = (value) => value === null || !Number.isFinite(value) ? 'No Data' : `${(value * 100).toFixed(1)}%`;
 const average = (total, days) => Number(days) > 0 ? (Number(total || 0) / Number(days)).toFixed(1) : 'No Data';
 const dateLabel = (value) => value ? new Date(`${value}T12:00:00`).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '';
+const localDateISO = (value = new Date()) => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+const shiftDate = (value, days) => {
+  const shifted = new Date(`${value}T12:00:00`);
+  shifted.setDate(shifted.getDate() + days);
+  return localDateISO(shifted);
+};
+const fullDateLabel = (value) => new Date(`${value}T12:00:00`).toLocaleDateString(undefined, {year:'numeric', month:'long', day:'numeric'});
+
+function rangeLabel(rows) {
+  const dates = rows.map(row => row.date).filter(Boolean).sort();
+  if (!dates.length) return 'Covered range unavailable';
+  const start = new Date(`${dates[0]}T12:00:00`);
+  const end = new Date(`${dates[dates.length - 1]}T12:00:00`);
+  if (dates[0] === dates[dates.length - 1]) return `Covered range ${fullDateLabel(dates[0])}`;
+  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+    return `Covered range ${start.toLocaleDateString(undefined, {month:'short', day:'numeric'})}–${end.getDate()}, ${end.getFullYear()}`;
+  }
+  if (start.getFullYear() === end.getFullYear()) {
+    return `Covered range ${start.toLocaleDateString(undefined, {month:'short', day:'numeric'})}–${end.toLocaleDateString(undefined, {month:'short', day:'numeric'})}, ${end.getFullYear()}`;
+  }
+  return `Covered range ${fullDateLabel(dates[0])}–${fullDateLabel(dates[dates.length - 1])}`;
+}
 
 function loadSplit(row) {
   if (row.production_parts_loaded === undefined && row.service_parts_loaded === undefined) {
@@ -311,10 +343,13 @@ function renderNotes(snapshot) {
 }
 
 function render(snapshot) {
-  $('#report-date').textContent = `Report date ${snapshot.report_date}`;
+  displayedReportDate = snapshot.report_date;
+  $('#report-date').textContent = `Report date ${fullDateLabel(snapshot.report_date)}`;
+  $('#report-range').textContent = rangeLabel(snapshot.daily);
   $('#generated-at').textContent = `Snapshot ${new Date(snapshot.generated_at).toLocaleString()}`;
   $('#scope-label').textContent = `${snapshot.scope.label}. Method: ${snapshot.scope.method_version}.`;
   $('#date-input').value = snapshot.report_date;
+  updateNavigationState();
   renderCards(snapshot); renderDaily(snapshot); renderPeriods(snapshot); renderDefects(snapshot); renderShipping(snapshot); renderPainters(snapshot); renderNotes(snapshot);
 }
 
@@ -337,30 +372,66 @@ async function loadLatest(quiet = false) {
   } catch (_) { $('#health-state').textContent = 'Health endpoint unavailable'; }
 }
 
-async function refreshReport() {
-  const button = $('#refresh-button'); button.disabled = true; setStatus('Running the bounded read-only rollup…');
-  const key = $('#refresh-key').value; if (key) sessionStorage.setItem('operations-kpi-refresh-key', key);
+function updateNavigationState() {
+  const selected = $('#date-input').value;
+  const today = localDateISO();
+  $('#previous-day-button').disabled = refreshInProgress || !selected || selected <= EARLIEST_REPORT_DATE;
+  $('#next-day-button').disabled = refreshInProgress || !selected || selected >= today;
+  $('#today-button').disabled = refreshInProgress;
+  $('#refresh-button').disabled = refreshInProgress || !selected || selected > today || selected < EARLIEST_REPORT_DATE;
+}
+
+async function refreshReport(reportDate = $('#date-input').value, quiet = false) {
+  if (refreshInProgress) return false;
+  if (!reportDate) { setStatus('Choose a report date.', true); return false; }
+  refreshInProgress = true; updateNavigationState();
+  if (!quiet) setStatus(`Loading ${fullDateLabel(reportDate)} from the bounded read-only rollup…`);
   try {
     const snapshot = await api('/api/refresh', {
       method: 'POST',
-      headers: {'Content-Type':'application/json', 'X-Operations-KPI-Action':'refresh', 'X-Operations-KPI-Refresh-Key':key},
-      body: JSON.stringify({report_date: $('#date-input').value})
+      headers: {'Content-Type':'application/json', 'X-Operations-KPI-Action':'refresh'},
+      body: JSON.stringify({report_date: reportDate})
     });
-    render(snapshot); setStatus('Fresh snapshot saved and displayed.');
-  } catch (error) { setStatus(error.message, true); }
-  finally { button.disabled = false; }
+    render(snapshot);
+    if (!quiet) setStatus(`${fullDateLabel(snapshot.report_date)} loaded and saved as an immutable snapshot.`);
+    return true;
+  } catch (error) {
+    if (displayedReportDate) $('#date-input').value = displayedReportDate;
+    if (!quiet) setStatus(error.message, true);
+    return false;
+  } finally {
+    refreshInProgress = false; updateNavigationState();
+  }
 }
 
-function initialize() {
-  const today = new Date(); $('#date-input').max = today.toISOString().slice(0, 10);
-  const yesterday = new Date(today.getTime() - 86400000); $('#date-input').value = yesterday.toISOString().slice(0, 10);
-  $('#refresh-key').value = sessionStorage.getItem('operations-kpi-refresh-key') || '';
-  $('#refresh-button').addEventListener('click', refreshReport);
+async function moveReportDate(days) {
+  const selected = $('#date-input').value || localDateISO();
+  const target = shiftDate(selected, days);
+  $('#date-input').value = target;
+  updateNavigationState();
+  await refreshReport(target);
+}
+
+async function initialize() {
+  const today = localDateISO();
+  $('#date-input').max = today;
+  $('#date-input').value = today;
+  $('#date-input').addEventListener('change', updateNavigationState);
+  $('#refresh-button').addEventListener('click', () => refreshReport());
+  $('#previous-day-button').addEventListener('click', () => moveReportDate(-1));
+  $('#next-day-button').addEventListener('click', () => moveReportDate(1));
+  $('#today-button').addEventListener('click', () => { $('#date-input').value = localDateISO(); refreshReport(localDateISO()); });
   $('#wallboard-button').addEventListener('click', () => { const url = new URL(location.href); url.searchParams.set('wallboard', '1'); location.href = url.toString(); });
   const wallboard = new URLSearchParams(location.search).get('wallboard') === '1';
   document.body.classList.toggle('wallboard', wallboard);
-  loadLatest();
-  if (wallboard) setInterval(() => loadLatest(true), 60000);
+  updateNavigationState();
+  if (wallboard) {
+    await loadLatest(true);
+    await refreshReport(localDateISO(), true);
+    setInterval(() => refreshReport(localDateISO(), true), WALLBOARD_REFRESH_MS);
+  } else {
+    await loadLatest();
+  }
 }
 
 initialize();

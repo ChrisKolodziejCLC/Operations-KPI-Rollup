@@ -15,7 +15,6 @@ Environment=KPI_PORT=5193
 Environment=KPI_TIMEZONE=America/Indiana/Indianapolis
 Environment=KPI_SNAPSHOT_DIR=/var/lib/operations-kpi-rollup/snapshots
 Environment=KPI_SQL_CREDENTIAL_NAME=operations-kpi-qpts-ro
-Environment=KPI_REFRESH_CREDENTIAL_NAME=operations-kpi-refresh-key
 Environment=KPI_SQL_EXPECTED_SERVER=brak
 Environment="KPI_SQL_EXPECTED_DATABASE=Production Tracking (Version 1.0.0)SQL"
 Environment=KPI_SQL_EXPECTED_USER=OperationsKpiRollup_RO
@@ -23,7 +22,6 @@ Environment=KPI_SQL_PROCEDURE_HASH=87B95E7AF33FCAE6F9FD3C9BC0D5F76D3E270ACDB1115
 Environment=KPI_SQL_QUERY_TIMEOUT_SECONDS=300
 Environment=KPI_INCLUDE_PAINTERS=false
 LoadCredentialEncrypted=operations-kpi-qpts-ro:/etc/credstore.encrypted/operations-kpi-qpts-ro
-LoadCredentialEncrypted=operations-kpi-refresh-key:/etc/credstore.encrypted/operations-kpi-refresh-key
 StateDirectory=operations-kpi-rollup
 StateDirectoryMode=0700
 ExecStart=/usr/bin/python3 -m operations_kpi_rollup.web

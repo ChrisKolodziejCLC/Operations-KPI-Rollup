@@ -3,7 +3,8 @@ from pathlib import Path
 import threading
 from urllib.request import Request, urlopen
 
-from operations_kpi_rollup.web import AppState, create_server
+import operations_kpi_rollup.web as web
+from operations_kpi_rollup.web import AppState, _is_private_address, create_server
 
 
 FIXTURE = Path(__file__).parents[1] / "examples" / "2026-09-16.json"
@@ -28,6 +29,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
         assert status == 200
         assert health["status"] == "ok"
         assert health["mode"] == "fixture"
+        assert health["refresh_boundary"] == "fixture-only"
 
         status, snapshot = request_json(base + "/api/snapshot")
         assert status == 200
@@ -48,7 +50,12 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             html = response.read().decode("utf-8")
             assert response.status == 200
             assert "Operations KPI Rollup" in html
-            assert "Pull current report" in html
+            assert "Load selected day" in html
+            assert "Previous" in html
+            assert "Today" in html
+            assert "Next" in html
+            assert 'id="report-range"' in html
+            assert "refresh-key" not in html
 
         with urlopen(base + "/app.js", timeout=5) as response:
             javascript = response.read().decode("utf-8")
@@ -79,6 +86,11 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "reject_fty_approved" in javascript
             assert "yieldRatio(metric.numerator, metric.denominator)" in javascript
             assert "fuka_trailers_prepared" in javascript
+            assert "rangeLabel(snapshot.daily)" in javascript
+            assert "WALLBOARD_REFRESH_MS = 5 * 60 * 1000" in javascript
+            assert "refreshReport(localDateISO(), true)" in javascript
+            assert "X-Operations-KPI-Refresh-Key" not in javascript
+            assert "sessionStorage" not in javascript
 
         with urlopen(base + "/styles.css", timeout=5) as response:
             styles = response.read().decode("utf-8")
@@ -93,3 +105,38 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_live_refresh_uses_private_lan_boundary_without_browser_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("KPI_MIN_REFRESH_SECONDS", "0")
+    source = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    monkeypatch.setattr(web, "refresh_live_snapshot", lambda report_date: source)
+    state = AppState("live", tmp_path / "snapshots", FIXTURE)
+    server = create_server("127.0.0.1", 0, state)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        status, refreshed = request_json(
+            base + "/api/refresh",
+            method="POST",
+            payload={"report_date": source["report_date"]},
+            headers={"Content-Type": "application/json", "X-Operations-KPI-Action": "refresh"},
+        )
+        assert status == 200
+        assert refreshed["report_date"] == source["report_date"]
+        status, health = request_json(base + "/api/health")
+        assert status == 200
+        assert health["refresh_boundary"] == "private-lan-bounded"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_refresh_private_address_boundary():
+    assert _is_private_address("127.0.0.1")
+    assert _is_private_address("192.168.7.137")
+    assert _is_private_address("::ffff:192.168.7.137")
+    assert not _is_private_address("8.8.8.8")
+    assert not _is_private_address("not-an-address")

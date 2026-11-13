@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Operations KPI Rollup</title>
-  <link rel="stylesheet" href="/styles.css">
-  <script src="/app.js" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=0.10.0-date-nav">
+  <script src="/app.js?v=0.10.0-date-nav" defer></script>
 </head>
 <body>
   <header class="masthead">
@@ -17,6 +17,7 @@
     <div class="header-status">
       <span class="pilot-badge">Read-only pilot</span>
       <strong id="report-date">No snapshot</strong>
+      <span id="report-range">Covered range unavailable</span>
       <span id="generated-at">Waiting for data</span>
     </div>
   </header>
@@ -27,11 +28,12 @@
         <label for="date-input">Report date</label>
         <input id="date-input" type="date" min="2026-09-08">
       </div>
-      <div>
-        <label for="refresh-key">Refresh key</label>
-        <input id="refresh-key" type="password" autocomplete="off" placeholder="Required for live refresh">
+      <div class="day-navigation" role="group" aria-label="Change report date">
+        <button id="previous-day-button" class="secondary" type="button">Previous</button>
+        <button id="today-button" class="secondary" type="button">Today</button>
+        <button id="next-day-button" class="secondary" type="button">Next</button>
       </div>
-      <button id="refresh-button" type="button">Pull current report</button>
+      <button id="refresh-button" type="button">Load selected day</button>
       <button id="wallboard-button" class="secondary" type="button">Wallboard view</button>
       <p id="status" role="status">Loading the latest immutable snapshot…</p>
     </section>

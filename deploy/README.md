@@ -16,14 +16,13 @@
 
 The initial LAN pilot is a metric-validation surface, not yet the final leadership wallboard. Before broad promotion it needs an approved DNS/TLS/authentication route and metric-owner signoff.
 
-## Protected credentials
+## Protected credential
 
-The service expects two encrypted systemd credentials:
+The service expects one encrypted systemd credential:
 
 1. `operations-kpi-qpts-ro` — a SQL Server connection string for the exact approved server, database, and execute-only login.
-2. `operations-kpi-refresh-key` — a random key required only for a user-triggered database refresh.
 
-Never place either value in Git, a unit `Environment=` line, a change record, command output, or chat. The browser keeps the refresh key in `sessionStorage`, not persistent local storage.
+Never place its value in Git, a unit `Environment=` line, a change record, command output, or chat. Browser refresh requests are limited by private-network origin, a required action header, strict date bounds, a global execution lock, and rate limiting; the SQL identity remains execute-only and the approved procedure hash remains pinned.
 
 ## Release procedure
 
@@ -32,9 +31,9 @@ Never place either value in Git, a unit `Environment=` line, a change record, co
 3. Create the unprivileged service account and release/state roots if absent.
 4. Copy a manifest-backed archive to a new `releases/<commit>` directory.
 5. Verify every release hash before changing `current`.
-6. Install the reviewed unit and encrypted credentials.
+6. Install the reviewed unit and encrypted SQL credential.
 7. Point `current` at the new release, reload systemd, enable, and start the service.
-8. Verify unit hardening, port ownership, `/api/health`, cached snapshot state, one authenticated read-only refresh, and immutable snapshot creation.
+8. Verify unit hardening, port ownership, `/api/health`, cached snapshot state, one private-LAN bounded read-only refresh, and immutable snapshot creation.
 9. Recheck all pre-existing GP-AI01 protected services and listener ownership.
 
 Any approved procedure change must be committed as a hash-gated migration, previewed in a rolled-back SQL transaction, and paired with a reviewed reverse migration before it is applied. Update the pinned procedure hash in both source and the deployed unit only after the candidate hash is recorded.

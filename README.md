@@ -42,7 +42,7 @@ Version 0.2 adds a dependency-free web service intended for an isolated GP-AI01 
 
 - execute only `dbo.usp_QPTS_GetOperationsQualityShippingRollup` through a dedicated login with object-scoped execute and definition-check permissions;
 - request no part-level rejection or unbounded high-repaint result sets;
-- require a separate refresh key;
+- accept refresh requests only from private-network clients with a required action header, strict date bounds, a global execution lock, and rate limiting;
 - save an immutable aggregate JSON snapshot before displaying it;
 - perform no QPTS writes and send no mail;
 - omit employee-level painter detail unless explicitly enabled.
@@ -50,6 +50,8 @@ Version 0.2 adds a dependency-free web service intended for an isolated GP-AI01 
 The Pieces Loaded card counts both normal and repaint load events. Version 0.8.0 headlines both production-flow tiles as `Total / Unique`: Pieces Loaded uses load-event total versus distinct QPTS Part IDs loaded that day, and Pieces Painted uses oven-exit total versus distinct QPTS Part IDs painted that day. The headline stays on one line and scales to the tile width rather than wrapping. Loaded/painted cart counts and `Prd / BV / Svc` piece splits remain in regular-weight detail below the headline. Trailers Prepared retains its total with FUKA, Bumpers, and Fairings beneath it. The event totals still drive charts and hard validation: every class split must equal its event total, each daily unique count cannot exceed that total, and cart classes are mutually exclusive.
 
 Version 0.9.0 keeps the PPY and FTY tiles side by side for **Repaint** and **Reject** yield and restores a separate **Repaint %** tile for the familiar first-pass repaint rate. Every pass is assigned to its actual oven-exit date. Master Data Table supplies the preserved first EOL disposition, while `RepaintCount` and `load_line_repaint` establish repeat-pass lineage and current EDI supplies the latest completed repeat-pass outcome. Repaint PPY is non-repaint outcomes across every completed pass; Repaint FTY applies that outcome test only to initial passes. Reject PPY is Approved outcomes across every completed pass; Reject FTY is Approved outcomes among initial passes. Repair, Repaint, Direct Repaint, and Reject are rejected outcomes. Passes without a resolved outcome remain pending and are not silently counted good. The separate inspection-time hourly report is a reconciliation source, not the wallboard date grain, so daily values can differ and should converge over longer periods. The existing Paint plan composite is unchanged and excluded from this yield correction. Complete assembly sets are dated when their fourth N33/Chassis Fairing piece is assembled. Receiving and final quantities use `insp_receive_stamp` and `insp_final_stamp`; inspection FTY remains based on first decisions.
+
+Version 0.10.0 adds direct Previous, Today, Next, date-picker, and Load Selected Day controls. The header separately identifies the selected report date and the full daily range represented by its snapshot. Wallboard mode requests the Grand Prairie local current day at startup and every five minutes, while retaining the latest immutable snapshot if a refresh is unavailable. The browser refresh key was removed; the service retains the private-network source gate, required action header, date bounds, one-at-a-time execution, rate limiting, execute-only SQL identity, and pinned procedure hash.
 
 Run the safe local fixture mode:
 
