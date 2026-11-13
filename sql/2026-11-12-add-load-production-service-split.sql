@@ -1,18 +1,17 @@
 /*
     Hash-gated extension of the approved Operations KPI rollup.
 
-    Safe default: @CommitChange = 0 applies the ALTER inside a transaction,
-    reports the candidate and rollback hashes, and rolls the transaction back.
-    The committed production migration changes that flag to 1 only after the
-    candidate hash and application tests are recorded in source control.
+    This production migration was first executed with @CommitChange = 0. That
+    rolled-back preview produced the exact candidate and rollback hashes now
+    pinned below. The committed version applies only that reviewed candidate.
 */
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
-DECLARE @CommitChange bit = 0;
+DECLARE @CommitChange bit = 1;
 DECLARE @ExpectedOldHash varchar(64) = 'E4A53C4F86BA1CEBBA303A6CC51E42AE8F43D73371E9924E1BD02F631031C78C';
-DECLARE @ExpectedNewHash varchar(64) = NULL;
-DECLARE @ExpectedRollbackHash varchar(64) = NULL;
+DECLARE @ExpectedNewHash varchar(64) = '5351EF835346688E38430FDBC06F6EF35C314A7DA1BC5E9240D1379C08CA7A36';
+DECLARE @ExpectedRollbackHash varchar(64) = 'E4A53C4F86BA1CEBBA303A6CC51E42AE8F43D73371E9924E1BD02F631031C78C';
 DECLARE @ProcedureName nvarchar(256) = N'dbo.usp_QPTS_GetOperationsQualityShippingRollup';
 DECLARE @LF nchar(1) = NCHAR(10);
 DECLARE @Definition nvarchar(max) = OBJECT_DEFINITION(OBJECT_ID(@ProcedureName, N'P'));

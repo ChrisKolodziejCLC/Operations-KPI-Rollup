@@ -105,6 +105,6 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "E4A53C4F86BA1CEBBA303A6CC51E42AE8F43D73371E9924E1BD02F631031C78C" in captured["query"]
+    assert "5351EF835346688E38430FDBC06F6EF35C314A7DA1BC5E9240D1379C08CA7A36" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]
