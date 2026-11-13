@@ -20,6 +20,7 @@ Environment=KPI_SQL_EXPECTED_SERVER=brak
 Environment="KPI_SQL_EXPECTED_DATABASE=Production Tracking (Version 1.0.0)SQL"
 Environment=KPI_SQL_EXPECTED_USER=OperationsKpiRollup_RO
 Environment=KPI_SQL_PROCEDURE_HASH=41F316CFBC2B882984ECF6C316EEECF2FE9A3D7EF2042FD911134054649A3BC7
+Environment=KPI_SQL_QUERY_TIMEOUT_SECONDS=300
 Environment=KPI_INCLUDE_PAINTERS=false
 LoadCredentialEncrypted=operations-kpi-qpts-ro:/etc/credstore.encrypted/operations-kpi-qpts-ro
 LoadCredentialEncrypted=operations-kpi-refresh-key:/etc/credstore.encrypted/operations-kpi-refresh-key
