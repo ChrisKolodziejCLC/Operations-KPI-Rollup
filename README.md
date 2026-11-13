@@ -4,7 +4,7 @@ A clean-room reconstruction of the Operations / Quality / Shipping rollup that w
 
 ## Current phase
 
-This repository contains a fixture-driven report generator and an audited data contract. It does **not** change QPTS, install SQL objects, or send email. The first preview is built from aggregate values recovered from the September 16, 2026 test message.
+This repository contains the fixture-driven report generator, audited data contract, on-demand wallboard service, and hash-gated SQL migrations approved for that service. It does **not** write QPTS business data or send email. The first preview is built from aggregate values recovered from the September 16, 2026 test message.
 
 The legacy design is worth keeping: compact KPI cards, daily and period rollups, static charts that work in Outlook, and detail below the summary. The replacement fixes the original report's misleading labels and denominator problems and records an immutable input snapshot beside every generated report.
 
@@ -46,6 +46,8 @@ Version 0.2 adds a dependency-free web service intended for an isolated GP-AI01 
 - save an immutable aggregate JSON snapshot before displaying it;
 - perform no QPTS writes and send no mail;
 - omit employee-level painter detail unless explicitly enabled.
+
+The Parts Loaded card counts both normal and repaint load events. Version 0.2.1 preserves that total while showing production and service event counts separately; the two subcounts must equal the displayed total.
 
 Run the safe local fixture mode:
 

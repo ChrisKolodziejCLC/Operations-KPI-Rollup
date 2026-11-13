@@ -18,6 +18,13 @@ const percent = (value) => value === null || !Number.isFinite(value) ? 'No Data'
 const average = (total, days) => Number(days) > 0 ? (Number(total || 0) / Number(days)).toFixed(1) : 'No Data';
 const dateLabel = (value) => value ? new Date(`${value}T12:00:00`).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '';
 
+function loadSplit(row) {
+  if (row.production_parts_loaded === undefined && row.service_parts_loaded === undefined) {
+    return {production: row.parts_loaded, service: 0};
+  }
+  return {production: row.production_parts_loaded, service: row.service_parts_loaded};
+}
+
 function composite(row) {
   const attainment = ratio(row.paint_pieces_processed, row.pieces_scheduled);
   const quality = ratio(Number(row.paint_fty_total || 0) - Number(row.paint_fty_repaint_count || 0), row.paint_fty_total);
@@ -46,8 +53,9 @@ function metricCard(label, value, detail, color) {
 function renderCards(snapshot) {
   const current = snapshot.daily.find(row => row.date === snapshot.report_date);
   if (!current) return;
+  const loaded = loadSplit(current);
   const cards = [
-    ['Parts loaded', integer(current.parts_loaded), `${integer(current.carts_loaded)} carts`, palette.teal],
+    ['Parts loaded', integer(current.parts_loaded), `${integer(current.carts_loaded)} Carts / ${integer(loaded.production)} Prd / ${integer(loaded.service)} Svc`, palette.teal],
     ['Paint processed', integer(current.paint_carts), `${integer(current.paint_pieces_processed)} pieces`, palette.blue],
     ['PPY', percent(ratio(current.ppy_approved, current.paint_decision_pieces)), `${integer(current.ppy_approved)} / ${integer(current.paint_decision_pieces)} dispositions`, palette.amber],
     ['Paint FTY', percent(ratio(current.paint_fty_approved, current.paint_fty_total)), `${integer(current.paint_fty_approved)} / ${integer(current.paint_fty_total)} first-pass`, palette.blue],

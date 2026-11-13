@@ -49,6 +49,13 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert response.status == 200
             assert "Operations KPI Rollup" in html
             assert "Pull current report" in html
+
+        with urlopen(base + "/app.js", timeout=5) as response:
+            javascript = response.read().decode("utf-8")
+            assert response.status == 200
+            assert "production_parts_loaded" in javascript
+            assert "service_parts_loaded" in javascript
+            assert "Carts / ${integer(loaded.production)} Prd / ${integer(loaded.service)} Svc" in javascript
     finally:
         server.shutdown()
         server.server_close()

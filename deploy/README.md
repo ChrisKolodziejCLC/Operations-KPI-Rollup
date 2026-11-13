@@ -37,11 +37,14 @@ Never place either value in Git, a unit `Environment=` line, a change record, co
 8. Verify unit hardening, port ownership, `/api/health`, cached snapshot state, one authenticated read-only refresh, and immutable snapshot creation.
 9. Recheck all pre-existing GP-AI01 protected services and listener ownership.
 
+Any approved procedure change must be committed as a hash-gated migration, previewed in a rolled-back SQL transaction, and paired with a reviewed reverse migration before it is applied. Update the pinned procedure hash in both source and the deployed unit only after the candidate hash is recorded.
+
 ## Rollback
 
 - If an earlier release exists, repoint `current` to it and restart the service.
+- If the release depends on a procedure migration, run its reviewed reverse migration and update the unit to the recorded rollback hash before permitting refresh.
 - For the first pilot release, stop and disable `operations-kpi-rollup.service`; remove only the `current` symlink and leave the versioned release, encrypted credentials, and snapshots intact for evidence.
-- Rollback never alters either legacy stored procedure or QPTS data.
+- Rollback never writes QPTS business data.
 
 ## Stop conditions
 

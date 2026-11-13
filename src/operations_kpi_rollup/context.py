@@ -26,6 +26,17 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
     date.fromisoformat(snapshot["report_date"])
     if not any(row.get("date") == snapshot["report_date"] for row in snapshot["daily"]):
         raise ValueError("snapshot daily rows do not include report_date")
+    for collection in ("daily", "periods"):
+        for row in snapshot[collection]:
+            has_production = "production_parts_loaded" in row
+            has_service = "service_parts_loaded" in row
+            if has_production != has_service:
+                raise ValueError(f"{collection} load split is incomplete")
+            if has_production and (
+                int(row["production_parts_loaded"]) + int(row["service_parts_loaded"])
+                != int(row.get("parts_loaded", 0))
+            ):
+                raise ValueError(f"{collection} load split does not equal parts_loaded")
 
 
 def _sort_by(rows: Iterable[Dict[str, Any]], key: str) -> List[Dict[str, Any]]:
@@ -34,6 +45,12 @@ def _sort_by(rows: Iterable[Dict[str, Any]], key: str) -> List[Dict[str, Any]]:
 
 def _card(label: str, value: str, detail: str, color: str, status: str = "") -> Dict[str, str]:
     return {"label": label, "value": value, "detail": detail, "color": color, "status": status}
+
+
+def _load_split(row: Dict[str, Any]) -> tuple[Any, Any]:
+    if "production_parts_loaded" not in row and "service_parts_loaded" not in row:
+        return row.get("parts_loaded", 0), 0
+    return row.get("production_parts_loaded", 0), row.get("service_parts_loaded", 0)
 
 
 def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
@@ -47,9 +64,16 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     months = [row for row in periods if row.get("period_type") == "MONTH"]
     quarters = [row for row in periods if row.get("period_type") == "QUARTER"]
     current_week = max(weeks, key=lambda row: row.get("period_start", "")) if weeks else None
+    production_loaded, service_loaded = _load_split(current)
 
     cards = [
-        _card("Parts loaded", format_int(current.get("parts_loaded")), f"{format_int(current.get('carts_loaded'))} carts", "#147d86"),
+        _card(
+            "Parts loaded",
+            format_int(current.get("parts_loaded")),
+            f"{format_int(current.get('carts_loaded'))} Carts / "
+            f"{format_int(production_loaded)} Prd / {format_int(service_loaded)} Svc",
+            "#147d86",
+        ),
         _card("Paint processed", format_int(current.get("paint_carts")), f"{format_int(current.get('paint_pieces_processed'))} pieces", "#2f6f9f"),
         _card("PPY", format_percent(current["ppy"]), f"{format_int(current.get('ppy_approved'))} / {format_int(current.get('paint_decision_pieces'))} dispositions", "#d78d23"),
         _card("Paint FTY", format_percent(current["paint_fty"]), f"{format_int(current.get('paint_fty_approved'))} / {format_int(current.get('paint_fty_total'))} first-pass", "#2f6f9f"),

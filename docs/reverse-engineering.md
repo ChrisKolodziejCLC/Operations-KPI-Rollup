@@ -71,7 +71,7 @@ where active coverage was distinct clock hours containing oven exits divided by 
 ### 7. Scope and pass-order inconsistencies
 
 - Paint included normal and service origins, while several downstream metrics excluded service parts.
-- Loaded and oven-exit values counted events, while quality logic deduplicated parts or carts.
+- Loaded and oven-exit values counted events, while quality logic deduplicated parts or carts. The approved wallboard retains normal and repaint load events as workload, and separately classifies those load events as production or service by QPTS `Model`.
 - “First” decisions were first only within a hard-coded history boundary, not lifetime first pass.
 - Some quality-event joins used only a later ID condition, allowing a later repair event to be associated with an earlier pass.
 

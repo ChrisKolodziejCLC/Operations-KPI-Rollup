@@ -2,6 +2,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from operations_kpi_rollup.live import snapshot_from_rollup
+from operations_kpi_rollup.context import prepare_context, validate_snapshot
 from operations_kpi_rollup import odbc
 from operations_kpi_rollup.odbc import parse_connection_string
 
@@ -16,6 +17,8 @@ def metric_row(period_type, start, end, available=1, days=1):
         "calendar_days": "1",
         "data_days": str(days),
         "parts_loaded": "100",
+        "production_parts_loaded": "75",
+        "service_parts_loaded": "25",
         "carts_loaded": "40",
         "paint_processed": "35",
         "paint_pieces_processed": "96",
@@ -68,11 +71,27 @@ def test_rollup_result_sets_become_valid_immutable_snapshot():
     assert snapshot["generated_at"] == "2026-11-12T12:30:00-05:00"
     assert snapshot["daily"][-1]["paint_carts"] == 35
     assert snapshot["daily"][-1]["paint_pieces_processed"] == 96
+    assert snapshot["daily"][-1]["production_parts_loaded"] == 75
+    assert snapshot["daily"][-1]["service_parts_loaded"] == 25
+    assert prepare_context(snapshot)["cards"][0]["detail"] == "40 Carts / 75 Prd / 25 Svc"
     assert [row["period_type"] for row in snapshot["periods"]] == ["WEEK", "MONTH", "QUARTER"]
     assert snapshot["top_defects"] == [{"step": "End of Line", "description": "Dirt", "count": 7}]
     assert snapshot["shipping"][0]["pieces"] == 55
     assert snapshot["painters"] == []
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
+
+
+def test_load_split_must_equal_total():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["daily"][-1]["service_parts_loaded"] = 24
+
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily load split does not equal parts_loaded"
+    else:
+        raise AssertionError("invalid load split was accepted")
 
 
 def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monkeypatch):

@@ -49,6 +49,8 @@ def _sets_by_index(result_sets: Iterable[Mapping[str, Any]]) -> Dict[int, List[D
 def _metric_fields(row: Mapping[str, Any]) -> Dict[str, int]:
     source_to_snapshot = {
         "parts_loaded": "parts_loaded",
+        "production_parts_loaded": "production_parts_loaded",
+        "service_parts_loaded": "service_parts_loaded",
         "carts_loaded": "carts_loaded",
         "paint_processed": "paint_carts",
         "paint_pieces_processed": "paint_pieces_processed",
