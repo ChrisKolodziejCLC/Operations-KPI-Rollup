@@ -159,7 +159,7 @@ def snapshot_from_rollup(
         "generated_at": observed_at.isoformat(timespec="seconds"),
         "scope": {
             "label": "Grand Prairie operations; read-only on-demand pilot",
-            "method_version": "operations-kpi-live-v1-legacy-procedure-contract",
+            "method_version": "operations-kpi-live-v2-load-service-split",
             "history_start": history_start,
             "timezone": timezone_name,
         },
@@ -192,7 +192,10 @@ def snapshot_from_rollup(
         ],
         "source_evidence": {
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
-            "procedure_definition_sha256": "E4A53C4F86BA1CEBBA303A6CC51E42AE8F43D73371E9924E1BD02F631031C78C",
+            "procedure_definition_sha256": os.environ.get(
+                "KPI_SQL_PROCEDURE_HASH",
+                "5351EF835346688E38430FDBC06F6EF35C314A7DA1BC5E9240D1379C08CA7A36",
+            ).upper(),
             "detail_result_sets_requested": False,
         },
     }

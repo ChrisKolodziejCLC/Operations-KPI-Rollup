@@ -63,7 +63,8 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
     assert parsed["pwd"] == "p;ass}word"
 
 
-def test_rollup_result_sets_become_valid_immutable_snapshot():
+def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "5351ef835346688e38430fdbc06f6ef35c314a7da1bc5e9240d1379c08ca7a36")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -79,6 +80,8 @@ def test_rollup_result_sets_become_valid_immutable_snapshot():
     assert snapshot["shipping"][0]["pieces"] == 55
     assert snapshot["painters"] == []
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "5351EF835346688E38430FDBC06F6EF35C314A7DA1BC5E9240D1379C08CA7A36"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v2-load-service-split"
 
 
 def test_load_split_must_equal_total():
