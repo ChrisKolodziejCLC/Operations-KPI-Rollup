@@ -20,30 +20,35 @@ const dateLabel = (value) => value ? new Date(`${value}T12:00:00`).toLocaleDateS
 
 function loadSplit(row) {
   if (row.production_parts_loaded === undefined && row.service_parts_loaded === undefined) {
-    return {production: row.parts_loaded, service: 0};
+    return {production: row.parts_loaded, bv: 0, service: 0};
   }
-  return {production: row.production_parts_loaded, service: row.service_parts_loaded};
+  return {production: row.production_parts_loaded, bv: row.bv_parts_loaded || 0, service: row.service_parts_loaded};
 }
 
 function cartSplit(row) {
   if (row.production_carts_loaded === undefined && row.service_carts_loaded === undefined) {
-    return {production: row.carts_loaded, service: 0};
+    return {production: row.carts_loaded, bv: 0, service: 0};
   }
-  return {production: row.production_carts_loaded, service: row.service_carts_loaded};
+  return {production: row.production_carts_loaded, bv: row.bv_carts_loaded || 0, service: row.service_carts_loaded};
 }
 
 function paintCartSplit(row) {
   if (row.production_paint_carts === undefined && row.service_paint_carts === undefined) {
-    return {production: row.paint_carts, service: 0};
+    return {production: row.paint_carts, bv: 0, service: 0};
   }
-  return {production: row.production_paint_carts, service: row.service_paint_carts};
+  return {production: row.production_paint_carts, bv: row.bv_paint_carts || 0, service: row.service_paint_carts};
 }
 
 function paintPieceSplit(row) {
   if (row.production_paint_pieces_processed === undefined && row.service_paint_pieces_processed === undefined) {
-    return {production: row.paint_pieces_processed, service: 0};
+    return {production: row.paint_pieces_processed, bv: 0, service: 0};
   }
-  return {production: row.production_paint_pieces_processed, service: row.service_paint_pieces_processed};
+  return {production: row.production_paint_pieces_processed, bv: row.bv_paint_pieces_processed || 0, service: row.service_paint_pieces_processed};
+}
+
+function rateBreakdown(row, numerator, denominator) {
+  const values = ['production', 'bv', 'service'].map(prefix => percent(ratio(row[`${prefix}_${numerator}`], row[`${prefix}_${denominator}`])));
+  return `Prd ${values[0]} / BV ${values[1]} / Svc ${values[2]}`;
 }
 
 function composite(row) {
@@ -81,8 +86,8 @@ function splitMetricCard(label, total, rows, color) {
   rows.forEach(row => {
     const line = document.createElement('div'); line.className = 'metric-split-row';
     const rowLabel = document.createElement('span'); rowLabel.className = 'metric-split-label'; rowLabel.append(text(row.label));
-    const value = document.createElement('strong'); value.className = 'metric-split-value';
-    value.append(text(`${integer(row.production)} Prd / ${integer(row.service)} Svc`));
+    const value = document.createElement('small'); value.className = 'metric-split-value';
+    value.append(text(`${integer(row.production)} Prd / ${integer(row.bv)} BV / ${integer(row.service)} Svc`));
     line.append(rowLabel, value); list.append(line);
   });
   card.append(labelNode, totalNode, list);
@@ -96,9 +101,11 @@ function renderCards(snapshot) {
   const carts = cartSplit(current);
   const paintCarts = paintCartSplit(current);
   const paintPieces = paintPieceSplit(current);
+  let trailerDetail = `${integer(current.fuka_trailers_prepared)} FUKA / ${integer(current.bumper_trailers_prepared)} Bumpers / ${integer(current.fairing_trailers_prepared)} Fairings`;
+  if (Number(current.other_trailers_prepared || 0) > 0) trailerDetail += ` / ${integer(current.other_trailers_prepared)} Other`;
   const cards = [
-    ['PPY', percent(ratio(current.ppy_approved, current.paint_decision_pieces)), `${integer(current.ppy_approved)} / ${integer(current.paint_decision_pieces)} dispositions`, palette.amber],
-    ['Paint FTY', percent(ratio(current.paint_fty_approved, current.paint_fty_total)), `${integer(current.paint_fty_approved)} / ${integer(current.paint_fty_total)} first-pass`, palette.blue],
+    ['PPY', percent(ratio(current.ppy_approved, current.paint_decision_pieces)), rateBreakdown(current, 'ppy_approved', 'paint_decision_pieces'), palette.amber],
+    ['Paint FTY', percent(ratio(current.paint_fty_approved, current.paint_fty_total)), rateBreakdown(current, 'paint_fty_approved', 'paint_fty_total'), palette.blue],
     ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} first decisions`, palette.green],
     ['Final FTY', percent(ratio(current.final_approved, current.final_total)), `${integer(current.final_approved)} / ${integer(current.final_total)} first decisions`, palette.purple],
     ['Repaint', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)), `${integer(current.paint_fty_repaint_count)} first-pass repaints`, palette.red],
@@ -106,16 +113,16 @@ function renderCards(snapshot) {
     ['Pieces shipped', integer(current.parts_shipped), 'non-service total', palette.red],
     ['Complete assy sets', integer(current.complete_assy_sets), 'N33 four-piece patterns', palette.teal],
     ['Assembled bumpers', integer(current.assembled_bumper_count), 'N71-6171', palette.blue],
-    ['Trailers prepared', integer(current.trailers_prepared), 'snapshot value', palette.amber]
+    ['Trailers prepared', integer(current.trailers_prepared), trailerDetail, palette.amber]
   ];
   const container = $('#cards'); container.replaceChildren();
   container.append(splitMetricCard('Parts loaded', current.parts_loaded, [
-    {label:'Carts', production:carts.production, service:carts.service},
-    {label:'Parts', production:loaded.production, service:loaded.service}
+    {label:'Carts', production:carts.production, bv:carts.bv, service:carts.service},
+    {label:'Parts', production:loaded.production, bv:loaded.bv, service:loaded.service}
   ], palette.teal));
   container.append(splitMetricCard('Paint processed', current.paint_carts, [
-    {label:'Carts', production:paintCarts.production, service:paintCarts.service},
-    {label:'Pieces', production:paintPieces.production, service:paintPieces.service}
+    {label:'Carts', production:paintCarts.production, bv:paintCarts.bv, service:paintCarts.service},
+    {label:'Pieces', production:paintPieces.production, bv:paintPieces.bv, service:paintPieces.service}
   ], palette.blue));
   cards.forEach(card => container.append(metricCard(...card)));
 }

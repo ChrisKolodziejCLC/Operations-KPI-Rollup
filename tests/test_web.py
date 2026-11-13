@@ -54,16 +54,22 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             javascript = response.read().decode("utf-8")
             assert response.status == 200
             assert "production_parts_loaded" in javascript
+            assert "bv_parts_loaded" in javascript
             assert "service_parts_loaded" in javascript
             assert "production_carts_loaded" in javascript
+            assert "bv_carts_loaded" in javascript
             assert "service_carts_loaded" in javascript
             assert "production_paint_carts" in javascript
+            assert "bv_paint_carts" in javascript
             assert "service_paint_carts" in javascript
             assert "production_paint_pieces_processed" in javascript
+            assert "bv_paint_pieces_processed" in javascript
             assert "service_paint_pieces_processed" in javascript
             assert "splitMetricCard('Parts loaded', current.parts_loaded" in javascript
             assert "splitMetricCard('Paint processed', current.paint_carts" in javascript
             assert "metric-split-total" in javascript
+            assert "rateBreakdown(current, 'ppy_approved', 'paint_decision_pieces')" in javascript
+            assert "fuka_trailers_prepared" in javascript
     finally:
         server.shutdown()
         server.server_close()

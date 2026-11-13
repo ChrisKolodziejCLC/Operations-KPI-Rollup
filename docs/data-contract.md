@@ -26,13 +26,13 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `calendar_days` | Calendar dates in a period, including no-production dates. |
 | `data_days` | Represented production days with reportable activity. |
 | `parts_loaded` / `carts_loaded` | Loaded piece events (including repaint loads) and distinct non-null loaded carts. |
-| `production_parts_loaded` / `service_parts_loaded` | The same loaded piece events split by whether QPTS classifies the part with `Model = Service`; the two fields must sum to `parts_loaded`. |
-| `production_carts_loaded` / `service_carts_loaded` | Distinct loaded carts split by that same service classification. The layering systems make the buckets mutually exclusive, so the two fields must sum to `carts_loaded`. |
+| `production_parts_loaded` / `bv_parts_loaded` / `service_parts_loaded` | Loaded piece events split into ordinary production, BV (`N33` or `N71-6171`), and QPTS `Model = Service`. Service takes precedence over BV; the three fields sum to `parts_loaded`. |
+| `production_carts_loaded` / `bv_carts_loaded` / `service_carts_loaded` | Distinct loaded carts under the same classes. Cart precedence is Service, then BV, then Prd so each cart is counted once and the three fields sum to `carts_loaded`. |
 | `paint_carts` / `paint_pieces_processed` | Distinct paint carts and oven-exit pieces under the approved scope. |
-| `production_paint_carts` / `service_paint_carts` | The same distinct oven-exit carts split by whether QPTS classifies the part with `Model = Service`; the two fields must sum to `paint_carts`. |
-| `production_paint_pieces_processed` / `service_paint_pieces_processed` | The same oven-exit piece events split by that service classification; the two fields must sum to `paint_pieces_processed`. |
-| `paint_decision_pieces` / `ppy_approved` | PPY denominator and approved numerator. |
-| `paint_fty_total` / `paint_fty_approved` | Initial paint passes and approved initial passes. |
+| `production_paint_carts` / `bv_paint_carts` / `service_paint_carts` | Distinct oven-exit carts split into Prd, BV, and Svc using the same exclusive cart precedence. |
+| `production_paint_pieces_processed` / `bv_paint_pieces_processed` / `service_paint_pieces_processed` | Oven-exit piece events split into Prd, BV, and Svc. |
+| `paint_decision_pieces` / `ppy_approved` | Overall PPY denominator and approved numerator. The matching `production_`, `bv_`, and `service_` fields retain each class numerator and denominator. |
+| `paint_fty_total` / `paint_fty_approved` | Overall initial paint passes and approved initial passes. The matching `production_`, `bv_`, and `service_` fields retain each class numerator and denominator. |
 | `paint_fty_repaint_count` | Initial passes whose first applicable outcome was repaint. |
 | `receiving_total` / `receiving_approved` | Parts with a first receiving decision and those approved first pass. |
 | `final_total` / `final_approved` | Parts with a first final decision and those approved first pass. |
@@ -41,7 +41,7 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `bumpers_shipped` / `parts_shipped` | Non-service bumper pieces and all non-service pieces shipped. |
 | `complete_assy_sets` | Approved four-piece N33 assembly patterns. |
 | `assembled_bumper_count` | Approved N71-6171 assembly count. |
-| `trailers_prepared` | Prepared trailers as of the snapshot cutoff, under the approved date rule. |
+| `trailers_prepared` | Prepared trailers as of the snapshot cutoff. `fuka_trailers_prepared`, `bumper_trailers_prepared`, `fairing_trailers_prepared`, and the internal `other_trailers_prepared` integrity bucket sum to this total. Trailers have no service category. Mixed historical trailers are classified by dominant piece type. |
 | `pieces_scheduled` / `hours_scheduled` / `paint_hours` | Inputs to the provisional paint-plan composite. |
 
 Every ratio is calculated by the renderer from a saved numerator and denominator. A zero denominator renders as `No Data`, not `0.0%`.
@@ -49,10 +49,12 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 ## Derived values
 
 - `average per production day = period total / data_days`
-- `parts_loaded = production_parts_loaded + service_parts_loaded`
-- `carts_loaded = production_carts_loaded + service_carts_loaded`
-- `paint_carts = production_paint_carts + service_paint_carts`
-- `paint_pieces_processed = production_paint_pieces_processed + service_paint_pieces_processed`
+- `parts_loaded = production_parts_loaded + bv_parts_loaded + service_parts_loaded`
+- `carts_loaded = production_carts_loaded + bv_carts_loaded + service_carts_loaded`
+- `paint_carts = production_paint_carts + bv_paint_carts + service_paint_carts`
+- `paint_pieces_processed = production_paint_pieces_processed + bv_paint_pieces_processed + service_paint_pieces_processed`
+- each PPY and Paint FTY class rate uses its saved class numerator and denominator
+- `trailers_prepared = FUKA + Bumpers + Fairings + internal Other`
 - `PPY = ppy_approved / paint_decision_pieces`
 - `Paint FTY = paint_fty_approved / paint_fty_total`
 - `Receiving FTY = receiving_approved / receiving_total`

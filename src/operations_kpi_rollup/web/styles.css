@@ -44,11 +44,11 @@ button.secondary{border-color:#b6c7d0;background:#eef4f6;color:var(--navy)}
 .metric-card::before{content:"";position:absolute;inset:0 auto 0 0;width:4px;background:var(--accent,var(--teal))}
 .metric-card span{display:block;color:var(--muted);font-size:.68rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
 .metric-card strong{display:block;margin:.2rem 0;font-size:1.75rem;letter-spacing:-.04em;color:var(--navy)}
-.metric-card small{color:var(--muted);font-size:.72rem}
+.metric-card small{display:block;color:var(--muted);font-size:.76rem;font-weight:400;line-height:1.35}
 .metric-split-list{display:grid;gap:.28rem;margin-top:.3rem}
 .metric-split-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:.35rem;align-items:baseline}
 .metric-card .metric-split-label{font-size:.62rem}
-.metric-card .metric-split-value{margin:0;font-size:.78rem;letter-spacing:-.01em;white-space:nowrap}
+.metric-card .metric-split-value{margin:0;font-size:.76rem;font-weight:400;letter-spacing:-.01em;white-space:nowrap}
 .panel{margin-top:1rem;padding:1.2rem;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow)}
 .section-heading{display:flex;justify-content:space-between;gap:2rem;align-items:end;padding-bottom:.8rem;border-bottom:3px solid var(--teal)}
 .section-heading.compact{border-bottom-width:2px}
@@ -85,7 +85,7 @@ body.wallboard .method-banner{margin-top:0}
 body.wallboard main{max-width:none}
 body.wallboard .cards{grid-template-columns:repeat(6,minmax(0,1fr))}
 body.wallboard .metric-card strong{font-size:2.2rem}
-body.wallboard .metric-card .metric-split-value{font-size:.9rem}
+body.wallboard .metric-card small,body.wallboard .metric-card .metric-split-value{font-size:.82rem}
 
 @media(max-width:1100px){
   .cards{grid-template-columns:repeat(3,minmax(0,1fr))}

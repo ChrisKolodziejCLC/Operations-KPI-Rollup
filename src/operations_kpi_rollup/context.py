@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any, Dict, Iterable, List
 
-from .metrics import enrich_metric_row, format_decimal, format_int, format_percent
+from .metrics import enrich_metric_row, format_decimal, format_int, format_percent, safe_ratio
 
 
 REQUIRED_TOP_LEVEL = {
@@ -17,6 +17,16 @@ REQUIRED_TOP_LEVEL = {
 }
 
 
+def _validate_split(
+    row: Dict[str, Any], collection: str, total_field: str, split_fields: tuple[str, ...], label: str
+) -> None:
+    present = [field in row for field in split_fields]
+    if any(present) and not all(present):
+        raise ValueError(f"{collection} {label} split is incomplete")
+    if all(present) and sum(int(row[field]) for field in split_fields) != int(row.get(total_field, 0)):
+        raise ValueError(f"{collection} {label} split does not equal {total_field}")
+
+
 def validate_snapshot(snapshot: Dict[str, Any]) -> None:
     missing = sorted(REQUIRED_TOP_LEVEL - set(snapshot))
     if missing:
@@ -28,43 +38,65 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         raise ValueError("snapshot daily rows do not include report_date")
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
-            has_production = "production_parts_loaded" in row
-            has_service = "service_parts_loaded" in row
-            if has_production != has_service:
-                raise ValueError(f"{collection} load split is incomplete")
-            if has_production and (
-                int(row["production_parts_loaded"]) + int(row["service_parts_loaded"])
-                != int(row.get("parts_loaded", 0))
-            ):
-                raise ValueError(f"{collection} load split does not equal parts_loaded")
-            has_production_carts = "production_carts_loaded" in row
-            has_service_carts = "service_carts_loaded" in row
-            if has_production_carts != has_service_carts:
-                raise ValueError(f"{collection} cart split is incomplete")
-            if has_production_carts and (
-                int(row["production_carts_loaded"]) + int(row["service_carts_loaded"])
-                != int(row.get("carts_loaded", 0))
-            ):
-                raise ValueError(f"{collection} cart split does not equal carts_loaded")
-            has_production_paint_carts = "production_paint_carts" in row
-            has_service_paint_carts = "service_paint_carts" in row
-            if has_production_paint_carts != has_service_paint_carts:
-                raise ValueError(f"{collection} paint cart split is incomplete")
-            if has_production_paint_carts and (
-                int(row["production_paint_carts"]) + int(row["service_paint_carts"])
-                != int(row.get("paint_carts", 0))
-            ):
-                raise ValueError(f"{collection} paint cart split does not equal paint_carts")
-            has_production_paint_pieces = "production_paint_pieces_processed" in row
-            has_service_paint_pieces = "service_paint_pieces_processed" in row
-            if has_production_paint_pieces != has_service_paint_pieces:
-                raise ValueError(f"{collection} paint piece split is incomplete")
-            if has_production_paint_pieces and (
-                int(row["production_paint_pieces_processed"])
-                + int(row["service_paint_pieces_processed"])
-                != int(row.get("paint_pieces_processed", 0))
-            ):
-                raise ValueError(f"{collection} paint piece split does not equal paint_pieces_processed")
+            _validate_split(
+                row, collection, "parts_loaded",
+                ("production_parts_loaded", "bv_parts_loaded", "service_parts_loaded"), "load",
+            )
+            _validate_split(
+                row, collection, "carts_loaded",
+                ("production_carts_loaded", "bv_carts_loaded", "service_carts_loaded"), "cart",
+            )
+            _validate_split(
+                row, collection, "paint_carts",
+                ("production_paint_carts", "bv_paint_carts", "service_paint_carts"), "paint cart",
+            )
+            _validate_split(
+                row, collection, "paint_pieces_processed",
+                (
+                    "production_paint_pieces_processed",
+                    "bv_paint_pieces_processed",
+                    "service_paint_pieces_processed",
+                ),
+                "paint piece",
+            )
+            _validate_split(
+                row, collection, "paint_decision_pieces",
+                (
+                    "production_paint_decision_pieces",
+                    "bv_paint_decision_pieces",
+                    "service_paint_decision_pieces",
+                ),
+                "PPY denominator",
+            )
+            _validate_split(
+                row, collection, "ppy_approved",
+                ("production_ppy_approved", "bv_ppy_approved", "service_ppy_approved"),
+                "PPY numerator",
+            )
+            _validate_split(
+                row, collection, "paint_fty_total",
+                ("production_paint_fty_total", "bv_paint_fty_total", "service_paint_fty_total"),
+                "paint FTY denominator",
+            )
+            _validate_split(
+                row, collection, "paint_fty_approved",
+                (
+                    "production_paint_fty_approved",
+                    "bv_paint_fty_approved",
+                    "service_paint_fty_approved",
+                ),
+                "paint FTY numerator",
+            )
+            _validate_split(
+                row, collection, "trailers_prepared",
+                (
+                    "fuka_trailers_prepared",
+                    "bumper_trailers_prepared",
+                    "fairing_trailers_prepared",
+                    "other_trailers_prepared",
+                ),
+                "trailer type",
+            )
 
 
 def _sort_by(rows: Iterable[Dict[str, Any]], key: str) -> List[Dict[str, Any]]:
@@ -75,28 +107,43 @@ def _card(label: str, value: str, detail: str, color: str, status: str = "") -> 
     return {"label": label, "value": value, "detail": detail, "color": color, "status": status}
 
 
-def _load_split(row: Dict[str, Any]) -> tuple[Any, Any]:
+def _load_split(row: Dict[str, Any]) -> tuple[Any, Any, Any]:
     if "production_parts_loaded" not in row and "service_parts_loaded" not in row:
-        return row.get("parts_loaded", 0), 0
-    return row.get("production_parts_loaded", 0), row.get("service_parts_loaded", 0)
+        return row.get("parts_loaded", 0), 0, 0
+    return (
+        row.get("production_parts_loaded", 0),
+        row.get("bv_parts_loaded", 0),
+        row.get("service_parts_loaded", 0),
+    )
 
 
-def _cart_split(row: Dict[str, Any]) -> tuple[Any, Any]:
+def _cart_split(row: Dict[str, Any]) -> tuple[Any, Any, Any]:
     if "production_carts_loaded" not in row and "service_carts_loaded" not in row:
-        return row.get("carts_loaded", 0), 0
-    return row.get("production_carts_loaded", 0), row.get("service_carts_loaded", 0)
+        return row.get("carts_loaded", 0), 0, 0
+    return row.get("production_carts_loaded", 0), row.get("bv_carts_loaded", 0), row.get("service_carts_loaded", 0)
 
 
-def _paint_cart_split(row: Dict[str, Any]) -> tuple[Any, Any]:
+def _paint_cart_split(row: Dict[str, Any]) -> tuple[Any, Any, Any]:
     if "production_paint_carts" not in row and "service_paint_carts" not in row:
-        return row.get("paint_carts", 0), 0
-    return row.get("production_paint_carts", 0), row.get("service_paint_carts", 0)
+        return row.get("paint_carts", 0), 0, 0
+    return row.get("production_paint_carts", 0), row.get("bv_paint_carts", 0), row.get("service_paint_carts", 0)
 
 
-def _paint_piece_split(row: Dict[str, Any]) -> tuple[Any, Any]:
+def _paint_piece_split(row: Dict[str, Any]) -> tuple[Any, Any, Any]:
     if "production_paint_pieces_processed" not in row and "service_paint_pieces_processed" not in row:
-        return row.get("paint_pieces_processed", 0), 0
-    return row.get("production_paint_pieces_processed", 0), row.get("service_paint_pieces_processed", 0)
+        return row.get("paint_pieces_processed", 0), 0, 0
+    return (
+        row.get("production_paint_pieces_processed", 0),
+        row.get("bv_paint_pieces_processed", 0),
+        row.get("service_paint_pieces_processed", 0),
+    )
+
+
+def _rate_split(row: Dict[str, Any], numerator: str, denominator: str) -> str:
+    values = []
+    for prefix, label in (("production_", "Prd"), ("bv_", "BV"), ("service_", "Svc")):
+        values.append(format_percent(safe_ratio(row.get(prefix + numerator), row.get(prefix + denominator))))
+    return f"Prd {values[0]} / BV {values[1]} / Svc {values[2]}"
 
 
 def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
@@ -110,26 +157,33 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     months = [row for row in periods if row.get("period_type") == "MONTH"]
     quarters = [row for row in periods if row.get("period_type") == "QUARTER"]
     current_week = max(weeks, key=lambda row: row.get("period_start", "")) if weeks else None
-    production_loaded, service_loaded = _load_split(current)
-    production_carts, service_carts = _cart_split(current)
-    production_paint_carts, service_paint_carts = _paint_cart_split(current)
-    production_paint_pieces, service_paint_pieces = _paint_piece_split(current)
+    production_loaded, bv_loaded, service_loaded = _load_split(current)
+    production_carts, bv_carts, service_carts = _cart_split(current)
+    production_paint_carts, bv_paint_carts, service_paint_carts = _paint_cart_split(current)
+    production_paint_pieces, bv_paint_pieces, service_paint_pieces = _paint_piece_split(current)
+    trailer_detail = (
+        f"{format_int(current.get('fuka_trailers_prepared'))} FUKA / "
+        f"{format_int(current.get('bumper_trailers_prepared'))} Bumpers / "
+        f"{format_int(current.get('fairing_trailers_prepared'))} Fairings"
+    )
+    if current.get("other_trailers_prepared", 0):
+        trailer_detail += f" / {format_int(current.get('other_trailers_prepared'))} Other"
 
     cards = [
         _card(
             "Parts loaded",
-            f"{format_int(production_carts)} Prd / {format_int(service_carts)} Svc",
-            f"Carts · {format_int(production_loaded)} Prd / {format_int(service_loaded)} Svc parts",
+            format_int(current.get("parts_loaded")),
+            f"Carts {format_int(production_carts)} Prd / {format_int(bv_carts)} BV / {format_int(service_carts)} Svc · Parts {format_int(production_loaded)} Prd / {format_int(bv_loaded)} BV / {format_int(service_loaded)} Svc",
             "#147d86",
         ),
         _card(
             "Paint processed",
-            f"{format_int(production_paint_carts)} Prd / {format_int(service_paint_carts)} Svc",
-            f"Carts · {format_int(production_paint_pieces)} Prd / {format_int(service_paint_pieces)} Svc pieces",
+            format_int(current.get("paint_carts")),
+            f"Carts {format_int(production_paint_carts)} Prd / {format_int(bv_paint_carts)} BV / {format_int(service_paint_carts)} Svc · Pieces {format_int(production_paint_pieces)} Prd / {format_int(bv_paint_pieces)} BV / {format_int(service_paint_pieces)} Svc",
             "#2f6f9f",
         ),
-        _card("PPY", format_percent(current["ppy"]), f"{format_int(current.get('ppy_approved'))} / {format_int(current.get('paint_decision_pieces'))} dispositions", "#d78d23"),
-        _card("Paint FTY", format_percent(current["paint_fty"]), f"{format_int(current.get('paint_fty_approved'))} / {format_int(current.get('paint_fty_total'))} first-pass", "#2f6f9f"),
+        _card("PPY", format_percent(current["ppy"]), _rate_split(current, "ppy_approved", "paint_decision_pieces"), "#d78d23"),
+        _card("Paint FTY", format_percent(current["paint_fty"]), _rate_split(current, "paint_fty_approved", "paint_fty_total"), "#2f6f9f"),
         _card("Receiving FTY", format_percent(current["receiving_fty"]), f"{format_int(current.get('receiving_approved'))} / {format_int(current.get('receiving_total'))} first decisions", "#38856d"),
         _card("Final FTY", format_percent(current["final_fty"]), f"{format_int(current.get('final_approved'))} / {format_int(current.get('final_total'))} first decisions", "#8a6aa8"),
         _card("Repaint", format_percent(current["repaint_percentage"]), f"{format_int(current.get('paint_fty_repaint_count'))} first-pass repaints", "#bb514b"),
@@ -137,7 +191,7 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         _card("Pieces shipped", format_int(current.get("parts_shipped")), "non-service total", "#bb514b"),
         _card("Complete assy sets", format_int(current.get("complete_assy_sets")), "N33 four-piece patterns", "#147d86"),
         _card("Assembled bumpers", format_int(current.get("assembled_bumper_count")), "N71-6171", "#2f6f9f"),
-        _card("Trailers prepared", format_int(current.get("trailers_prepared")), "snapshot value", "#d78d23"),
+        _card("Trailers prepared", format_int(current.get("trailers_prepared")), trailer_detail, "#d78d23"),
     ]
 
     throughput_fields = [
