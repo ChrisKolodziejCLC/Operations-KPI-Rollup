@@ -234,11 +234,10 @@ class AppState:
             self._refresh_lock.release()
 
     def _auto_refresh_loop(self) -> None:
-        force = False
         while not self._auto_refresh_stop.is_set():
             today = self._today()
             try:
-                self.refresh(today, force=force)
+                self.refresh(today)
                 current = self.snapshot(today)
                 age_seconds = self._snapshot_age_seconds(current) if current else 0.0
                 if self._refresh_lock.locked():
@@ -248,7 +247,6 @@ class AppState:
             except Exception as exc:
                 print(json.dumps({"event": "auto-refresh-error", "error": f"{type(exc).__name__}: {str(exc)[:240]}"}, separators=(",", ":")), flush=True)
                 delay_seconds = min(60.0, self.auto_refresh_seconds)
-            force = True
             if self._auto_refresh_stop.wait(delay_seconds):
                 break
 
