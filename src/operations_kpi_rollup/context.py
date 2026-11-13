@@ -49,6 +49,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v7-daily-unique-pieces",
         "operations-kpi-live-v8-physical-pass-metrics",
         "operations-kpi-live-v9-repaint-reject-yields",
+        "operations-kpi-live-v10-master-repaintcount-yields",
     }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
@@ -56,6 +57,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v7-daily-unique-pieces",
                 "operations-kpi-live-v8-physical-pass-metrics",
                 "operations-kpi-live-v9-repaint-reject-yields",
+                "operations-kpi-live-v10-master-repaintcount-yields",
             }:
                 for unique_field, total_field, label in (
                     ("unique_pieces_loaded", "parts_loaded", "loaded unique-piece"),
@@ -69,18 +71,25 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
             if snapshot.get("scope", {}).get("method_version") in {
                 "operations-kpi-live-v8-physical-pass-metrics",
                 "operations-kpi-live-v9-repaint-reject-yields",
+                "operations-kpi-live-v10-master-repaintcount-yields",
             }:
                 for quantity_field in ("receiving_quantity", "final_quantity"):
                     if quantity_field not in row:
                         raise ValueError(f"{collection} {quantity_field} is missing")
                     if int(row.get(quantity_field, 0)) < 0:
                         raise ValueError(f"{collection} {quantity_field} is negative")
-            if snapshot.get("scope", {}).get("method_version") == "operations-kpi-live-v9-repaint-reject-yields":
+            method_version = snapshot.get("scope", {}).get("method_version")
+            if method_version in {
+                "operations-kpi-live-v9-repaint-reject-yields",
+                "operations-kpi-live-v10-master-repaintcount-yields",
+            }:
                 required_yield_fields = (
                     "reject_ppy_total", "reject_ppy_approved", "reject_ppy_rejected_count",
                     "reject_ppy_pending_count", "reject_fty_total", "reject_fty_approved",
                     "reject_fty_rejected_count", "reject_fty_pending_count",
                 )
+                if method_version == "operations-kpi-live-v10-master-repaintcount-yields":
+                    required_yield_fields += ("ppy_repaint_count",)
                 missing_yield_fields = [field for field in required_yield_fields if field not in row]
                 if missing_yield_fields:
                     raise ValueError(
@@ -92,15 +101,25 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     raise ValueError(f"{collection} reject PPY total does not equal physical paint passes")
                 if int(row["reject_fty_total"]) != int(row.get("paint_fty_total", 0)):
                     raise ValueError(f"{collection} reject FTY total does not equal initial paint passes")
-                if int(row["reject_ppy_approved"]) + int(row["reject_ppy_rejected_count"]) != int(row["reject_ppy_total"]):
-                    raise ValueError(f"{collection} reject PPY outcomes do not equal its total")
-                if int(row["reject_fty_approved"]) + int(row["reject_fty_rejected_count"]) != int(row["reject_fty_total"]):
-                    raise ValueError(f"{collection} reject FTY outcomes do not equal its total")
+                if method_version == "operations-kpi-live-v10-master-repaintcount-yields":
+                    if int(row["reject_ppy_approved"]) + int(row["reject_ppy_rejected_count"]) + int(row["reject_ppy_pending_count"]) != int(row["reject_ppy_total"]):
+                        raise ValueError(f"{collection} reject PPY outcomes do not equal its total")
+                    if int(row["reject_fty_approved"]) + int(row["reject_fty_rejected_count"]) + int(row["reject_fty_pending_count"]) != int(row["reject_fty_total"]):
+                        raise ValueError(f"{collection} reject FTY outcomes do not equal its total")
+                    if int(row.get("ppy_approved", 0)) + int(row.get("ppy_repaint_count", 0)) + int(row["reject_ppy_pending_count"]) != int(row.get("paint_decision_pieces", 0)):
+                        raise ValueError(f"{collection} repaint PPY outcomes do not equal physical paint passes")
+                    if int(row.get("paint_fty_approved", 0)) + int(row.get("paint_fty_repaint_count", 0)) + int(row["reject_fty_pending_count"]) != int(row.get("paint_fty_total", 0)):
+                        raise ValueError(f"{collection} repaint FTY outcomes do not equal initial paint passes")
+                else:
+                    if int(row["reject_ppy_approved"]) + int(row["reject_ppy_rejected_count"]) != int(row["reject_ppy_total"]):
+                        raise ValueError(f"{collection} reject PPY outcomes do not equal its total")
+                    if int(row["reject_fty_approved"]) + int(row["reject_fty_rejected_count"]) != int(row["reject_fty_total"]):
+                        raise ValueError(f"{collection} reject FTY outcomes do not equal its total")
                 if int(row["reject_ppy_pending_count"]) > int(row["reject_ppy_total"]):
                     raise ValueError(f"{collection} reject PPY pending count exceeds its total")
                 if int(row["reject_fty_pending_count"]) > int(row["reject_fty_total"]):
                     raise ValueError(f"{collection} reject FTY pending count exceeds its total")
-                if int(row.get("paint_fty_approved", 0)) != int(row.get("paint_fty_total", 0)) - int(row.get("paint_fty_repaint_count", 0)):
+                if method_version == "operations-kpi-live-v9-repaint-reject-yields" and int(row.get("paint_fty_approved", 0)) != int(row.get("paint_fty_total", 0)) - int(row.get("paint_fty_repaint_count", 0)):
                     raise ValueError(f"{collection} repaint FTY counts do not match the exit-day formula")
             _validate_split(
                 row, collection, "parts_loaded",
@@ -250,6 +269,7 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         _card("Reject PPY", format_percent(current["reject_ppy"]), f"{format_int(current.get('reject_ppy_approved'))} / {format_int(current.get('reject_ppy_total'))} exits · {format_int(current.get('reject_ppy_pending_count'))} pending", "#bb514b"),
         _card("Repaint FTY", format_percent(current["repaint_fty"]), f"{format_int(current.get('paint_fty_approved'))} / {format_int(current.get('paint_fty_total'))} first exits", "#2f6f9f"),
         _card("Reject FTY", format_percent(current["reject_fty"]), f"{format_int(current.get('reject_fty_approved'))} / {format_int(current.get('reject_fty_total'))} first exits · {format_int(current.get('reject_fty_pending_count'))} pending", "#8a6aa8"),
+        _card("Repaint %", format_percent(current["repaint_percentage"]), f"{format_int(current.get('paint_fty_repaint_count'))} / {format_int(current.get('paint_fty_total'))} initial passes", "#d78d23"),
         _card("Receiving FTY", format_percent(current["receiving_fty"]), f"{format_int(current.get('receiving_approved'))} / {format_int(current.get('receiving_total'))} first decisions · Qty {format_int(current.get('receiving_quantity'))} by receive stamp", "#38856d"),
         _card("Final FTY", format_percent(current["final_fty"]), f"{format_int(current.get('final_approved'))} / {format_int(current.get('final_total'))} first decisions · Qty {format_int(current.get('final_quantity'))} by final stamp", "#8a6aa8"),
         _card("Paint plan composite", format_percent(current["paint_plan_composite"]), "proxy — not standard OEE", "#8a6aa8", "PROVISIONAL"),

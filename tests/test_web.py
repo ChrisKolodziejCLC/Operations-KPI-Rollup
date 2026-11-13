@@ -73,6 +73,8 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "metric-split-total" in javascript
             assert "dualYieldCard('PPY (Paint Process Yield)'" in javascript
             assert "dualYieldCard('FTY (First Time Yield)'" in javascript
+            assert "['Repaint %', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total))" in javascript
+            assert "current.ppy_repaint_count" in javascript
             assert "reject_ppy_approved" in javascript
             assert "reject_fty_approved" in javascript
             assert "yieldRatio(metric.numerator, metric.denominator)" in javascript

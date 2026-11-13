@@ -126,6 +126,7 @@ function renderCards(snapshot) {
   let trailerDetail = `${integer(current.fuka_trailers_prepared)} FUKA / ${integer(current.bumper_trailers_prepared)} Bumpers / ${integer(current.fairing_trailers_prepared)} Fairings`;
   if (Number(current.other_trailers_prepared || 0) > 0) trailerDetail += ` / ${integer(current.other_trailers_prepared)} Other`;
   const cards = [
+    ['Repaint %', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)), `${integer(current.paint_fty_repaint_count)} / ${integer(current.paint_fty_total)} initial passes`, palette.amber],
     ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} first decisions · Qty ${integer(current.receiving_quantity)} by receive stamp`, palette.green],
     ['Final FTY', percent(ratio(current.final_approved, current.final_total)), `${integer(current.final_approved)} / ${integer(current.final_total)} first decisions · Qty ${integer(current.final_quantity)} by final stamp`, palette.purple],
     ['Paint plan composite', percent(composite(current)), 'provisional · not standard OEE', palette.purple],
@@ -145,14 +146,14 @@ function renderCards(snapshot) {
   ], palette.blue));
   container.append(dualYieldCard('PPY (Paint Process Yield)', {
     numerator:current.ppy_approved, denominator:current.paint_decision_pieces,
-    detail:`${integer(current.ppy_approved)} / ${integer(current.paint_decision_pieces)} · ${integer(Number(current.paint_decision_pieces || 0) - Number(current.ppy_approved || 0))} repaint`
+    detail:`${integer(current.ppy_approved)} / ${integer(current.paint_decision_pieces)} · ${integer(current.ppy_repaint_count)} repaint · ${integer(current.reject_ppy_pending_count)} pending`
   }, {
     numerator:current.reject_ppy_approved, denominator:current.reject_ppy_total,
     detail:`${integer(current.reject_ppy_approved)} / ${integer(current.reject_ppy_total)} · ${integer(current.reject_ppy_rejected_count)} rejected · ${integer(current.reject_ppy_pending_count)} pending`
   }, palette.amber));
   container.append(dualYieldCard('FTY (First Time Yield)', {
     numerator:current.paint_fty_approved, denominator:current.paint_fty_total,
-    detail:`${integer(current.paint_fty_approved)} / ${integer(current.paint_fty_total)} · ${integer(current.paint_fty_repaint_count)} first repaint`
+    detail:`${integer(current.paint_fty_approved)} / ${integer(current.paint_fty_total)} · ${integer(current.paint_fty_repaint_count)} repaint · ${integer(current.reject_fty_pending_count)} pending`
   }, {
     numerator:current.reject_fty_approved, denominator:current.reject_fty_total,
     detail:`${integer(current.reject_fty_approved)} / ${integer(current.reject_fty_total)} · ${integer(current.reject_fty_rejected_count)} rejected · ${integer(current.reject_fty_pending_count)} pending`
@@ -252,6 +253,7 @@ function renderPeriods(snapshot) {
     {label:'Reject PPY', value:row => percent(yieldRatio(row.reject_ppy_approved, row.reject_ppy_total))},
     {label:'Repaint FTY', value:row => percent(yieldRatio(row.paint_fty_approved, row.paint_fty_total))},
     {label:'Reject FTY', value:row => percent(yieldRatio(row.reject_fty_approved, row.reject_fty_total))},
+    {label:'Repaint %', value:row => percent(ratio(row.paint_fty_repaint_count, row.paint_fty_total))},
     {label:'Composite', value:row => percent(composite(row))}
   ], snapshot.periods);
 }

@@ -26,19 +26,21 @@ def test_invalid_exit_day_yield_is_no_data_instead_of_negative():
 def test_repaint_and_reject_yields_use_saved_exit_day_counts():
     enriched = enrich_metric_row({
         "paint_decision_pieces": 279,
-        "ppy_approved": 271,
+        "ppy_approved": 258,
+        "ppy_repaint_count": 21,
         "paint_fty_total": 271,
-        "paint_fty_approved": 263,
-        "paint_fty_repaint_count": 8,
+        "paint_fty_approved": 251,
+        "paint_fty_repaint_count": 20,
         "reject_ppy_total": 279,
-        "reject_ppy_approved": 269,
+        "reject_ppy_approved": 254,
         "reject_fty_total": 271,
-        "reject_fty_approved": 262,
+        "reject_fty_approved": 247,
     })
-    assert enriched["repaint_ppy"] == Decimal("271") / Decimal("279")
-    assert enriched["repaint_fty"] == Decimal("263") / Decimal("271")
-    assert enriched["reject_ppy"] == Decimal("269") / Decimal("279")
-    assert enriched["reject_fty"] == Decimal("262") / Decimal("271")
+    assert enriched["repaint_ppy"] == Decimal("258") / Decimal("279")
+    assert enriched["repaint_fty"] == Decimal("251") / Decimal("271")
+    assert enriched["reject_ppy"] == Decimal("254") / Decimal("279")
+    assert enriched["reject_fty"] == Decimal("247") / Decimal("271")
+    assert enriched["repaint_percentage"] == Decimal("20") / Decimal("271")
 
 
 def test_partial_week_uses_three_production_days():
