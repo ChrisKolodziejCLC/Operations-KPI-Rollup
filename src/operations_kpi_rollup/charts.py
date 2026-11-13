@@ -65,7 +65,7 @@ def _daily_yield(rows: List[Dict[str, Any]], path: Path) -> None:
     fig, ax = _new_figure("Daily First-Pass Quality", "Weighted outcomes retain their numerator and denominator.")
     x = np.arange(len(rows))
     series = [
-        ("PPY", "ppy", COLORS["teal"]),
+        ("PPY (Paint Process Yield)", "ppy", COLORS["teal"]),
         ("Paint FTY", "paint_fty", COLORS["blue"]),
         ("Receiving FTY", "receiving_fty", COLORS["green"]),
         ("Final FTY", "final_fty", COLORS["purple"]),

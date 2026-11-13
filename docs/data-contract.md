@@ -33,16 +33,18 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `unique_pieces_processed` | Distinct QPTS Part IDs represented by paint oven-exit events on that report date. For aggregate periods, this is the sum of the represented daily distinct counts, not a cross-day deduplication. |
 | `production_paint_carts` / `bv_paint_carts` / `service_paint_carts` | Distinct oven-exit carts split into Prd, BV, and Svc using the same exclusive cart precedence. |
 | `production_paint_pieces_processed` / `bv_paint_pieces_processed` / `service_paint_pieces_processed` | Oven-exit piece events split into Prd, BV, and Svc. |
-| `paint_decision_pieces` / `ppy_approved` | Overall PPY denominator and approved numerator. The matching `production_`, `bv_`, and `service_` fields retain each class numerator and denominator. |
-| `paint_fty_total` / `paint_fty_approved` | Overall initial paint passes and approved initial passes. The matching `production_`, `bv_`, and `service_` fields retain each class numerator and denominator. |
-| `paint_fty_repaint_count` | Initial paint passes whose part is permanently classified `Repaint` at line end or `WFP` in repair. The count remains assigned to the original first-paint date even when the classification or physical repaint happens later. |
+| `paint_decision_pieces` / `ppy_approved` | Compatibility field names for all physical paint passes and physical initial passes. Their ratio is PPY (Paint Process Yield). The matching `production_`, `bv_`, and `service_` fields retain each class numerator and denominator. |
+| `paint_fty_total` / `paint_fty_approved` | Physical initial plus first-repaint passes, and physical initial passes. Their ratio is Paint FTY. The matching class fields retain each class numerator and denominator. |
+| `paint_fty_repaint_count` | Physical first-repaint-loop passes on the report date. Second and later repaint loops affect PPY but are excluded from Paint FTY. |
 | `receiving_total` / `receiving_approved` | Parts with a first receiving decision and those approved first pass. |
+| `receiving_quantity` | Distinct non-service parts dated by `insp_receive_stamp`. |
 | `final_total` / `final_approved` | Parts with a first final decision and those approved first pass. |
+| `final_quantity` | Distinct non-service parts dated by `insp_final_stamp`. |
 | `eol_inspected` | End-of-line inspections under the approved event-count rule. |
 | `painted_parts_shipped` | Non-service painted pieces shipped. |
 | `bumpers_shipped` / `parts_shipped` | Non-service bumper pieces and all non-service pieces shipped. |
-| `complete_assy_sets` | Approved four-piece N33 assembly patterns. |
-| `assembled_bumper_count` | Approved N71-6171 assembly count. |
+| `complete_assy_sets` | Four-piece N33/Chassis Fairing sets dated by the latest `AssembledDate` among the set's pieces. |
+| `assembled_bumper_count` | N71-6171 parts dated by `AssembledDate`. |
 | `trailers_prepared` | Prepared trailers as of the snapshot cutoff. `fuka_trailers_prepared`, `bumper_trailers_prepared`, `fairing_trailers_prepared`, and the internal `other_trailers_prepared` integrity bucket sum to this total. Trailers have no service category. Mixed historical trailers are classified by dominant piece type. |
 | `pieces_scheduled` / `hours_scheduled` / `paint_hours` | Inputs to the provisional paint-plan composite. |
 
@@ -63,19 +65,19 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 - `Paint FTY = paint_fty_approved / paint_fty_total`
 - `Receiving FTY = receiving_approved / receiving_total`
 - `Final FTY = final_approved / final_total`
-- `Repaint percentage = permanently classified Repaint/WFP initial passes / initial passes`, grouped by the original first-paint date
+- `Repaint percentage = physical first-repaint-loop passes / (physical initial + first-repaint-loop passes)`, grouped by physical oven-exit date
 - `Paint plan composite = min(paint pieces / scheduled pieces, 1) × ((paint FTY total - repaint count) / paint FTY total) × min(active paint hours / scheduled hours, 1)`
 
 The last value is an inherited proxy and must not be renamed OEE without a separate approved definition for runtime, ideal cycle time, and good count.
 
 ## Required live-extractor behavior
 
-The future SQL adapter must be read-only and emit this contract. Before it is considered production-ready, it must:
+The live SQL adapter is read-only and emits this contract. It must:
 
 1. declare the timezone and a single inclusive/exclusive cutoff convention;
 2. declare whether service parts are included for each metric;
 3. order decisions by an approved event timestamp and stable tie-breaker;
-4. attribute permanent Repaint/WFP classification to the original first-paint cohort rather than the later rework date;
+4. count only physical paint passes and assign each pass to its oven-exit date; a repaint designation alone is not a paint event;
 5. distinguish event counts, distinct pieces, and distinct carts in both field names and documentation;
 6. derive `production_day` from an approved calendar or activity rule;
 7. snapshot mutable trailer and disposition values at generation time;
@@ -94,7 +96,6 @@ The future SQL adapter must be read-only and emit this contract. Before it is co
 
 ## Open decisions before live automation
 
-- Formal PPY and FTY pass/outcome definitions.
 - Service-part scope by section.
 - Production-day calendar and shift cutoff.
 - True OEE versus continued use of the provisional composite.

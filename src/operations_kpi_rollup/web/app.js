@@ -105,15 +105,15 @@ function renderCards(snapshot) {
   let trailerDetail = `${integer(current.fuka_trailers_prepared)} FUKA / ${integer(current.bumper_trailers_prepared)} Bumpers / ${integer(current.fairing_trailers_prepared)} Fairings`;
   if (Number(current.other_trailers_prepared || 0) > 0) trailerDetail += ` / ${integer(current.other_trailers_prepared)} Other`;
   const cards = [
-    ['PPY', percent(ratio(current.ppy_approved, current.paint_decision_pieces)), rateBreakdown(current, 'ppy_approved', 'paint_decision_pieces'), palette.amber],
+    ['PPY (Paint Process Yield)', percent(ratio(current.ppy_approved, current.paint_decision_pieces)), rateBreakdown(current, 'ppy_approved', 'paint_decision_pieces'), palette.amber],
     ['Paint FTY', percent(ratio(current.paint_fty_approved, current.paint_fty_total)), rateBreakdown(current, 'paint_fty_approved', 'paint_fty_total'), palette.blue],
-    ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} first decisions`, palette.green],
-    ['Final FTY', percent(ratio(current.final_approved, current.final_total)), `${integer(current.final_approved)} / ${integer(current.final_total)} first decisions`, palette.purple],
-    ['Repaint', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)), `${integer(current.paint_fty_repaint_count)} first-pass repaints`, palette.red],
+    ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} first decisions · Qty ${integer(current.receiving_quantity)} by receive stamp`, palette.green],
+    ['Final FTY', percent(ratio(current.final_approved, current.final_total)), `${integer(current.final_approved)} / ${integer(current.final_total)} first decisions · Qty ${integer(current.final_quantity)} by final stamp`, palette.purple],
+    ['Repaint', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)), `${integer(current.paint_fty_repaint_count)} first repaint-loop passes`, palette.red],
     ['Paint plan composite', percent(composite(current)), 'provisional · not standard OEE', palette.purple],
     ['Pieces shipped', integer(current.parts_shipped), 'non-service total', palette.red],
-    ['Complete assy sets', integer(current.complete_assy_sets), 'N33 four-piece patterns', palette.teal],
-    ['Assembled bumpers', integer(current.assembled_bumper_count), 'N71-6171', palette.blue],
+    ['Complete assy sets', integer(current.complete_assy_sets), 'N33 / Chassis Fairing · dated by last assembled piece', palette.teal],
+    ['Assembled bumpers', integer(current.assembled_bumper_count), 'N71-6171 · AssembledDate', palette.blue],
     ['Trailers prepared', integer(current.trailers_prepared), trailerDetail, palette.amber]
   ];
   const container = $('#cards'); container.replaceChildren();
@@ -192,7 +192,7 @@ function renderDaily(snapshot) {
     {label:'Paint shipped', color:palette.red, value:row => Number(row.painted_parts_shipped)}
   ]);
   renderLineChart($('#quality-chart'), active, [
-    {label:'PPY', color:palette.teal, value:row => ratio(row.ppy_approved, row.paint_decision_pieces)},
+    {label:'PPY (Paint Process Yield)', color:palette.teal, value:row => ratio(row.ppy_approved, row.paint_decision_pieces)},
     {label:'Paint FTY', color:palette.blue, value:row => ratio(row.paint_fty_approved, row.paint_fty_total)},
     {label:'Receiving FTY', color:palette.green, value:row => ratio(row.receiving_approved, row.receiving_total)},
     {label:'Final FTY', color:palette.purple, value:row => ratio(row.final_approved, row.final_total)}
@@ -216,7 +216,7 @@ function renderPeriods(snapshot) {
     {label:'EOL avg/day', value:row => average(row.eol_inspected, row.data_days)},
     {label:'Paint ship avg/day', value:row => average(row.painted_parts_shipped, row.data_days)},
     {label:'Bumpers avg/day', value:row => average(row.bumpers_shipped, row.data_days)},
-    {label:'PPY', value:row => percent(ratio(row.ppy_approved, row.paint_decision_pieces))},
+    {label:'PPY (Paint Process Yield)', value:row => percent(ratio(row.ppy_approved, row.paint_decision_pieces))},
     {label:'Paint FTY', value:row => percent(ratio(row.paint_fty_approved, row.paint_fty_total))},
     {label:'Repaint', value:row => percent(ratio(row.paint_fty_repaint_count, row.paint_fty_total))},
     {label:'Composite', value:row => percent(composite(row))}

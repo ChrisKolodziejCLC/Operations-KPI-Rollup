@@ -106,7 +106,7 @@
                   <th align="left" style="border:1px solid #ccdbe3;">Period</th>
                   <th align="right" style="border:1px solid #ccdbe3;">Prod days</th>
                   {% for header in throughput_headers %}<th align="right" style="border:1px solid #ccdbe3;">{{ header }}</th>{% endfor %}
-                  <th align="right" style="border:1px solid #ccdbe3;">PPY</th>
+                  <th align="right" style="border:1px solid #ccdbe3;">PPY (Paint Process Yield)</th>
                   <th align="right" style="border:1px solid #ccdbe3;">Paint FTY</th>
                   <th align="right" style="border:1px solid #ccdbe3;">Repaint</th>
                   <th align="right" style="border:1px solid #ccdbe3;">Composite</th>
@@ -166,7 +166,7 @@
 
           <tr>
             <td style="background:#f4f7f9;padding:18px 30px;font-size:10px;line-height:15px;color:#627d98;border-top:1px solid #d7e2e8;">
-              <strong style="color:#294e63;">Method summary:</strong> PPY = approved paint decisions / all paint decisions. Paint FTY = approved initial passes / all initial passes. Repaint = permanently classified Repaint/WFP parts / initial passes, attributed to the original first-paint date. Receiving and Final FTY use the first applicable decision per part. The Paint plan composite is schedule attainment × no-repaint quality × bounded active-hour coverage; it is not standard OEE. Historical values are reproducible from the attached build snapshot, not recomputed from later mutable QPTS state.<br><br>
+              <strong style="color:#294e63;">Method summary:</strong> PPY (Paint Process Yield) = physical initial paint passes / all physical paint passes, including every repaint loop. Paint FTY = physical initial passes / physical initial plus first-repaint passes; second and later repaint loops are PPY-only. Every pass is assigned to the day it physically exits the oven, not the day a repaint is designated. Receiving and Final FTY use the first applicable decision per part; their quantities use the receive and final inspection stamps. The Paint plan composite is schedule attainment × first-pass quality × bounded active-hour coverage; it is not standard OEE. Historical values are reproducible from the attached build snapshot, not recomputed from later mutable QPTS state.<br><br>
               Preview build only. No email was sent and no QPTS data was modified.
             </td>
           </tr>

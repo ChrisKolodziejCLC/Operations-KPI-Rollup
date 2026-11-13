@@ -47,10 +47,14 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v5-bv-quality-trailer-split",
         "operations-kpi-live-v6-original-paint-repaint-cohort",
         "operations-kpi-live-v7-daily-unique-pieces",
+        "operations-kpi-live-v8-physical-pass-metrics",
     }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
-            if snapshot.get("scope", {}).get("method_version") == "operations-kpi-live-v7-daily-unique-pieces":
+            if snapshot.get("scope", {}).get("method_version") in {
+                "operations-kpi-live-v7-daily-unique-pieces",
+                "operations-kpi-live-v8-physical-pass-metrics",
+            }:
                 for unique_field, total_field, label in (
                     ("unique_pieces_loaded", "parts_loaded", "loaded unique-piece"),
                     ("unique_pieces_processed", "paint_pieces_processed", "painted unique-piece"),
@@ -60,6 +64,12 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     unique_value = int(row.get(unique_field, 0))
                     if unique_value < 0 or unique_value > int(row.get(total_field, 0)):
                         raise ValueError(f"{collection} {label} count is outside its total")
+            if snapshot.get("scope", {}).get("method_version") == "operations-kpi-live-v8-physical-pass-metrics":
+                for quantity_field in ("receiving_quantity", "final_quantity"):
+                    if quantity_field not in row:
+                        raise ValueError(f"{collection} {quantity_field} is missing")
+                    if int(row.get(quantity_field, 0)) < 0:
+                        raise ValueError(f"{collection} {quantity_field} is negative")
             _validate_split(
                 row, collection, "parts_loaded",
                 ("production_parts_loaded", "bv_parts_loaded", "service_parts_loaded"), "load", require_complete_splits,
@@ -204,15 +214,15 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
             f"Carts {format_int(production_paint_carts)} Prd / {format_int(bv_paint_carts)} BV / {format_int(service_paint_carts)} Svc · Pieces {format_int(production_paint_pieces)} Prd / {format_int(bv_paint_pieces)} BV / {format_int(service_paint_pieces)} Svc",
             "#2f6f9f",
         ),
-        _card("PPY", format_percent(current["ppy"]), _rate_split(current, "ppy_approved", "paint_decision_pieces"), "#d78d23"),
+        _card("PPY (Paint Process Yield)", format_percent(current["ppy"]), _rate_split(current, "ppy_approved", "paint_decision_pieces"), "#d78d23"),
         _card("Paint FTY", format_percent(current["paint_fty"]), _rate_split(current, "paint_fty_approved", "paint_fty_total"), "#2f6f9f"),
-        _card("Receiving FTY", format_percent(current["receiving_fty"]), f"{format_int(current.get('receiving_approved'))} / {format_int(current.get('receiving_total'))} first decisions", "#38856d"),
-        _card("Final FTY", format_percent(current["final_fty"]), f"{format_int(current.get('final_approved'))} / {format_int(current.get('final_total'))} first decisions", "#8a6aa8"),
-        _card("Repaint", format_percent(current["repaint_percentage"]), f"{format_int(current.get('paint_fty_repaint_count'))} first-pass repaints", "#bb514b"),
+        _card("Receiving FTY", format_percent(current["receiving_fty"]), f"{format_int(current.get('receiving_approved'))} / {format_int(current.get('receiving_total'))} first decisions · Qty {format_int(current.get('receiving_quantity'))} by receive stamp", "#38856d"),
+        _card("Final FTY", format_percent(current["final_fty"]), f"{format_int(current.get('final_approved'))} / {format_int(current.get('final_total'))} first decisions · Qty {format_int(current.get('final_quantity'))} by final stamp", "#8a6aa8"),
+        _card("Repaint", format_percent(current["repaint_percentage"]), f"{format_int(current.get('paint_fty_repaint_count'))} first repaint-loop passes", "#bb514b"),
         _card("Paint plan composite", format_percent(current["paint_plan_composite"]), "proxy — not standard OEE", "#8a6aa8", "PROVISIONAL"),
         _card("Pieces shipped", format_int(current.get("parts_shipped")), "non-service total", "#bb514b"),
-        _card("Complete assy sets", format_int(current.get("complete_assy_sets")), "N33 four-piece patterns", "#147d86"),
-        _card("Assembled bumpers", format_int(current.get("assembled_bumper_count")), "N71-6171", "#2f6f9f"),
+        _card("Complete assy sets", format_int(current.get("complete_assy_sets")), "N33 / Chassis Fairing · dated by last assembled piece", "#147d86"),
+        _card("Assembled bumpers", format_int(current.get("assembled_bumper_count")), "N71-6171 · AssembledDate", "#2f6f9f"),
         _card("Trailers prepared", format_int(current.get("trailers_prepared")), trailer_detail, "#d78d23"),
     ]
 
