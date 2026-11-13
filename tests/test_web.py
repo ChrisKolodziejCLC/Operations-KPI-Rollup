@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 import threading
+from datetime import datetime, timedelta
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 import operations_kpi_rollup.web as web
 from operations_kpi_rollup.web import AppState, _is_private_address, create_server
@@ -17,6 +19,15 @@ def request_json(url, method="GET", payload=None, headers=None):
         return response.status, json.loads(response.read())
 
 
+def snapshot_for(report_date):
+    snapshot = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    date_text = report_date.isoformat()
+    snapshot["report_date"] = date_text
+    snapshot["generated_at"] = datetime.now(ZoneInfo("America/Indiana/Indianapolis")).isoformat(timespec="seconds")
+    snapshot["daily"][-1]["date"] = date_text
+    return snapshot
+
+
 def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
     monkeypatch.setenv("KPI_MIN_REFRESH_SECONDS", "0")
     state = AppState("fixture", tmp_path / "snapshots", FIXTURE)
@@ -30,15 +41,20 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
         assert health["status"] == "ok"
         assert health["mode"] == "fixture"
         assert health["refresh_boundary"] == "fixture-only"
+        assert health["refresh_in_progress"] is False
 
         status, snapshot = request_json(base + "/api/snapshot")
         assert status == 200
         assert snapshot["report_date"] == "2026-09-16"
 
+        status, dated_snapshot = request_json(base + "/api/snapshot?report_date=2026-09-16")
+        assert status == 200
+        assert dated_snapshot["report_date"] == "2026-09-16"
+
         status, refreshed = request_json(
             base + "/api/refresh",
             method="POST",
-            payload={"report_date": "2026-09-16"},
+            payload={"report_date": "2026-09-16", "force": True},
             headers={"Content-Type": "application/json", "X-Operations-KPI-Action": "refresh"},
         )
         assert status == 200
@@ -56,6 +72,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
+            assert "0.11.0-refresh-cache" in html
 
         with urlopen(base + "/app.js", timeout=5) as response:
             javascript = response.read().decode("utf-8")
@@ -87,8 +104,9 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "yieldRatio(metric.numerator, metric.denominator)" in javascript
             assert "fuka_trailers_prepared" in javascript
             assert "rangeLabel(snapshot.daily)" in javascript
-            assert "WALLBOARD_REFRESH_MS = 5 * 60 * 1000" in javascript
-            assert "refreshReport(localDateISO(), true)" in javascript
+            assert "WALLBOARD_POLL_MS = 30 * 1000" in javascript
+            assert "loadCachedReport(localDateISO(), true)" in javascript
+            assert "refreshReport(localDateISO(), true)" not in javascript
             assert "X-Operations-KPI-Refresh-Key" not in javascript
             assert "sessionStorage" not in javascript
 
@@ -120,7 +138,7 @@ def test_live_refresh_uses_private_lan_boundary_without_browser_key(tmp_path, mo
         status, refreshed = request_json(
             base + "/api/refresh",
             method="POST",
-            payload={"report_date": source["report_date"]},
+            payload={"report_date": source["report_date"], "force": True},
             headers={"Content-Type": "application/json", "X-Operations-KPI-Action": "refresh"},
         )
         assert status == 200
@@ -128,6 +146,8 @@ def test_live_refresh_uses_private_lan_boundary_without_browser_key(tmp_path, mo
         status, health = request_json(base + "/api/health")
         assert status == 200
         assert health["refresh_boundary"] == "private-lan-bounded"
+        assert health["last_refresh_source"] == "live-query"
+        assert health["last_query_duration_seconds"] is not None
     finally:
         server.shutdown()
         server.server_close()
@@ -140,3 +160,123 @@ def test_refresh_private_address_boundary():
     assert _is_private_address("::ffff:192.168.7.137")
     assert not _is_private_address("8.8.8.8")
     assert not _is_private_address("not-an-address")
+
+
+def test_historical_refresh_reuses_newest_immutable_snapshot(tmp_path, monkeypatch):
+    monkeypatch.setenv("KPI_MIN_REFRESH_SECONDS", "0")
+    source = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    report_date = datetime.fromisoformat(source["report_date"]).date()
+    calls = []
+
+    def fake_refresh(requested_date):
+        calls.append(requested_date)
+        return json.loads(json.dumps(source))
+
+    monkeypatch.setattr(web, "refresh_live_snapshot", fake_refresh)
+    state = AppState("live", tmp_path / "snapshots")
+
+    first = state.refresh(report_date, force=True)
+    second = state.refresh(report_date)
+
+    assert first == second
+    assert calls == [report_date]
+    assert len(list((tmp_path / "snapshots").glob("2026-09-16__*.json"))) == 1
+    assert state.health()["last_refresh_source"] == "historical-cache"
+
+
+def test_current_day_refresh_is_deduplicated_inside_freshness_window(tmp_path, monkeypatch):
+    monkeypatch.setenv("KPI_MIN_REFRESH_SECONDS", "0")
+    monkeypatch.setenv("KPI_REFRESH_FRESHNESS_SECONDS", "600")
+    state = AppState("live", tmp_path / "snapshots")
+    today = state._today()
+    source = snapshot_for(today)
+    calls = []
+
+    def fake_refresh(requested_date):
+        calls.append(requested_date)
+        return json.loads(json.dumps(source))
+
+    monkeypatch.setattr(web, "refresh_live_snapshot", fake_refresh)
+
+    first = state.refresh(today, force=True)
+    second = state.refresh(today)
+
+    assert first == second
+    assert calls == [today]
+    health = state.health()
+    assert health["last_refresh_source"] == "fresh-cache"
+    assert health["refresh_freshness_seconds"] == 600
+
+
+def test_historical_cache_is_recovered_after_a_newer_current_snapshot(tmp_path, monkeypatch):
+    monkeypatch.setenv("KPI_MIN_REFRESH_SECONDS", "0")
+    snapshot_dir = tmp_path / "snapshots"
+    historical = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    historical_date = datetime.fromisoformat(historical["report_date"]).date()
+    first_state = AppState("live", snapshot_dir)
+    today = first_state._today()
+    current = snapshot_for(today)
+
+    def first_refresh(requested_date):
+        source = historical if requested_date == historical_date else current
+        return json.loads(json.dumps(source))
+
+    monkeypatch.setattr(web, "refresh_live_snapshot", first_refresh)
+    first_state.refresh(historical_date, force=True)
+    first_state.refresh(today, force=True)
+
+    second_state = AppState("live", snapshot_dir)
+
+    def unexpected_refresh(_requested_date):
+        raise AssertionError("historical cache should avoid a live query")
+
+    monkeypatch.setattr(web, "refresh_live_snapshot", unexpected_refresh)
+    recovered = second_state.refresh(historical_date)
+
+    assert recovered["report_date"] == historical_date.isoformat()
+    assert second_state.health()["last_refresh_source"] == "historical-cache"
+
+
+def test_stale_current_snapshot_runs_the_live_query(tmp_path, monkeypatch):
+    monkeypatch.setenv("KPI_MIN_REFRESH_SECONDS", "0")
+    monkeypatch.setenv("KPI_REFRESH_FRESHNESS_SECONDS", "600")
+    state = AppState("live", tmp_path / "snapshots")
+    today = state._today()
+    stale = snapshot_for(today)
+    stale["generated_at"] = (
+        datetime.now(ZoneInfo("America/Indiana/Indianapolis")) - timedelta(minutes=20)
+    ).isoformat(timespec="seconds")
+    fresh = snapshot_for(today)
+    responses = [stale, fresh]
+    calls = []
+
+    def fake_refresh(requested_date):
+        calls.append(requested_date)
+        return json.loads(json.dumps(responses.pop(0)))
+
+    monkeypatch.setattr(web, "refresh_live_snapshot", fake_refresh)
+    state.refresh(today, force=True)
+    state.refresh(today)
+
+    assert calls == [today, today]
+    assert state.health()["last_refresh_source"] == "live-query"
+
+
+def test_live_state_runs_one_server_owned_initial_refresh(tmp_path, monkeypatch):
+    state = AppState("live", tmp_path / "snapshots", FIXTURE)
+    called = threading.Event()
+    calls = []
+
+    def fake_refresh(report_date, force=False):
+        calls.append((report_date, force))
+        called.set()
+        return json.loads(FIXTURE.read_text(encoding="utf-8"))
+
+    monkeypatch.setattr(state, "refresh", fake_refresh)
+    state.start_auto_refresh()
+    try:
+        assert called.wait(timeout=2)
+        assert calls == [(state._today(), False)]
+        assert state.health()["auto_refresh_running"] is True
+    finally:
+        state.stop_auto_refresh()

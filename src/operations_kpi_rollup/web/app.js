@@ -6,7 +6,7 @@ const palette = {
 };
 
 const EARLIEST_REPORT_DATE = '2026-09-08';
-const WALLBOARD_REFRESH_MS = 5 * 60 * 1000;
+const WALLBOARD_POLL_MS = 30 * 1000;
 let refreshInProgress = false;
 let displayedReportDate = '';
 
@@ -372,6 +372,18 @@ async function loadLatest(quiet = false) {
   } catch (_) { $('#health-state').textContent = 'Health endpoint unavailable'; }
 }
 
+async function loadCachedReport(reportDate, quiet = false) {
+  try {
+    const snapshot = await api(`/api/snapshot?report_date=${encodeURIComponent(reportDate)}`);
+    render(snapshot);
+    if (!quiet) setStatus(`${fullDateLabel(snapshot.report_date)} loaded from its saved snapshot.`);
+    return true;
+  } catch (error) {
+    if (!quiet) setStatus(error.message, true);
+    return false;
+  }
+}
+
 function updateNavigationState() {
   const selected = $('#date-input').value;
   const today = localDateISO();
@@ -393,7 +405,7 @@ async function refreshReport(reportDate = $('#date-input').value, quiet = false)
       body: JSON.stringify({report_date: reportDate})
     });
     render(snapshot);
-    if (!quiet) setStatus(`${fullDateLabel(snapshot.report_date)} loaded and saved as an immutable snapshot.`);
+    if (!quiet) setStatus(`${fullDateLabel(snapshot.report_date)} loaded.`);
     return true;
   } catch (error) {
     if (displayedReportDate) $('#date-input').value = displayedReportDate;
@@ -427,8 +439,8 @@ async function initialize() {
   updateNavigationState();
   if (wallboard) {
     await loadLatest(true);
-    await refreshReport(localDateISO(), true);
-    setInterval(() => refreshReport(localDateISO(), true), WALLBOARD_REFRESH_MS);
+    await loadCachedReport(localDateISO(), true);
+    setInterval(() => loadCachedReport(localDateISO(), true), WALLBOARD_POLL_MS);
   } else {
     await loadLatest();
   }

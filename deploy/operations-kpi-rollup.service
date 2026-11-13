@@ -21,6 +21,8 @@ Environment=KPI_SQL_EXPECTED_USER=OperationsKpiRollup_RO
 Environment=KPI_SQL_PROCEDURE_HASH=87B95E7AF33FCAE6F9FD3C9BC0D5F76D3E270ACDB1115A4E5E7C1F407A9D3422
 Environment=KPI_SQL_QUERY_TIMEOUT_SECONDS=300
 Environment=KPI_INCLUDE_PAINTERS=false
+Environment=KPI_REFRESH_FRESHNESS_SECONDS=600
+Environment=KPI_AUTO_REFRESH_SECONDS=600
 LoadCredentialEncrypted=operations-kpi-qpts-ro:/etc/credstore.encrypted/operations-kpi-qpts-ro
 StateDirectory=operations-kpi-rollup
 StateDirectoryMode=0700

@@ -13,6 +13,7 @@
 - Outbound mail: none
 - QPTS writes: none
 - Employee detail: disabled by default
+- Refresh ownership: one service-side current-day producer; wallboards consume cached snapshots only
 
 The initial LAN pilot is a metric-validation surface, not yet the final leadership wallboard. Before broad promotion it needs an approved DNS/TLS/authentication route and metric-owner signoff.
 
@@ -22,7 +23,7 @@ The service expects one encrypted systemd credential:
 
 1. `operations-kpi-qpts-ro` — a SQL Server connection string for the exact approved server, database, and execute-only login.
 
-Never place its value in Git, a unit `Environment=` line, a change record, command output, or chat. Browser refresh requests are limited by private-network origin, a required action header, strict date bounds, a global execution lock, and rate limiting; the SQL identity remains execute-only and the approved procedure hash remains pinned.
+Never place its value in Git, a unit `Environment=` line, a change record, command output, or chat. Browser refresh requests are limited by private-network origin, a required action header, strict date bounds, per-date snapshot reuse, a global execution lock, freshness deduplication, and rate limiting; the SQL identity remains execute-only and the approved procedure hash remains pinned. The service owns the ten-minute current-day refresh schedule. Wallboards poll the current-day cache and never initiate SQL.
 
 ## Release procedure
 
@@ -33,7 +34,7 @@ Never place its value in Git, a unit `Environment=` line, a change record, comma
 5. Verify every release hash before changing `current`.
 6. Install the reviewed unit and encrypted SQL credential.
 7. Point `current` at the new release, reload systemd, enable, and start the service.
-8. Verify unit hardening, port ownership, `/api/health`, cached snapshot state, one private-LAN bounded read-only refresh, and immutable snapshot creation.
+8. Verify unit hardening, port ownership, `/api/health`, one service-owned private-LAN bounded read-only refresh, immutable snapshot creation, a same-day cache hit, a historical cache hit, and wallboard GET-only polling.
 9. Recheck all pre-existing GP-AI01 protected services and listener ownership.
 
 Any approved procedure change must be committed as a hash-gated migration, previewed in a rolled-back SQL transaction, and paired with a reviewed reverse migration before it is applied. Update the pinned procedure hash in both source and the deployed unit only after the candidate hash is recorded.

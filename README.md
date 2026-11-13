@@ -53,6 +53,8 @@ Version 0.9.0 keeps the PPY and FTY tiles side by side for **Repaint** and **Rej
 
 Version 0.10.0 adds direct Previous, Today, Next, date-picker, and Load Selected Day controls. The header separately identifies the selected report date and the full daily range represented by its snapshot. Wallboard mode requests the Grand Prairie local current day at startup and every five minutes, while retaining the latest immutable snapshot if a refresh is unavailable. The browser refresh key was removed; the service retains the private-network source gate, required action header, date bounds, one-at-a-time execution, rate limiting, execute-only SQL identity, and pinned procedure hash.
 
+Version 0.11.0 makes refresh ownership server-side. Historical navigation reuses the newest valid immutable snapshot for that date, and repeated current-day requests inside the default ten-minute freshness window return the saved snapshot instead of executing SQL. One server worker refreshes the current day every ten minutes; wallboard browsers poll the cached current-day snapshot every 30 seconds and never initiate SQL themselves. The health endpoint reports the configured intervals, producer state, latest refresh source, and last SQL duration. The stored procedure, KPI formulas, QPTS permissions, and immutable snapshot contract are unchanged.
+
 Run the safe local fixture mode:
 
 ```bash
