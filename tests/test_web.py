@@ -61,8 +61,9 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "service_paint_carts" in javascript
             assert "production_paint_pieces_processed" in javascript
             assert "service_paint_pieces_processed" in javascript
-            assert "splitMetricCard('Parts loaded'" in javascript
-            assert "splitMetricCard('Paint processed'" in javascript
+            assert "splitMetricCard('Parts loaded', current.parts_loaded" in javascript
+            assert "splitMetricCard('Paint processed', current.paint_carts" in javascript
+            assert "metric-split-total" in javascript
     finally:
         server.shutdown()
         server.server_close()

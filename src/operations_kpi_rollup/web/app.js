@@ -71,11 +71,12 @@ function metricCard(label, value, detail, color) {
   return card;
 }
 
-function splitMetricCard(label, rows, color) {
+function splitMetricCard(label, total, rows, color) {
   const card = document.createElement('article');
   card.className = 'metric-card split-count-card';
   card.style.setProperty('--accent', color);
   const labelNode = document.createElement('span'); labelNode.append(text(label));
+  const totalNode = document.createElement('strong'); totalNode.className = 'metric-split-total'; totalNode.append(text(integer(total)));
   const list = document.createElement('div'); list.className = 'metric-split-list';
   rows.forEach(row => {
     const line = document.createElement('div'); line.className = 'metric-split-row';
@@ -84,7 +85,7 @@ function splitMetricCard(label, rows, color) {
     value.append(text(`${integer(row.production)} Prd / ${integer(row.service)} Svc`));
     line.append(rowLabel, value); list.append(line);
   });
-  card.append(labelNode, list);
+  card.append(labelNode, totalNode, list);
   return card;
 }
 
@@ -108,11 +109,11 @@ function renderCards(snapshot) {
     ['Trailers prepared', integer(current.trailers_prepared), 'snapshot value', palette.amber]
   ];
   const container = $('#cards'); container.replaceChildren();
-  container.append(splitMetricCard('Parts loaded', [
+  container.append(splitMetricCard('Parts loaded', current.parts_loaded, [
     {label:'Carts', production:carts.production, service:carts.service},
     {label:'Parts', production:loaded.production, service:loaded.service}
   ], palette.teal));
-  container.append(splitMetricCard('Paint processed', [
+  container.append(splitMetricCard('Paint processed', current.paint_carts, [
     {label:'Carts', production:paintCarts.production, service:paintCarts.service},
     {label:'Pieces', production:paintPieces.production, service:paintPieces.service}
   ], palette.blue));
