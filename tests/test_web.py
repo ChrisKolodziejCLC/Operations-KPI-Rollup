@@ -42,6 +42,8 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
         assert health["mode"] == "fixture"
         assert health["refresh_boundary"] == "fixture-only"
         assert health["refresh_in_progress"] is False
+        assert health["next_auto_refresh_at"] is None
+        assert datetime.fromisoformat(health["server_time"]).tzinfo is not None
 
         status, snapshot = request_json(base + "/api/snapshot")
         assert status == 200
@@ -72,7 +74,8 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.11.0-refresh-cache" in html
+            assert "0.12.0-shipment-countdown" in html
+            assert 'id="refresh-countdown"' in html
 
         with urlopen(base + "/app.js", timeout=5) as response:
             javascript = response.read().decode("utf-8")
@@ -103,8 +106,18 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "reject_fty_approved" in javascript
             assert "yieldRatio(metric.numerator, metric.denominator)" in javascript
             assert "fuka_trailers_prepared" in javascript
+            assert "shippedPieceDetail(snapshot)" in javascript
+            assert "Bumpers / ${integer(counts.fenders)} Fenders / ${integer(counts.fairings)} Fairings" in javascript
             assert "rangeLabel(snapshot.daily)" in javascript
             assert "WALLBOARD_POLL_MS = 30 * 1000" in javascript
+            assert "HEALTH_POLL_MS = 5 * 1000" in javascript
+            assert "COUNTDOWN_TICK_MS = 1000" in javascript
+            assert "health.next_auto_refresh_at" in javascript
+            assert "health.server_time" in javascript
+            assert "serverClockOffsetMs" in javascript
+            assert "Auto refresh in ${minutes}:${seconds}" in javascript
+            assert javascript.index("['Pieces shipped'") > javascript.index("['Assembled bumpers'")
+            assert javascript.index("['Pieces shipped'") < javascript.index("['Trailers prepared'")
             assert "loadCachedReport(localDateISO(), true)" in javascript
             assert "refreshReport(localDateISO(), true)" not in javascript
             assert "X-Operations-KPI-Refresh-Key" not in javascript
@@ -119,6 +132,8 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert ".dual-yield-grid{display:grid;grid-template-columns:1fr 1fr" in styles
             assert ".dual-yield-value" in styles
             assert "white-space:nowrap" in styles
+            assert ".header-status .refresh-countdown" in styles
+            assert "font-variant-numeric:tabular-nums" in styles
     finally:
         server.shutdown()
         server.server_close()
@@ -206,6 +221,9 @@ def test_current_day_refresh_is_deduplicated_inside_freshness_window(tmp_path, m
     health = state.health()
     assert health["last_refresh_source"] == "fresh-cache"
     assert health["refresh_freshness_seconds"] == 600
+    next_refresh = datetime.fromisoformat(health["next_auto_refresh_at"])
+    generated_at = datetime.fromisoformat(first["generated_at"])
+    assert (next_refresh - generated_at).total_seconds() == 600
 
 
 def test_historical_cache_is_recovered_after_a_newer_current_snapshot(tmp_path, monkeypatch):

@@ -7,8 +7,14 @@ const palette = {
 
 const EARLIEST_REPORT_DATE = '2026-09-08';
 const WALLBOARD_POLL_MS = 30 * 1000;
+const HEALTH_POLL_MS = 5 * 1000;
+const COUNTDOWN_TICK_MS = 1000;
 let refreshInProgress = false;
 let displayedReportDate = '';
+let autoRefreshRunning = false;
+let autoRefreshInProgress = false;
+let nextAutoRefreshAt = null;
+let serverClockOffsetMs = 0;
 
 const $ = (selector) => document.querySelector(selector);
 const svgNode = (name, attributes = {}) => {
@@ -87,6 +93,19 @@ function rateBreakdown(row, numerator, denominator) {
   return `Prd ${values[0]} / BV ${values[1]} / Svc ${values[2]}`;
 }
 
+function shippedPieceDetail(snapshot) {
+  const counts = {bumpers:0, fenders:0, fairings:0};
+  (snapshot.shipping || []).forEach(row => {
+    if (row.date !== snapshot.report_date) return;
+    const lineSet = String(row.line_set || '').trim().toLowerCase();
+    const pieces = Number(row.pieces || 0);
+    if (lineSet === 'bumpers') counts.bumpers += pieces;
+    else if (lineSet === 'fenders') counts.fenders += pieces;
+    else if (lineSet === 'chassis fairings' || lineSet === 'fairings') counts.fairings += pieces;
+  });
+  return `${integer(counts.bumpers)} Bumpers / ${integer(counts.fenders)} Fenders / ${integer(counts.fairings)} Fairings`;
+}
+
 function composite(row) {
   const attainment = ratio(row.paint_pieces_processed, row.pieces_scheduled);
   const quality = yieldRatio(Number(row.paint_fty_total || 0) - Number(row.paint_fty_repaint_count || 0), row.paint_fty_total);
@@ -155,6 +174,7 @@ function renderCards(snapshot) {
   const carts = cartSplit(current);
   const paintCarts = paintCartSplit(current);
   const paintPieces = paintPieceSplit(current);
+  const shippedDetail = shippedPieceDetail(snapshot);
   let trailerDetail = `${integer(current.fuka_trailers_prepared)} FUKA / ${integer(current.bumper_trailers_prepared)} Bumpers / ${integer(current.fairing_trailers_prepared)} Fairings`;
   if (Number(current.other_trailers_prepared || 0) > 0) trailerDetail += ` / ${integer(current.other_trailers_prepared)} Other`;
   const cards = [
@@ -162,9 +182,9 @@ function renderCards(snapshot) {
     ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} first decisions · Qty ${integer(current.receiving_quantity)} by receive stamp`, palette.green],
     ['Final FTY', percent(ratio(current.final_approved, current.final_total)), `${integer(current.final_approved)} / ${integer(current.final_total)} first decisions · Qty ${integer(current.final_quantity)} by final stamp`, palette.purple],
     ['Paint plan composite', percent(composite(current)), 'provisional · not standard OEE', palette.purple],
-    ['Pieces shipped', integer(current.parts_shipped), 'non-service total', palette.red],
     ['Complete assy sets', integer(current.complete_assy_sets), 'N33 / Chassis Fairing · dated by last assembled piece', palette.teal],
     ['Assembled bumpers', integer(current.assembled_bumper_count), 'N71-6171 · AssembledDate', palette.blue],
+    ['Pieces shipped', integer(current.parts_shipped), shippedDetail, palette.red],
     ['Trailers prepared', integer(current.trailers_prepared), trailerDetail, palette.amber]
   ];
   const container = $('#cards'); container.replaceChildren();
@@ -360,6 +380,55 @@ async function api(path, options = {}) {
   return payload;
 }
 
+function renderRefreshCountdown() {
+  const node = $('#refresh-countdown');
+  node.classList.toggle('refreshing', autoRefreshInProgress);
+  if (autoRefreshInProgress) {
+    node.textContent = 'Refreshing data…';
+    return;
+  }
+  if (!autoRefreshRunning) {
+    node.textContent = 'Auto refresh unavailable';
+    return;
+  }
+  if (!nextAutoRefreshAt) {
+    node.textContent = 'Auto refresh schedule pending';
+    return;
+  }
+  const remainingSeconds = Math.max(0, Math.ceil((nextAutoRefreshAt.getTime() - (Date.now() + serverClockOffsetMs)) / 1000));
+  if (remainingSeconds === 0) {
+    node.textContent = 'Auto refresh due now';
+    return;
+  }
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = String(remainingSeconds % 60).padStart(2, '0');
+  node.textContent = `Auto refresh in ${minutes}:${seconds}`;
+}
+
+function applyHealth(health) {
+  $('#health-state').textContent = `${health.status} · ${health.mode} mode`;
+  autoRefreshRunning = Boolean(health.auto_refresh_running);
+  autoRefreshInProgress = Boolean(health.refresh_in_progress);
+  const serverTime = health.server_time ? new Date(health.server_time) : null;
+  serverClockOffsetMs = serverTime && Number.isFinite(serverTime.getTime()) ? serverTime.getTime() - Date.now() : 0;
+  const parsed = health.next_auto_refresh_at ? new Date(health.next_auto_refresh_at) : null;
+  nextAutoRefreshAt = parsed && Number.isFinite(parsed.getTime()) ? parsed : null;
+  renderRefreshCountdown();
+}
+
+async function loadHealth() {
+  try {
+    applyHealth(await api('/api/health'));
+  } catch (_) {
+    autoRefreshRunning = false;
+    autoRefreshInProgress = false;
+    nextAutoRefreshAt = null;
+    serverClockOffsetMs = 0;
+    $('#health-state').textContent = 'Health endpoint unavailable';
+    renderRefreshCountdown();
+  }
+}
+
 async function loadLatest(quiet = false) {
   try {
     const snapshot = await api('/api/snapshot'); render(snapshot);
@@ -367,9 +436,7 @@ async function loadLatest(quiet = false) {
   } catch (error) {
     if (!quiet) setStatus(error.message, true);
   }
-  try {
-    const health = await api('/api/health'); $('#health-state').textContent = `${health.status} · ${health.mode} mode`;
-  } catch (_) { $('#health-state').textContent = 'Health endpoint unavailable'; }
+  await loadHealth();
 }
 
 async function loadCachedReport(reportDate, quiet = false) {
@@ -444,6 +511,8 @@ async function initialize() {
   } else {
     await loadLatest();
   }
+  setInterval(loadHealth, HEALTH_POLL_MS);
+  setInterval(renderRefreshCountdown, COUNTDOWN_TICK_MS);
 }
 
 initialize();

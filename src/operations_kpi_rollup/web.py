@@ -156,6 +156,21 @@ class AppState:
 
     def health(self) -> Dict[str, Any]:
         current = self.snapshot()
+        current_day = self.snapshot(self._today())
+        timezone_name = os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis")
+        zone = ZoneInfo(timezone_name)
+        server_time = datetime.now(zone)
+        next_auto_refresh_at = None
+        if self.mode == "live" and current_day is not None:
+            try:
+                observed = datetime.fromisoformat(str(current_day["generated_at"]))
+                if observed.tzinfo is None:
+                    observed = observed.replace(tzinfo=zone)
+                next_auto_refresh_at = (
+                    observed.astimezone(zone) + timedelta(seconds=self.auto_refresh_seconds)
+                ).isoformat(timespec="seconds")
+            except (KeyError, TypeError, ValueError):
+                next_auto_refresh_at = None
         return {
             "status": "ok" if current else "ready_no_snapshot",
             "service": "operations-kpi-rollup",
@@ -163,9 +178,11 @@ class AppState:
             "report_date": current.get("report_date") if current else None,
             "generated_at": current.get("generated_at") if current else None,
             "refresh_boundary": "private-lan-bounded" if self.mode == "live" else "fixture-only",
+            "server_time": server_time.isoformat(timespec="seconds"),
             "refresh_freshness_seconds": self.refresh_freshness_seconds,
             "auto_refresh_seconds": self.auto_refresh_seconds if self.mode == "live" else None,
             "auto_refresh_running": bool(self._auto_refresh_thread and self._auto_refresh_thread.is_alive()),
+            "next_auto_refresh_at": next_auto_refresh_at,
             "refresh_in_progress": self._refresh_lock.locked(),
             "last_refresh_source": self._last_refresh_source,
             "last_query_duration_seconds": self._last_query_duration_seconds,
@@ -297,7 +314,7 @@ class AppServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPI/0.11"
+    server_version = "OperationsKPI/0.12"
     sys_version = ""
 
     @property

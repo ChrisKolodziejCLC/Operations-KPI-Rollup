@@ -229,6 +229,26 @@ def _rate_split(row: Dict[str, Any], numerator: str, denominator: str) -> str:
     return f"Prd {values[0]} / BV {values[1]} / Svc {values[2]}"
 
 
+def _shipped_piece_detail(snapshot: Dict[str, Any], report_date: str) -> str:
+    counts = {"bumpers": 0, "fenders": 0, "fairings": 0}
+    for row in snapshot.get("shipping", []):
+        if row.get("date") != report_date:
+            continue
+        line_set = str(row.get("line_set") or "").strip().lower()
+        pieces = int(row.get("pieces") or 0)
+        if line_set == "bumpers":
+            counts["bumpers"] += pieces
+        elif line_set == "fenders":
+            counts["fenders"] += pieces
+        elif line_set in {"chassis fairings", "fairings"}:
+            counts["fairings"] += pieces
+    return (
+        f"{format_int(counts['bumpers'])} Bumpers / "
+        f"{format_int(counts['fenders'])} Fenders / "
+        f"{format_int(counts['fairings'])} Fairings"
+    )
+
+
 def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     validate_snapshot(snapshot)
     report_date = snapshot["report_date"]
@@ -251,6 +271,7 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     )
     if current.get("other_trailers_prepared", 0):
         trailer_detail += f" / {format_int(current.get('other_trailers_prepared'))} Other"
+    shipped_piece_detail = _shipped_piece_detail(snapshot, report_date)
 
     cards = [
         _card(
@@ -273,9 +294,9 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         _card("Receiving FTY", format_percent(current["receiving_fty"]), f"{format_int(current.get('receiving_approved'))} / {format_int(current.get('receiving_total'))} first decisions · Qty {format_int(current.get('receiving_quantity'))} by receive stamp", "#38856d"),
         _card("Final FTY", format_percent(current["final_fty"]), f"{format_int(current.get('final_approved'))} / {format_int(current.get('final_total'))} first decisions · Qty {format_int(current.get('final_quantity'))} by final stamp", "#8a6aa8"),
         _card("Paint plan composite", format_percent(current["paint_plan_composite"]), "proxy — not standard OEE", "#8a6aa8", "PROVISIONAL"),
-        _card("Pieces shipped", format_int(current.get("parts_shipped")), "non-service total", "#bb514b"),
         _card("Complete assy sets", format_int(current.get("complete_assy_sets")), "N33 / Chassis Fairing · dated by last assembled piece", "#147d86"),
         _card("Assembled bumpers", format_int(current.get("assembled_bumper_count")), "N71-6171 · AssembledDate", "#2f6f9f"),
+        _card("Pieces shipped", format_int(current.get("parts_shipped")), shipped_piece_detail, "#bb514b"),
         _card("Trailers prepared", format_int(current.get("trailers_prepared")), trailer_detail, "#d78d23"),
     ]
 

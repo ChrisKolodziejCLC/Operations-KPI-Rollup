@@ -91,7 +91,11 @@ def result_sets():
         {"index": 4, "rows": [metric_row("MONTH", "2026-11-01", "2026-11-11", days=8)]},
         {"index": 5, "rows": [metric_row("QUARTER", "2026-10-01", "2026-11-11", days=30)]},
         {"index": 9, "rows": [{"inspection_step": "End of Line", "defect_description": "Dirt", "defect_count": "7"}]},
-        {"index": 12, "rows": [{"report_date": "2026-11-11", "line_set": "Bumpers", "pieces_shipped": "55"}]},
+        {"index": 12, "rows": [
+            {"report_date": "2026-11-11", "line_set": "Bumpers", "pieces_shipped": "55"},
+            {"report_date": "2026-11-11", "line_set": "Fenders", "pieces_shipped": "20"},
+            {"report_date": "2026-11-11", "line_set": "Chassis Fairings", "pieces_shipped": "15"},
+        ]},
     ]
 
 
@@ -146,10 +150,13 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert cards[6]["value"] == "3.3%"
     assert cards[7]["detail"] == "97 / 99 first decisions · Qty 98 by receive stamp"
     assert cards[8]["detail"] == "100 / 101 first decisions · Qty 100 by final stamp"
+    assert cards[-2]["label"] == "Pieces shipped"
+    assert cards[-2]["value"] == "90"
+    assert cards[-2]["detail"] == "55 Bumpers / 20 Fenders / 15 Fairings"
     assert cards[-1]["detail"] == "2 FUKA / 1 Bumpers / 1 Fairings"
     assert [row["period_type"] for row in snapshot["periods"]] == ["WEEK", "MONTH", "QUARTER"]
     assert snapshot["top_defects"] == [{"step": "End of Line", "description": "Dirt", "count": 7}]
-    assert snapshot["shipping"][0]["pieces"] == 55
+    assert [row["pieces"] for row in snapshot["shipping"]] == [55, 20, 15]
     assert snapshot["painters"] == []
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
     assert snapshot["source_evidence"]["procedure_definition_sha256"] == "87B95E7AF33FCAE6F9FD3C9BC0D5F76D3E270ACDB1115A4E5E7C1F407A9D3422"

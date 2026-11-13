@@ -55,6 +55,8 @@ Version 0.10.0 adds direct Previous, Today, Next, date-picker, and Load Selected
 
 Version 0.11.0 makes refresh ownership server-side. Historical navigation reuses the newest valid immutable snapshot for that date, and repeated current-day requests inside the default ten-minute freshness window return the saved snapshot instead of executing SQL. One server worker refreshes the current day every ten minutes; wallboard browsers poll the cached current-day snapshot every 30 seconds and never initiate SQL themselves. The health endpoint reports the configured intervals, producer state, latest refresh source, and last SQL duration. The stored procedure, KPI formulas, QPTS permissions, and immutable snapshot contract are unchanged.
 
+Version 0.12.0 makes that server-owned schedule visible. The header counts down to the next ten-minute current-day refresh, shows when the bounded query is running, and resynchronizes from the health endpoint while the wallboard continues to display and poll the saved snapshot. Pieces Shipped now sits immediately left of the rightmost Trailers Prepared tile and lists the saved Bumpers, Fenders, and Chassis Fairings mix beneath its unchanged non-service total. No SQL, KPI formula, snapshot grain, or database permission changes are involved.
+
 Run the safe local fixture mode:
 
 ```bash

@@ -25,7 +25,9 @@ h1{font-size:clamp(2rem,4vw,3.6rem);line-height:1;margin:0;letter-spacing:-.04em
 .subtitle{margin:.65rem 0 0;color:#d8e6ee}
 .header-status{display:grid;justify-items:end;gap:.3rem;text-align:right}
 .header-status strong{font-size:1.15rem}
-.header-status span:last-child{color:#b9cbd6;font-size:.8rem}
+.header-status #generated-at{color:#b9cbd6;font-size:.8rem}
+.header-status .refresh-countdown{color:#b7efec;font-size:.82rem;font-weight:800;font-variant-numeric:tabular-nums}
+.header-status .refresh-countdown.refreshing{color:#ffd78d}
 .pilot-badge{display:inline-flex;padding:.35rem .65rem;border:1px solid #7dcfd1;border-radius:999px;color:#b7efec;font-size:.68rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
 main{max-width:1440px;margin:0 auto;padding:1.4rem 2rem 3rem}
 .control-bar{display:grid;grid-template-columns:minmax(150px,190px) auto auto auto 1fr;gap:.8rem;align-items:end;padding:1rem 1.1rem;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow)}
