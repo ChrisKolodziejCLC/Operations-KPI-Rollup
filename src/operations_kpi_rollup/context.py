@@ -43,7 +43,10 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
     date.fromisoformat(snapshot["report_date"])
     if not any(row.get("date") == snapshot["report_date"] for row in snapshot["daily"]):
         raise ValueError("snapshot daily rows do not include report_date")
-    require_complete_splits = snapshot.get("scope", {}).get("method_version") == "operations-kpi-live-v5-bv-quality-trailer-split"
+    require_complete_splits = snapshot.get("scope", {}).get("method_version") in {
+        "operations-kpi-live-v5-bv-quality-trailer-split",
+        "operations-kpi-live-v6-original-paint-repaint-cohort",
+    }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
             _validate_split(

@@ -47,7 +47,9 @@ Version 0.2 adds a dependency-free web service intended for an isolated GP-AI01 
 - perform no QPTS writes and send no mail;
 - omit employee-level painter detail unless explicitly enabled.
 
-The Parts Loaded card counts both normal and repaint load events. Version 0.3.0 presents only the production/service splits for loaded carts and loaded parts, without repeating their combined totals on the tile. The Paint Processed tile uses the same presentation for distinct oven-exit carts and oven-exit piece events. The retained totals still drive charts and hard validation: each production/service pair must equal its total, and carts cannot span the two layering systems.
+The Parts Loaded card counts both normal and repaint load events. Version 0.5.0 retains each large tile total and shows regular-weight `Prd / BV / Svc` detail for loaded carts and parts, Paint Processed carts and pieces, PPY, and Paint FTY. Trailers Prepared retains its total with FUKA, Bumpers, and Fairings beneath it. The retained totals still drive charts and hard validation: every split must equal its total, and cart classes are mutually exclusive.
+
+Repaint percentage is cohort-based. Once QPTS permanently classifies a part as line-end `Repaint` or repair `WFP`, that part counts against the date of its original first paint pass. A classification or physical repaint recorded later may restate an earlier day, but it never shifts that loss onto the later rework date.
 
 Run the safe local fixture mode:
 

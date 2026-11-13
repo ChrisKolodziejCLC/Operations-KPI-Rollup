@@ -185,7 +185,7 @@ def snapshot_from_rollup(
         "generated_at": observed_at.isoformat(timespec="seconds"),
         "scope": {
             "label": "Grand Prairie operations; read-only on-demand pilot",
-            "method_version": "operations-kpi-live-v5-bv-quality-trailer-split",
+            "method_version": "operations-kpi-live-v6-original-paint-repaint-cohort",
             "history_start": history_start,
             "timezone": timezone_name,
         },
@@ -213,6 +213,7 @@ def snapshot_from_rollup(
         "data_quality_notes": [
             "Period averages use represented production days rather than every calendar date.",
             "Every displayed quality rate is recalculated from its saved numerator and denominator.",
+            "A permanent Repaint/WFP classification is attributed to the part's original first-paint date, even when classification or rework occurs later.",
             "The legacy Paint OEE output is labeled Paint plan composite because it is not standard OEE.",
             painter_note,
         ],
@@ -220,7 +221,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "7D1034139E5AE0A008CFD39A8403A26C260FD6AC6B1BDE758E03EAB78867D7F8",
+                "CCB07D366B30B7B3ACB08836307DCC053D25C8A69614905CE56BF50AEECA3539",
             ).upper(),
             "detail_result_sets_requested": False,
         },

@@ -33,7 +33,7 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `production_paint_pieces_processed` / `bv_paint_pieces_processed` / `service_paint_pieces_processed` | Oven-exit piece events split into Prd, BV, and Svc. |
 | `paint_decision_pieces` / `ppy_approved` | Overall PPY denominator and approved numerator. The matching `production_`, `bv_`, and `service_` fields retain each class numerator and denominator. |
 | `paint_fty_total` / `paint_fty_approved` | Overall initial paint passes and approved initial passes. The matching `production_`, `bv_`, and `service_` fields retain each class numerator and denominator. |
-| `paint_fty_repaint_count` | Initial passes whose first applicable outcome was repaint. |
+| `paint_fty_repaint_count` | Initial paint passes whose part is permanently classified `Repaint` at line end or `WFP` in repair. The count remains assigned to the original first-paint date even when the classification or physical repaint happens later. |
 | `receiving_total` / `receiving_approved` | Parts with a first receiving decision and those approved first pass. |
 | `final_total` / `final_approved` | Parts with a first final decision and those approved first pass. |
 | `eol_inspected` | End-of-line inspections under the approved event-count rule. |
@@ -59,7 +59,7 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 - `Paint FTY = paint_fty_approved / paint_fty_total`
 - `Receiving FTY = receiving_approved / receiving_total`
 - `Final FTY = final_approved / final_total`
-- `Repaint percentage = paint_fty_repaint_count / paint_fty_total`
+- `Repaint percentage = permanently classified Repaint/WFP initial passes / initial passes`, grouped by the original first-paint date
 - `Paint plan composite = min(paint pieces / scheduled pieces, 1) × ((paint FTY total - repaint count) / paint FTY total) × min(active paint hours / scheduled hours, 1)`
 
 The last value is an inherited proxy and must not be renamed OEE without a separate approved definition for runtime, ideal cycle time, and good count.
@@ -71,7 +71,7 @@ The future SQL adapter must be read-only and emit this contract. Before it is co
 1. declare the timezone and a single inclusive/exclusive cutoff convention;
 2. declare whether service parts are included for each metric;
 3. order decisions by an approved event timestamp and stable tie-breaker;
-4. bind repair/repaint events to the relevant pass, with an upper bound before the next pass;
+4. attribute permanent Repaint/WFP classification to the original first-paint cohort rather than the later rework date;
 5. distinguish event counts, distinct pieces, and distinct carts in both field names and documentation;
 6. derive `production_day` from an approved calendar or activity rule;
 7. snapshot mutable trailer and disposition values at generation time;
