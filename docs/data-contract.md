@@ -26,9 +26,11 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `calendar_days` | Calendar dates in a period, including no-production dates. |
 | `data_days` | Represented production days with reportable activity. |
 | `parts_loaded` / `carts_loaded` | Loaded piece events (including repaint loads) and distinct non-null loaded carts. |
+| `unique_pieces_loaded` | Distinct QPTS Part IDs represented by load events on that report date. For aggregate periods, this is the sum of the represented daily distinct counts, not a cross-day deduplication. |
 | `production_parts_loaded` / `bv_parts_loaded` / `service_parts_loaded` | Loaded piece events split into ordinary production, BV (`N33` or `N71-6171`), and QPTS `Model = Service`. Service takes precedence over BV; the three fields sum to `parts_loaded`. |
 | `production_carts_loaded` / `bv_carts_loaded` / `service_carts_loaded` | Distinct loaded carts under the same classes. Cart precedence is Service, then BV, then Prd so each cart is counted once and the three fields sum to `carts_loaded`. |
 | `paint_carts` / `paint_pieces_processed` | Distinct paint carts and oven-exit pieces under the approved scope. |
+| `unique_pieces_processed` | Distinct QPTS Part IDs represented by paint oven-exit events on that report date. For aggregate periods, this is the sum of the represented daily distinct counts, not a cross-day deduplication. |
 | `production_paint_carts` / `bv_paint_carts` / `service_paint_carts` | Distinct oven-exit carts split into Prd, BV, and Svc using the same exclusive cart precedence. |
 | `production_paint_pieces_processed` / `bv_paint_pieces_processed` / `service_paint_pieces_processed` | Oven-exit piece events split into Prd, BV, and Svc. |
 | `paint_decision_pieces` / `ppy_approved` | Overall PPY denominator and approved numerator. The matching `production_`, `bv_`, and `service_` fields retain each class numerator and denominator. |
@@ -53,6 +55,8 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 - `carts_loaded = production_carts_loaded + bv_carts_loaded + service_carts_loaded`
 - `paint_carts = production_paint_carts + bv_paint_carts + service_paint_carts`
 - `paint_pieces_processed = production_paint_pieces_processed + bv_paint_pieces_processed + service_paint_pieces_processed`
+- `0 <= unique_pieces_loaded <= parts_loaded`
+- `0 <= unique_pieces_processed <= paint_pieces_processed`
 - each PPY and Paint FTY class rate uses its saved class numerator and denominator
 - `trailers_prepared = FUKA + Bumpers + Fairings + internal Other`
 - `PPY = ppy_approved / paint_decision_pieces`

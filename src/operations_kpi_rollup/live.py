@@ -52,6 +52,7 @@ def _metric_fields(row: Mapping[str, Any]) -> Dict[str, int]:
         "production_parts_loaded": "production_parts_loaded",
         "bv_parts_loaded": "bv_parts_loaded",
         "service_parts_loaded": "service_parts_loaded",
+        "unique_pieces_loaded": "unique_pieces_loaded",
         "carts_loaded": "carts_loaded",
         "production_carts_loaded": "production_carts_loaded",
         "bv_carts_loaded": "bv_carts_loaded",
@@ -64,6 +65,7 @@ def _metric_fields(row: Mapping[str, Any]) -> Dict[str, int]:
         "production_paint_pieces_processed": "production_paint_pieces_processed",
         "bv_paint_pieces_processed": "bv_paint_pieces_processed",
         "service_paint_pieces_processed": "service_paint_pieces_processed",
+        "unique_pieces_processed": "unique_pieces_processed",
         "paint_decision_pieces": "paint_decision_pieces",
         "production_paint_decision_pieces": "production_paint_decision_pieces",
         "bv_paint_decision_pieces": "bv_paint_decision_pieces",
@@ -185,7 +187,7 @@ def snapshot_from_rollup(
         "generated_at": observed_at.isoformat(timespec="seconds"),
         "scope": {
             "label": "Grand Prairie operations; read-only on-demand pilot",
-            "method_version": "operations-kpi-live-v6-original-paint-repaint-cohort",
+            "method_version": "operations-kpi-live-v7-daily-unique-pieces",
             "history_start": history_start,
             "timezone": timezone_name,
         },
@@ -221,7 +223,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "CCB07D366B30B7B3ACB08836307DCC053D25C8A69614905CE56BF50AEECA3539",
+                "CB983D8F63982AB833019AEDD0D13067C644FD8231A25E8580B752BD36954714",
             ).upper(),
             "detail_result_sets_requested": False,
         },

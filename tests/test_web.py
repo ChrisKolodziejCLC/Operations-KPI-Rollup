@@ -65,8 +65,11 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "production_paint_pieces_processed" in javascript
             assert "bv_paint_pieces_processed" in javascript
             assert "service_paint_pieces_processed" in javascript
-            assert "splitMetricCard('Parts loaded', current.parts_loaded" in javascript
-            assert "splitMetricCard('Paint processed', current.paint_carts" in javascript
+            assert "unique_pieces_loaded" in javascript
+            assert "unique_pieces_processed" in javascript
+            assert "splitMetricCard('Pieces loaded', current.parts_loaded" in javascript
+            assert "splitMetricCard('Pieces painted', current.paint_pieces_processed" in javascript
+            assert "unique === undefined ? '—' : integer(unique)" in javascript
             assert "metric-split-total" in javascript
             assert "rateBreakdown(current, 'ppy_approved', 'paint_decision_pieces')" in javascript
             assert "fuka_trailers_prepared" in javascript

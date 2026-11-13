@@ -20,6 +20,7 @@ def metric_row(period_type, start, end, available=1, days=1):
         "production_parts_loaded": "70",
         "bv_parts_loaded": "5",
         "service_parts_loaded": "25",
+        "unique_pieces_loaded": "91",
         "carts_loaded": "40",
         "production_carts_loaded": "25",
         "bv_carts_loaded": "5",
@@ -32,6 +33,7 @@ def metric_row(period_type, start, end, available=1, days=1):
         "production_paint_pieces_processed": "65",
         "bv_paint_pieces_processed": "5",
         "service_paint_pieces_processed": "26",
+        "unique_pieces_processed": "84",
         "paint_decision_pieces": "95",
         "production_paint_decision_pieces": "80",
         "bv_paint_decision_pieces": "5",
@@ -90,7 +92,7 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
 
 
 def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
-    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "ccb07d366b30b7b3acb08836307dcc053d25c8a69614905ce56bf50aeeca3539")
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "cb983d8f63982ab833019aedd0d13067c644fd8231a25e8580b752bd36954714")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -107,13 +109,17 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert snapshot["daily"][-1]["production_parts_loaded"] == 70
     assert snapshot["daily"][-1]["bv_parts_loaded"] == 5
     assert snapshot["daily"][-1]["service_parts_loaded"] == 25
+    assert snapshot["daily"][-1]["unique_pieces_loaded"] == 91
+    assert snapshot["daily"][-1]["unique_pieces_processed"] == 84
     assert snapshot["daily"][-1]["production_carts_loaded"] == 25
     assert snapshot["daily"][-1]["bv_carts_loaded"] == 5
     assert snapshot["daily"][-1]["service_carts_loaded"] == 10
     cards = prepare_context(snapshot)["cards"]
-    assert cards[0]["value"] == "100"
-    assert cards[0]["detail"] == "Carts 25 Prd / 5 BV / 10 Svc · Parts 70 Prd / 5 BV / 25 Svc"
-    assert cards[1]["value"] == "35"
+    assert cards[0]["label"] == "Pieces loaded"
+    assert cards[0]["value"] == "100 Total / 91 Unique"
+    assert cards[0]["detail"] == "Carts 25 Prd / 5 BV / 10 Svc · Pieces 70 Prd / 5 BV / 25 Svc"
+    assert cards[1]["label"] == "Pieces painted"
+    assert cards[1]["value"] == "96 Total / 84 Unique"
     assert cards[1]["detail"] == "Carts 20 Prd / 5 BV / 10 Svc · Pieces 65 Prd / 5 BV / 26 Svc"
     assert cards[2]["detail"] == "Prd 93.8% / BV 100.0% / Svc 100.0%"
     assert cards[3]["detail"] == "Prd 94.8% / BV 100.0% / Svc 100.0%"
@@ -123,8 +129,8 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert snapshot["shipping"][0]["pieces"] == 55
     assert snapshot["painters"] == []
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
-    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "CCB07D366B30B7B3ACB08836307DCC053D25C8A69614905CE56BF50AEECA3539"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v6-original-paint-repaint-cohort"
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "CB983D8F63982AB833019AEDD0D13067C644FD8231A25E8580B752BD36954714"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v7-daily-unique-pieces"
 
 
 def test_load_split_must_equal_total():
@@ -179,6 +185,18 @@ def test_paint_piece_split_must_equal_total():
         raise AssertionError("invalid paint piece split was accepted")
 
 
+def test_daily_unique_piece_counts_must_be_present_and_not_exceed_event_totals():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["daily"][-1]["unique_pieces_processed"] = 97
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily painted unique-piece count is outside its total"
+    else:
+        raise AssertionError("invalid daily unique-piece count was accepted")
+
+
 def test_quality_and_trailer_splits_must_equal_totals():
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
@@ -228,6 +246,20 @@ def test_v4_saved_snapshot_can_load_before_first_v5_refresh():
     validate_snapshot(snapshot)
 
 
+def test_v6_saved_snapshot_can_load_before_first_v7_refresh():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["scope"]["method_version"] = "operations-kpi-live-v6-original-paint-repaint-cohort"
+    for collection in ("daily", "periods"):
+        for row in snapshot[collection]:
+            row.pop("unique_pieces_loaded")
+            row.pop("unique_pieces_processed")
+    validate_snapshot(snapshot)
+    cards = prepare_context(snapshot)["cards"]
+    assert cards[0]["value"] == "100 Total / — Unique"
+    assert cards[1]["value"] == "96 Total / — Unique"
+
+
 def test_v5_snapshot_requires_bv_fields():
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
@@ -251,6 +283,6 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "CCB07D366B30B7B3ACB08836307DCC053D25C8A69614905CE56BF50AEECA3539" in captured["query"]
+    assert "CB983D8F63982AB833019AEDD0D13067C644FD8231A25E8580B752BD36954714" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]

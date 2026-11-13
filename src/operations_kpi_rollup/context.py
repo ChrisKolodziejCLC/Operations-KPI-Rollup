@@ -46,9 +46,20 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
     require_complete_splits = snapshot.get("scope", {}).get("method_version") in {
         "operations-kpi-live-v5-bv-quality-trailer-split",
         "operations-kpi-live-v6-original-paint-repaint-cohort",
+        "operations-kpi-live-v7-daily-unique-pieces",
     }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
+            if snapshot.get("scope", {}).get("method_version") == "operations-kpi-live-v7-daily-unique-pieces":
+                for unique_field, total_field, label in (
+                    ("unique_pieces_loaded", "parts_loaded", "loaded unique-piece"),
+                    ("unique_pieces_processed", "paint_pieces_processed", "painted unique-piece"),
+                ):
+                    if unique_field not in row:
+                        raise ValueError(f"{collection} {label} count is missing")
+                    unique_value = int(row.get(unique_field, 0))
+                    if unique_value < 0 or unique_value > int(row.get(total_field, 0)):
+                        raise ValueError(f"{collection} {label} count is outside its total")
             _validate_split(
                 row, collection, "parts_loaded",
                 ("production_parts_loaded", "bv_parts_loaded", "service_parts_loaded"), "load", require_complete_splits,
@@ -182,14 +193,14 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
 
     cards = [
         _card(
-            "Parts loaded",
-            format_int(current.get("parts_loaded")),
-            f"Carts {format_int(production_carts)} Prd / {format_int(bv_carts)} BV / {format_int(service_carts)} Svc · Parts {format_int(production_loaded)} Prd / {format_int(bv_loaded)} BV / {format_int(service_loaded)} Svc",
+            "Pieces loaded",
+            f"{format_int(current.get('parts_loaded'))} Total / {format_int(current['unique_pieces_loaded']) if 'unique_pieces_loaded' in current else '—'} Unique",
+            f"Carts {format_int(production_carts)} Prd / {format_int(bv_carts)} BV / {format_int(service_carts)} Svc · Pieces {format_int(production_loaded)} Prd / {format_int(bv_loaded)} BV / {format_int(service_loaded)} Svc",
             "#147d86",
         ),
         _card(
-            "Paint processed",
-            format_int(current.get("paint_carts")),
+            "Pieces painted",
+            f"{format_int(current.get('paint_pieces_processed'))} Total / {format_int(current['unique_pieces_processed']) if 'unique_pieces_processed' in current else '—'} Unique",
             f"Carts {format_int(production_paint_carts)} Prd / {format_int(bv_paint_carts)} BV / {format_int(service_paint_carts)} Svc · Pieces {format_int(production_paint_pieces)} Prd / {format_int(bv_paint_pieces)} BV / {format_int(service_paint_pieces)} Svc",
             "#2f6f9f",
         ),

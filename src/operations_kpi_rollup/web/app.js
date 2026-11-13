@@ -76,12 +76,13 @@ function metricCard(label, value, detail, color) {
   return card;
 }
 
-function splitMetricCard(label, total, rows, color) {
+function splitMetricCard(label, total, unique, rows, color) {
   const card = document.createElement('article');
   card.className = 'metric-card split-count-card';
   card.style.setProperty('--accent', color);
   const labelNode = document.createElement('span'); labelNode.append(text(label));
-  const totalNode = document.createElement('strong'); totalNode.className = 'metric-split-total'; totalNode.append(text(integer(total)));
+  const totalNode = document.createElement('strong'); totalNode.className = 'metric-split-total';
+  totalNode.append(text(`${integer(total)} Total / ${unique === undefined ? '—' : integer(unique)} Unique`));
   const list = document.createElement('div'); list.className = 'metric-split-list';
   rows.forEach(row => {
     const line = document.createElement('div'); line.className = 'metric-split-row';
@@ -116,11 +117,11 @@ function renderCards(snapshot) {
     ['Trailers prepared', integer(current.trailers_prepared), trailerDetail, palette.amber]
   ];
   const container = $('#cards'); container.replaceChildren();
-  container.append(splitMetricCard('Parts loaded', current.parts_loaded, [
+  container.append(splitMetricCard('Pieces loaded', current.parts_loaded, current.unique_pieces_loaded, [
     {label:'Carts', production:carts.production, bv:carts.bv, service:carts.service},
-    {label:'Parts', production:loaded.production, bv:loaded.bv, service:loaded.service}
+    {label:'Pieces', production:loaded.production, bv:loaded.bv, service:loaded.service}
   ], palette.teal));
-  container.append(splitMetricCard('Paint processed', current.paint_carts, [
+  container.append(splitMetricCard('Pieces painted', current.paint_pieces_processed, current.unique_pieces_processed, [
     {label:'Carts', production:paintCarts.production, bv:paintCarts.bv, service:paintCarts.service},
     {label:'Pieces', production:paintPieces.production, bv:paintPieces.bv, service:paintPieces.service}
   ], palette.blue));
