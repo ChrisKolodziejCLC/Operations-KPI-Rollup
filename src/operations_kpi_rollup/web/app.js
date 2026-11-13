@@ -32,6 +32,20 @@ function cartSplit(row) {
   return {production: row.production_carts_loaded, service: row.service_carts_loaded};
 }
 
+function paintCartSplit(row) {
+  if (row.production_paint_carts === undefined && row.service_paint_carts === undefined) {
+    return {production: row.paint_carts, service: 0};
+  }
+  return {production: row.production_paint_carts, service: row.service_paint_carts};
+}
+
+function paintPieceSplit(row) {
+  if (row.production_paint_pieces_processed === undefined && row.service_paint_pieces_processed === undefined) {
+    return {production: row.paint_pieces_processed, service: 0};
+  }
+  return {production: row.production_paint_pieces_processed, service: row.service_paint_pieces_processed};
+}
+
 function composite(row) {
   const attainment = ratio(row.paint_pieces_processed, row.pieces_scheduled);
   const quality = ratio(Number(row.paint_fty_total || 0) - Number(row.paint_fty_repaint_count || 0), row.paint_fty_total);
@@ -57,14 +71,31 @@ function metricCard(label, value, detail, color) {
   return card;
 }
 
+function splitMetricCard(label, rows, color) {
+  const card = document.createElement('article');
+  card.className = 'metric-card split-count-card';
+  card.style.setProperty('--accent', color);
+  const labelNode = document.createElement('span'); labelNode.append(text(label));
+  const list = document.createElement('div'); list.className = 'metric-split-list';
+  rows.forEach(row => {
+    const line = document.createElement('div'); line.className = 'metric-split-row';
+    const rowLabel = document.createElement('span'); rowLabel.className = 'metric-split-label'; rowLabel.append(text(row.label));
+    const value = document.createElement('strong'); value.className = 'metric-split-value';
+    value.append(text(`${integer(row.production)} Prd / ${integer(row.service)} Svc`));
+    line.append(rowLabel, value); list.append(line);
+  });
+  card.append(labelNode, list);
+  return card;
+}
+
 function renderCards(snapshot) {
   const current = snapshot.daily.find(row => row.date === snapshot.report_date);
   if (!current) return;
   const loaded = loadSplit(current);
   const carts = cartSplit(current);
+  const paintCarts = paintCartSplit(current);
+  const paintPieces = paintPieceSplit(current);
   const cards = [
-    ['Parts loaded', integer(current.parts_loaded), `${integer(current.carts_loaded)} Carts: ${integer(carts.production)} Prd / ${integer(carts.service)} Svc · ${integer(current.parts_loaded)} Parts: ${integer(loaded.production)} Prd / ${integer(loaded.service)} Svc`, palette.teal],
-    ['Paint processed', integer(current.paint_carts), `${integer(current.paint_pieces_processed)} pieces`, palette.blue],
     ['PPY', percent(ratio(current.ppy_approved, current.paint_decision_pieces)), `${integer(current.ppy_approved)} / ${integer(current.paint_decision_pieces)} dispositions`, palette.amber],
     ['Paint FTY', percent(ratio(current.paint_fty_approved, current.paint_fty_total)), `${integer(current.paint_fty_approved)} / ${integer(current.paint_fty_total)} first-pass`, palette.blue],
     ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} first decisions`, palette.green],
@@ -77,6 +108,14 @@ function renderCards(snapshot) {
     ['Trailers prepared', integer(current.trailers_prepared), 'snapshot value', palette.amber]
   ];
   const container = $('#cards'); container.replaceChildren();
+  container.append(splitMetricCard('Parts loaded', [
+    {label:'Carts', production:carts.production, service:carts.service},
+    {label:'Parts', production:loaded.production, service:loaded.service}
+  ], palette.teal));
+  container.append(splitMetricCard('Paint processed', [
+    {label:'Carts', production:paintCarts.production, service:paintCarts.service},
+    {label:'Pieces', production:paintPieces.production, service:paintPieces.service}
+  ], palette.blue));
   cards.forEach(card => container.append(metricCard(...card)));
 }
 

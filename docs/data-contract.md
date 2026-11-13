@@ -29,6 +29,8 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `production_parts_loaded` / `service_parts_loaded` | The same loaded piece events split by whether QPTS classifies the part with `Model = Service`; the two fields must sum to `parts_loaded`. |
 | `production_carts_loaded` / `service_carts_loaded` | Distinct loaded carts split by that same service classification. The layering systems make the buckets mutually exclusive, so the two fields must sum to `carts_loaded`. |
 | `paint_carts` / `paint_pieces_processed` | Distinct paint carts and oven-exit pieces under the approved scope. |
+| `production_paint_carts` / `service_paint_carts` | The same distinct oven-exit carts split by whether QPTS classifies the part with `Model = Service`; the two fields must sum to `paint_carts`. |
+| `production_paint_pieces_processed` / `service_paint_pieces_processed` | The same oven-exit piece events split by that service classification; the two fields must sum to `paint_pieces_processed`. |
 | `paint_decision_pieces` / `ppy_approved` | PPY denominator and approved numerator. |
 | `paint_fty_total` / `paint_fty_approved` | Initial paint passes and approved initial passes. |
 | `paint_fty_repaint_count` | Initial passes whose first applicable outcome was repaint. |
@@ -49,6 +51,8 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 - `average per production day = period total / data_days`
 - `parts_loaded = production_parts_loaded + service_parts_loaded`
 - `carts_loaded = production_carts_loaded + service_carts_loaded`
+- `paint_carts = production_paint_carts + service_paint_carts`
+- `paint_pieces_processed = production_paint_pieces_processed + service_paint_pieces_processed`
 - `PPY = ppy_approved / paint_decision_pieces`
 - `Paint FTY = paint_fty_approved / paint_fty_total`
 - `Receiving FTY = receiving_approved / receiving_total`

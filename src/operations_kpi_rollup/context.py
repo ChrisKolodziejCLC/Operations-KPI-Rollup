@@ -46,6 +46,25 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 != int(row.get("carts_loaded", 0))
             ):
                 raise ValueError(f"{collection} cart split does not equal carts_loaded")
+            has_production_paint_carts = "production_paint_carts" in row
+            has_service_paint_carts = "service_paint_carts" in row
+            if has_production_paint_carts != has_service_paint_carts:
+                raise ValueError(f"{collection} paint cart split is incomplete")
+            if has_production_paint_carts and (
+                int(row["production_paint_carts"]) + int(row["service_paint_carts"])
+                != int(row.get("paint_carts", 0))
+            ):
+                raise ValueError(f"{collection} paint cart split does not equal paint_carts")
+            has_production_paint_pieces = "production_paint_pieces_processed" in row
+            has_service_paint_pieces = "service_paint_pieces_processed" in row
+            if has_production_paint_pieces != has_service_paint_pieces:
+                raise ValueError(f"{collection} paint piece split is incomplete")
+            if has_production_paint_pieces and (
+                int(row["production_paint_pieces_processed"])
+                + int(row["service_paint_pieces_processed"])
+                != int(row.get("paint_pieces_processed", 0))
+            ):
+                raise ValueError(f"{collection} paint piece split does not equal paint_pieces_processed")
 
 
 def _sort_by(rows: Iterable[Dict[str, Any]], key: str) -> List[Dict[str, Any]]:
@@ -68,6 +87,18 @@ def _cart_split(row: Dict[str, Any]) -> tuple[Any, Any]:
     return row.get("production_carts_loaded", 0), row.get("service_carts_loaded", 0)
 
 
+def _paint_cart_split(row: Dict[str, Any]) -> tuple[Any, Any]:
+    if "production_paint_carts" not in row and "service_paint_carts" not in row:
+        return row.get("paint_carts", 0), 0
+    return row.get("production_paint_carts", 0), row.get("service_paint_carts", 0)
+
+
+def _paint_piece_split(row: Dict[str, Any]) -> tuple[Any, Any]:
+    if "production_paint_pieces_processed" not in row and "service_paint_pieces_processed" not in row:
+        return row.get("paint_pieces_processed", 0), 0
+    return row.get("production_paint_pieces_processed", 0), row.get("service_paint_pieces_processed", 0)
+
+
 def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     validate_snapshot(snapshot)
     report_date = snapshot["report_date"]
@@ -81,18 +112,22 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     current_week = max(weeks, key=lambda row: row.get("period_start", "")) if weeks else None
     production_loaded, service_loaded = _load_split(current)
     production_carts, service_carts = _cart_split(current)
+    production_paint_carts, service_paint_carts = _paint_cart_split(current)
+    production_paint_pieces, service_paint_pieces = _paint_piece_split(current)
 
     cards = [
         _card(
             "Parts loaded",
-            format_int(current.get("parts_loaded")),
-            f"{format_int(current.get('carts_loaded'))} Carts: "
-            f"{format_int(production_carts)} Prd / {format_int(service_carts)} Svc · "
-            f"{format_int(current.get('parts_loaded'))} Parts: "
-            f"{format_int(production_loaded)} Prd / {format_int(service_loaded)} Svc",
+            f"{format_int(production_carts)} Prd / {format_int(service_carts)} Svc",
+            f"Carts · {format_int(production_loaded)} Prd / {format_int(service_loaded)} Svc parts",
             "#147d86",
         ),
-        _card("Paint processed", format_int(current.get("paint_carts")), f"{format_int(current.get('paint_pieces_processed'))} pieces", "#2f6f9f"),
+        _card(
+            "Paint processed",
+            f"{format_int(production_paint_carts)} Prd / {format_int(service_paint_carts)} Svc",
+            f"Carts · {format_int(production_paint_pieces)} Prd / {format_int(service_paint_pieces)} Svc pieces",
+            "#2f6f9f",
+        ),
         _card("PPY", format_percent(current["ppy"]), f"{format_int(current.get('ppy_approved'))} / {format_int(current.get('paint_decision_pieces'))} dispositions", "#d78d23"),
         _card("Paint FTY", format_percent(current["paint_fty"]), f"{format_int(current.get('paint_fty_approved'))} / {format_int(current.get('paint_fty_total'))} first-pass", "#2f6f9f"),
         _card("Receiving FTY", format_percent(current["receiving_fty"]), f"{format_int(current.get('receiving_approved'))} / {format_int(current.get('receiving_total'))} first decisions", "#38856d"),

@@ -1,16 +1,15 @@
 /*
-    Preview-only, hash-gated extension of the approved Operations KPI rollup.
+    Hash-gated extension of the approved Operations KPI rollup.
 
-    This first committed form changes the procedure only inside a transaction,
-    reports deterministic candidate/rollback hashes, and rolls back. The exact
-    candidate hash is pinned before production application.
+    The production migration was first executed in rollback-only preview mode.
+    The exact candidate and rollback hashes from that preview are pinned here.
 */
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
-DECLARE @CommitChange bit = 0;
+DECLARE @CommitChange bit = 1;
 DECLARE @ExpectedOldHash varchar(64) = 'A733058BF6F816A07D9D6249BC0B1BCCC00EFA26ECEA1F98A0390E682AA9AB88';
-DECLARE @ExpectedNewHash varchar(64) = NULL;
+DECLARE @ExpectedNewHash varchar(64) = '7A2992FA73CC9BF282148A2179789E651141057A1225475A5C1360C0C655083E';
 DECLARE @ExpectedRollbackHash varchar(64) = 'A733058BF6F816A07D9D6249BC0B1BCCC00EFA26ECEA1F98A0390E682AA9AB88';
 DECLARE @ProcedureName nvarchar(256) = N'dbo.usp_QPTS_GetOperationsQualityShippingRollup';
 DECLARE @LF nchar(1) = NCHAR(10);

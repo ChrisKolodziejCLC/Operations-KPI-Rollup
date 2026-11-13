@@ -47,7 +47,7 @@ Version 0.2 adds a dependency-free web service intended for an isolated GP-AI01 
 - perform no QPTS writes and send no mail;
 - omit employee-level painter detail unless explicitly enabled.
 
-The Parts Loaded card counts both normal and repaint load events. Version 0.2.2 preserves that total while showing production and service splits for both loaded events and carts. Production and service carts are mutually exclusive because the layering systems cannot share a cart; both split pairs must equal their displayed totals.
+The Parts Loaded card counts both normal and repaint load events. Version 0.3.0 presents only the production/service splits for loaded carts and loaded parts, without repeating their combined totals on the tile. The Paint Processed tile uses the same presentation for distinct oven-exit carts and oven-exit piece events. The retained totals still drive charts and hard validation: each production/service pair must equal its total, and carts cannot span the two layering systems.
 
 Run the safe local fixture mode:
 
