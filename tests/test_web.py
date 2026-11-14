@@ -76,7 +76,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.14.0-shipped-racks" in html
+            assert "0.15.0-yield-detail-rows" in html
             assert 'id="refresh-countdown"' in html
 
         with urlopen(base + "/app.js", timeout=5) as response:
@@ -100,8 +100,13 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "splitMetricCard('Pieces painted', current.paint_pieces_processed" in javascript
             assert "unique === undefined ? '—' : integer(unique)" in javascript
             assert "metric-split-total" in javascript
+            assert "${integer(row.production)} Prd / ${integer(row.bv)} BV / ${integer(row.service)} Svc" in javascript
             assert "dualYieldCard('PPY (Paint Process Yield)'" in javascript
             assert "dualYieldCard('FTY (First Time Yield)'" in javascript
+            assert "metric.details.forEach" in javascript
+            assert "'Repaint' : 'Repaints'" in javascript
+            assert "`${integer(current.reject_ppy_pending_count)} Pending`" in javascript
+            assert "`${integer(current.reject_fty_pending_count)} Pending`" in javascript
             assert "['Repaint %', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total))" in javascript
             assert "current.ppy_repaint_count" in javascript
             assert "reject_ppy_approved" in javascript
@@ -112,10 +117,21 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "fairing_racks_shipped" in javascript
             assert "Rack detail pending refresh" in javascript
             assert "count === 1 ? 'rack' : 'racks'" in javascript
+            assert "return values.join(' / ')" not in javascript
             assert "shippedPieceDetail(snapshot)" in javascript
-            assert "${integer(counts.fuka)} FUKA / ${integer(counts.bumpers)} Bumpers / ${integer(counts.fairings)} Fairings" in javascript
+            assert "`${integer(counts.fuka)} FUKA`" in javascript
+            assert "`${integer(counts.bumpers)} Bumpers`" in javascript
+            assert "`${integer(counts.fairings)} Fairings`" in javascript
             assert "repaintLineSetDetail(current)" in javascript
-            assert "metric-detail-secondary" in javascript
+            assert "${integer(row.fuka_paint_fty_repaint_count)} FUKA / ${integer(row.bumper_paint_fty_repaint_count)} Bumpers / ${integer(row.fairing_paint_fty_repaint_count)} Fairings" in javascript
+            assert "provisional · not standard OEE" in javascript
+            assert "N33 / Chassis Fairing · dated by last assembled piece" in javascript
+            assert "N71-6171 · AssembledDate" in javascript
+            assert "metric-detail-list" in javascript
+            assert "metric-detail-row" in javascript
+            assert "First Decisions" in javascript
+            assert "by receive stamp" not in javascript
+            assert "by final stamp" not in javascript
             assert "rangeLabel(snapshot.daily)" in javascript
             assert "WALLBOARD_POLL_MS = 30 * 1000" in javascript
             assert "HEALTH_POLL_MS = 5 * 1000" in javascript
@@ -135,13 +151,15 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             styles = response.read().decode("utf-8")
             assert response.status == 200
             assert ".split-count-card{container-type:inline-size}" in styles
+            assert ".metric-detail-list{display:grid" in styles
             assert "font-size:min(7.5cqw,1.75rem)" in styles
             assert "font-size:min(7.5cqw,2.2rem)" in styles
             assert ".dual-yield-grid{display:grid;grid-template-columns:1fr 1fr" in styles
             assert ".dual-yield-value" in styles
+            assert ".dual-yield-details{display:grid" in styles
             assert "white-space:nowrap" in styles
             assert ".header-status .refresh-countdown" in styles
-            assert ".metric-card .metric-detail-secondary" in styles
+            assert ".metric-card .metric-detail-row" in styles
             assert "font-variant-numeric:tabular-nums" in styles
     finally:
         server.shutdown()

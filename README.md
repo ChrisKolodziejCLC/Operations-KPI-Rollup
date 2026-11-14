@@ -61,6 +61,8 @@ Version 0.13.0 keeps the Repaint % tile's existing total-repaint / initial-pass 
 
 Version 0.14.0 keeps the Trailers Prepared headline as the unchanged total trailer count and replaces only its small category detail with physical racks shipped: each value is labeled `rack` or `racks` in FUKA / Bumpers / Fairings order. Racks come from the QPTS `Rack` field, are grouped once per ship date, and mixed racks are assigned to their dominant line set with deterministic FUKA / Bumpers / Fairings tie order. The procedure exposes only aggregate rack counts plus an internal Other integrity bucket; it does not expose rack IDs or part detail, and every pre-existing KPI result remains unchanged.
 
+Version 0.15.0 clarifies the wallboard details that had ambiguous inline groupings. PPY and FTY show numerator / denominator, Repaints or Rejected, and Pending on separate rows. Pieces Shipped categories and Trailers Prepared rack categories also render one item per row. Receiving FTY and Final FTY retain their first-decision numerator / denominator while the redundant stamped-quantity text is no longer displayed. Pieces Loaded, Pieces Painted, Repaint %, Paint plan composite, Complete assy sets, and Assembled bumpers retain their existing presentation. This is a display-only clarification; all yield percentages, source fields, formulas, snapshot data, refresh behavior, and database permissions remain unchanged.
+
 Run the safe local fixture mode:
 
 ```bash

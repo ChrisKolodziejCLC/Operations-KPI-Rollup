@@ -103,7 +103,11 @@ function shippedPieceDetail(snapshot) {
     else if (lineSet === 'fenders' || lineSet === 'fuka') counts.fuka += pieces;
     else if (lineSet === 'chassis fairings' || lineSet === 'fairings') counts.fairings += pieces;
   });
-  return `${integer(counts.fuka)} FUKA / ${integer(counts.bumpers)} Bumpers / ${integer(counts.fairings)} Fairings`;
+  return [
+    `${integer(counts.fuka)} FUKA`,
+    `${integer(counts.bumpers)} Bumpers`,
+    `${integer(counts.fairings)} Fairings`
+  ];
 }
 
 function repaintLineSetDetail(row) {
@@ -118,14 +122,14 @@ function rackDetail(row) {
     ['bumper_racks_shipped', 'Bumper'],
     ['fairing_racks_shipped', 'Fairing']
   ];
-  if (!fields.every(([field]) => row[field] !== undefined)) return 'Rack detail pending refresh';
+  if (!fields.every(([field]) => row[field] !== undefined)) return ['Rack detail pending refresh'];
   const values = fields.map(([field, label]) => {
     const count = Number(row[field] || 0);
     return `${integer(count)} ${label} ${count === 1 ? 'rack' : 'racks'}`;
   });
   const other = Number(row.other_racks_shipped || 0);
   if (other > 0) values.push(`${integer(other)} Other ${other === 1 ? 'rack' : 'racks'}`);
-  return values.join(' / ');
+  return values;
 }
 
 function composite(row) {
@@ -142,20 +146,19 @@ function setStatus(message, error = false) {
   node.classList.toggle('error', error);
 }
 
-function metricCard(label, value, detail, color, secondaryDetail = '') {
+function metricCard(label, value, detail, color) {
   const card = document.createElement('article');
   card.className = 'metric-card';
   card.style.setProperty('--accent', color);
   const labelNode = document.createElement('span'); labelNode.append(text(label));
   const valueNode = document.createElement('strong'); valueNode.append(text(value));
-  const detailNode = document.createElement('small'); detailNode.append(text(detail));
-  card.append(labelNode, valueNode, detailNode);
-  if (secondaryDetail) {
-    const secondaryDetailNode = document.createElement('small');
-    secondaryDetailNode.className = 'metric-detail-secondary';
-    secondaryDetailNode.append(text(secondaryDetail));
-    card.append(secondaryDetailNode);
-  }
+  const details = Array.isArray(detail) ? detail : detail ? [detail] : [];
+  const detailList = document.createElement('div'); detailList.className = 'metric-detail-list';
+  details.forEach(item => {
+    const detailNode = document.createElement('small'); detailNode.className = 'metric-detail-row'; detailNode.append(text(item));
+    detailList.append(detailNode);
+  });
+  card.append(labelNode, valueNode, detailList);
   return card;
 }
 
@@ -188,8 +191,12 @@ function dualYieldCard(label, repaint, reject, color) {
     const column = document.createElement('div'); column.className = 'dual-yield-column';
     const metricLabel = document.createElement('span'); metricLabel.className = 'dual-yield-label'; metricLabel.append(text(metric.label));
     const value = document.createElement('strong'); value.className = 'dual-yield-value'; value.append(text(percent(yieldRatio(metric.numerator, metric.denominator))));
-    const detail = document.createElement('small'); detail.className = 'dual-yield-detail'; detail.append(text(metric.detail));
-    column.append(metricLabel, value, detail); grid.append(column);
+    const details = document.createElement('div'); details.className = 'dual-yield-details';
+    metric.details.forEach(value => {
+      const detail = document.createElement('small'); detail.className = 'dual-yield-detail'; detail.append(text(value));
+      details.append(detail);
+    });
+    column.append(metricLabel, value, details); grid.append(column);
   });
   card.append(labelNode, grid);
   return card;
@@ -205,9 +212,9 @@ function renderCards(snapshot) {
   const shippedDetail = shippedPieceDetail(snapshot);
   const trailerDetail = rackDetail(current);
   const cards = [
-    ['Repaint %', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)), `${integer(current.paint_fty_repaint_count)} / ${integer(current.paint_fty_total)} initial passes`, palette.amber, repaintLineSetDetail(current)],
-    ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} first decisions · Qty ${integer(current.receiving_quantity)} by receive stamp`, palette.green],
-    ['Final FTY', percent(ratio(current.final_approved, current.final_total)), `${integer(current.final_approved)} / ${integer(current.final_total)} first decisions · Qty ${integer(current.final_quantity)} by final stamp`, palette.purple],
+    ['Repaint %', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)), [`${integer(current.paint_fty_repaint_count)} / ${integer(current.paint_fty_total)} initial passes`, repaintLineSetDetail(current)], palette.amber],
+    ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} First Decisions`, palette.green],
+    ['Final FTY', percent(ratio(current.final_approved, current.final_total)), `${integer(current.final_approved)} / ${integer(current.final_total)} First Decisions`, palette.purple],
     ['Paint plan composite', percent(composite(current)), 'provisional · not standard OEE', palette.purple],
     ['Complete assy sets', integer(current.complete_assy_sets), 'N33 / Chassis Fairing · dated by last assembled piece', palette.teal],
     ['Assembled bumpers', integer(current.assembled_bumper_count), 'N71-6171 · AssembledDate', palette.blue],
@@ -225,17 +232,33 @@ function renderCards(snapshot) {
   ], palette.blue));
   container.append(dualYieldCard('PPY (Paint Process Yield)', {
     numerator:current.ppy_approved, denominator:current.paint_decision_pieces,
-    detail:`${integer(current.ppy_approved)} / ${integer(current.paint_decision_pieces)} · ${integer(current.ppy_repaint_count)} repaint · ${integer(current.reject_ppy_pending_count)} pending`
+    details:[
+      `${integer(current.ppy_approved)} / ${integer(current.paint_decision_pieces)}`,
+      `${integer(current.ppy_repaint_count)} ${Number(current.ppy_repaint_count) === 1 ? 'Repaint' : 'Repaints'}`,
+      `${integer(current.reject_ppy_pending_count)} Pending`
+    ]
   }, {
     numerator:current.reject_ppy_approved, denominator:current.reject_ppy_total,
-    detail:`${integer(current.reject_ppy_approved)} / ${integer(current.reject_ppy_total)} · ${integer(current.reject_ppy_rejected_count)} rejected · ${integer(current.reject_ppy_pending_count)} pending`
+    details:[
+      `${integer(current.reject_ppy_approved)} / ${integer(current.reject_ppy_total)}`,
+      `${integer(current.reject_ppy_rejected_count)} Rejected`,
+      `${integer(current.reject_ppy_pending_count)} Pending`
+    ]
   }, palette.amber));
   container.append(dualYieldCard('FTY (First Time Yield)', {
     numerator:current.paint_fty_approved, denominator:current.paint_fty_total,
-    detail:`${integer(current.paint_fty_approved)} / ${integer(current.paint_fty_total)} · ${integer(current.paint_fty_repaint_count)} repaint · ${integer(current.reject_fty_pending_count)} pending`
+    details:[
+      `${integer(current.paint_fty_approved)} / ${integer(current.paint_fty_total)}`,
+      `${integer(current.paint_fty_repaint_count)} ${Number(current.paint_fty_repaint_count) === 1 ? 'Repaint' : 'Repaints'}`,
+      `${integer(current.reject_fty_pending_count)} Pending`
+    ]
   }, {
     numerator:current.reject_fty_approved, denominator:current.reject_fty_total,
-    detail:`${integer(current.reject_fty_approved)} / ${integer(current.reject_fty_total)} · ${integer(current.reject_fty_rejected_count)} rejected · ${integer(current.reject_fty_pending_count)} pending`
+    details:[
+      `${integer(current.reject_fty_approved)} / ${integer(current.reject_fty_total)}`,
+      `${integer(current.reject_fty_rejected_count)} Rejected`,
+      `${integer(current.reject_fty_pending_count)} Pending`
+    ]
   }, palette.blue));
   cards.forEach(card => container.append(metricCard(...card)));
 }
