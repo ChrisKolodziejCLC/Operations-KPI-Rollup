@@ -148,7 +148,7 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
 
 
 def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
-    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "21149fde5db32871914f9846f6e29fcf7d071bc6189d7a2272e9e7e4fc0c2df3")
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "5a4ea0319892ef663e13ed7ea8bc026d852f3dcc748ec450896b6d549464044d")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -185,7 +185,7 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert cards_by_label["Repaint %"]["detail"] == "3 / 90 initial passes"
     assert cards_by_label["Repaint %"]["secondary_detail"] == "1 FUKA / 1 Bumpers / 1 Fairings"
     assert cards_by_label["Finesse %"]["value"] == "40.0%"
-    assert cards_by_label["Finesse %"]["detail"] == "2 / 5 rejected first passes\nFUKA 1 repaired\nFairings 1 repaired\nBumpers 0 repaired"
+    assert cards_by_label["Finesse %"]["detail"] == "2 Repaired / 5 Total Rejected\nFUKA 1 repaired\nFairings 1 repaired\nBumpers 0 repaired"
     assert cards_by_label["Repaint PPY"]["value"] == "94.7%"
     assert cards_by_label["Reject PPY"]["value"] == "93.7%"
     assert cards_by_label["Repaint FTY"]["value"] == "95.6%"
@@ -203,8 +203,8 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert [row["pieces"] for row in snapshot["shipping"]] == [55, 20, 5, 10]
     assert snapshot["painters"] == []
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
-    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "21149FDE5DB32871914F9846F6E29FCF7D071BC6189D7A2272E9E7E4FC0C2DF3"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v14-trailer-inspection-details"
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "5A4EA0319892EF663E13ED7EA8BC026D852F3DCC748EC450896B6D549464044D"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v15-description-family-mapping"
 
 
 def test_repaint_line_set_split_must_equal_total():
@@ -571,6 +571,6 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "21149FDE5DB32871914F9846F6E29FCF7D071BC6189D7A2272E9E7E4FC0C2DF3" in captured["query"]
+    assert "5A4EA0319892EF663E13ED7EA8BC026D852F3DCC748EC450896B6D549464044D" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]

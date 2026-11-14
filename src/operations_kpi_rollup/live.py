@@ -15,7 +15,7 @@ from .odbc import execute_operations_rollup
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
 PERIOD_TYPE_ORDER = {"WEEK": 1, "MONTH": 2, "QUARTER": 3}
-CURRENT_METHOD_VERSION = "operations-kpi-live-v14-trailer-inspection-details"
+CURRENT_METHOD_VERSION = "operations-kpi-live-v15-description-family-mapping"
 
 
 def _integer(value: Any) -> int:
@@ -272,6 +272,7 @@ def snapshot_from_rollup(
             "Repaint PPY counts non-repaint outcomes across every completed pass. Repaint FTY counts non-repaint outcomes only on initial passes. Repaint % is initial-pass repaint outcomes divided by initial passes.",
             "Reject PPY counts Approved outcomes across every completed pass. Reject FTY counts Approved outcomes only on initial passes. Repair, Repaint, Direct Repaint, and Reject are rejected outcomes; unresolved outcomes remain pending.",
             "Finesse % is initial-pass Repair outcomes divided by all initial-pass rejected outcomes; pending outcomes are excluded. Its detail exposes only aggregate FUKA, Fairings, and Bumpers repair counts.",
+            "Product-family detail uses normalized EDI Description: Fender is FUKA, Bumper is Bumpers, and Chassis Fairing is Fairings. EDI Origin remains only where it defines paint-process scope rather than product family.",
             "Pieces Staged mirrors the Paint Prep Wallboard queue: eligible EDI-loaded Origin F cart groups without a tblCarts_Paint booth scan, using three-day normal and seven-day active-repaint windows.",
             "The inspection-time hourly report is a reconciliation source, not the wallboard date grain; daily values can differ and should reconcile over longer periods.",
             "Receiving and final quantities use insp_receive_stamp and insp_final_stamp; their FTY rates continue to use first inspection decisions and expose only reconciled aggregate product-family detail.",
@@ -283,7 +284,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "21149FDE5DB32871914F9846F6E29FCF7D071BC6189D7A2272E9E7E4FC0C2DF3",
+                "5A4EA0319892EF663E13ED7EA8BC026D852F3DCC748EC450896B6D549464044D",
             ).upper(),
             "detail_result_sets_requested": False,
         },

@@ -98,6 +98,9 @@ td:first-child,td:nth-child(2){text-align:left}
 tr.no-production td{color:#8b9aa5;background:#f7f9fa}
 .split-panel,.notes-panel{display:grid;grid-template-columns:1fr 1fr;gap:1.4rem}
 .shipping-chart{display:grid;gap:.65rem;margin-top:1rem}
+.shipping-legend{display:flex;flex-wrap:wrap;gap:.45rem 1rem;color:#415769;font-size:.68rem;font-weight:700}
+.shipping-legend-item{display:inline-flex;align-items:center;gap:.35rem}
+.shipping-legend-swatch{display:inline-block;width:.72rem;height:.72rem;border-radius:2px}
 .shipping-day{display:grid;grid-template-columns:78px 1fr 56px;align-items:center;gap:.6rem;font-size:.72rem}
 .shipping-track{display:flex;height:24px;overflow:hidden;border-radius:4px;background:#edf1f3}
 .shipping-segment{min-width:1px}

@@ -76,7 +76,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.17.0-trailer-inspection-finesse" in html
+            assert "0.18.0-description-family-mapping" in html
             assert 'id="refresh-countdown"' in html
 
         with urlopen(base + "/app.js", timeout=5) as response:
@@ -120,6 +120,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "FUKA Repaired" in javascript
             assert "Fairings Repaired" in javascript
             assert "Bumpers Repaired" in javascript
+            assert "Total Rejected" in javascript
             assert "current.ppy_repaint_count" in javascript
             assert "reject_ppy_approved" in javascript
             assert "reject_fty_approved" in javascript
@@ -139,6 +140,12 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "`${integer(counts.bumpers)} Bumpers`" in javascript
             assert "`${integer(counts.n71)} N71-6164`" in javascript
             assert "`${integer(counts.fairings)} Fairings`" in javascript
+            assert "if (counts.other) details.push(`${integer(counts.other)} Other`)" in javascript
+            assert "'FUKA':palette.teal" in javascript
+            assert "'Fairings':palette.blue" in javascript
+            assert "'Bumpers':palette.red" in javascript
+            assert "'N71-6164':palette.amber" in javascript
+            assert "shipping-legend" in javascript
             assert "repaintLineSetDetail(current)" in javascript
             assert "`${integer(row.fuka_paint_fty_repaint_count)} FUKA`" in javascript
             assert "`${integer(row.bumper_paint_fty_repaint_count)} Bumpers`" in javascript
@@ -187,6 +194,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "white-space:nowrap" in styles
             assert ".header-status .refresh-countdown" in styles
             assert ".metric-card .metric-detail-row" in styles
+            assert ".shipping-legend{" in styles
             assert "font-variant-numeric:tabular-nums" in styles
     finally:
         server.shutdown()

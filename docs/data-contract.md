@@ -13,7 +13,7 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `daily` | array | One row per calendar date in the displayed report week. |
 | `periods` | array | Separate weekly, monthly, and quarterly aggregate rows. |
 | `painters` | array | Painter/booth throughput rows; the committed fixture uses aliases. |
-| `shipping` | array | Date and exclusive FUKA, Bumpers, N71-6164, and Fairings piece counts. |
+| `shipping` | array | Date and exclusive FUKA, Fairings, Bumpers, N71-6164, and optional Other piece counts. N71-6164 takes precedence over its underlying Bumper description in this display split. |
 | `top_defects` | array | Aggregate step, defect description, and count. |
 | `attention` | object | Reviewed exceptions suitable for the report. |
 | `data_quality_notes` | array | Method limitations shown to the reader. |
@@ -43,27 +43,27 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `ppy_repaint_count` | Physical passes whose EOL outcome is Repaint or Direct Repaint. Together with pending outcomes and `ppy_approved`, it reconciles to all paint passes. |
 | `paint_fty_total` / `paint_fty_approved` | Physical initial passes, and initial passes with a resolved non-repaint outcome. Their ratio is Repaint FTY. |
 | `paint_fty_repaint_count` | Initial passes whose preserved first EOL disposition is Repaint or Direct Repaint. Its ratio to `paint_fty_total` is the standalone Repaint %. |
-| `fuka_paint_fty_repaint_count` / `bumper_paint_fty_repaint_count` / `fairing_paint_fty_repaint_count` | Aggregate line-set split of `paint_fty_repaint_count`, displayed in FUKA / Bumpers / Fairings order. Bumpers use Origin B; Fairings use Origin F with N71/N33 part numbers; the remaining paint-scope parts are the FUKA bucket. These fields expose no part-level rows and do not change the Repaint % formula. |
+| `fuka_paint_fty_repaint_count` / `bumper_paint_fty_repaint_count` / `fairing_paint_fty_repaint_count` | Aggregate product-family split of `paint_fty_repaint_count`, displayed in FUKA / Bumpers / Fairings order. Families use normalized EDI `Description`: `Fender` = FUKA, `Bumper` = Bumpers, and `Chassis Fairing` = Fairings. These fields expose no part-level rows and do not change the Repaint % formula. |
 | `paint_fty_repair_count` | Initial physical passes whose preserved first EOL disposition is Repair. Its ratio to `reject_fty_rejected_count` is Finesse %. Pending outcomes are excluded from the denominator. |
-| `fuka_paint_fty_repair_count` / `fairing_paint_fty_repair_count` / `bumper_paint_fty_repair_count` | Aggregate product-family split of `paint_fty_repair_count`, displayed as repaired quantities. These three fields must sum to the Repair total. |
+| `fuka_paint_fty_repair_count` / `fairing_paint_fty_repair_count` / `bumper_paint_fty_repair_count` | Aggregate product-family split of `paint_fty_repair_count`, displayed as repaired quantities using the same normalized EDI `Description` rule. These three fields must sum to the Repair total. The Finesse detail labels the denominator as `Total Rejected`. |
 | `reject_ppy_total` / `reject_ppy_approved` | All physical paint passes, and passes with an Approved EOL outcome. Their ratio is Reject PPY. |
 | `reject_ppy_rejected_count` / `reject_ppy_pending_count` | All EOL Repair, Repaint, Direct Repaint, or Reject outcomes for those passes; and passes with no EOL outcome yet. |
 | `reject_fty_total` / `reject_fty_approved` | Initial physical passes, and initial passes with an Approved preserved first EOL disposition. Their ratio is Reject FTY. |
 | `reject_fty_rejected_count` / `reject_fty_pending_count` | Non-approved and pending EOL outcomes restricted to initial physical passes. |
 | `receiving_total` / `receiving_approved` | Parts with a first receiving decision and those approved first pass. |
-| `receiving_bumper_total` / `receiving_bumper_approved` / `receiving_fairing_total` / `receiving_fairing_approved` | Receiving first-decision totals and approvals split into Bumpers and Fairings. Both totals and approvals reconcile to the overall Receiving FTY fields. |
+| `receiving_bumper_total` / `receiving_bumper_approved` / `receiving_fairing_total` / `receiving_fairing_approved` | Receiving first-decision totals and approvals split by normalized EDI `Description` into all Bumpers and all Chassis Fairings. Both totals and approvals reconcile to the overall Receiving FTY fields. |
 | `receiving_quantity` | Distinct non-service parts dated by `insp_receive_stamp`. |
 | `final_total` / `final_approved` | Parts with a first final decision and those approved first pass. |
-| `final_fuka_total` / `final_fuka_approved` / `final_bumper_total` / `final_bumper_approved` / `final_fairing_total` / `final_fairing_approved` | Final-inspection first-decision totals and approvals split into FUKA, Bumpers, and Fairings. Family totals and approvals reconcile to the overall Final FTY fields. |
+| `final_fuka_total` / `final_fuka_approved` / `final_bumper_total` / `final_bumper_approved` / `final_fairing_total` / `final_fairing_approved` | Final-inspection first-decision totals and approvals split by normalized EDI `Description` into FUKA, all Bumpers, and all Chassis Fairings. Family totals and approvals reconcile to the overall Final FTY fields. |
 | `final_quantity` | Distinct non-service parts dated by `insp_final_stamp`. |
 | `eol_inspected` | End-of-line inspections under the approved event-count rule. |
-| `painted_parts_shipped` | Non-service painted pieces shipped. |
-| `bumpers_shipped` / `parts_shipped` | Non-service bumper pieces and all non-service pieces shipped. |
+| `painted_parts_shipped` | Non-service Origin F pieces shipped. This is a paint-flow metric and intentionally remains Origin-based; it is not a Fairings product-family count. |
+| `bumpers_shipped` / `parts_shipped` | All non-service pieces whose normalized EDI `Description` is `Bumper`, including N71-6164; and all non-service pieces shipped. The shipping-mix array displays N71-6164 separately instead. |
 | `complete_assy_sets` | Four-piece N33/Chassis Fairing sets dated by the latest `AssembledDate` among the set's pieces. `mic_complete_assy_sets` counts sets whose four pieces all have normalized `Color = MIC`; `painted_complete_assy_sets` counts the remaining non-MIC sets. The current source window has no mixed/blank sets, and the two detail fields sum to the headline. |
 | `assembled_bumper_count` | N71-6171 parts dated by `AssembledDate`. `mic_assembled_bumper_count` uses normalized `Color = MIC`; `painted_assembled_bumper_count` is the non-MIC complement. |
 | `trailers_prepared` | Prepared trailers as of the snapshot cutoff. `fuka_trailers_prepared`, `bumper_trailers_prepared`, `fairing_trailers_prepared`, and the internal `other_trailers_prepared` integrity bucket sum to this total. Trailers have no service category. Mixed historical trailers are classified by dominant piece type. |
 | `trailers_shipped` | Completed physical departures recorded by nonblank `dbo.DriverLog.TrailerID`, dated by `TimeOut`. The tile compares this departure count with `trailers_prepared`; it does not infer shipping from QPTS preparation state. |
-| `racks_shipped` | Distinct nonblank physical `Rack` values on shipped, non-service pieces, grouped by ship date. `fuka_racks_shipped`, `bumper_racks_shipped`, `n71_6164_racks_shipped`, `fairing_racks_shipped`, and the internal `other_racks_shipped` integrity bucket sum to this total. Mixed racks are counted once under their dominant family with deterministic N71-6164, FUKA, Bumpers, then Fairings tie order. Rack IDs are not included in the snapshot. |
+| `racks_shipped` | Distinct nonblank physical `Rack` values on shipped, non-service pieces, grouped by ship date. `fuka_racks_shipped`, `bumper_racks_shipped`, `n71_6164_racks_shipped`, `fairing_racks_shipped`, and the internal `other_racks_shipped` integrity bucket sum to this total. Rack contents use normalized EDI `Description`, with N71-6164 taking display precedence. Mixed racks are counted once under their dominant family with deterministic N71-6164, FUKA, Bumpers, then Fairings tie order. Rack IDs are not included in the snapshot. |
 | `pieces_scheduled` / `hours_scheduled` / `paint_hours` | Inputs to the provisional paint-plan composite. |
 
 Every ratio is calculated by the renderer from a saved numerator and denominator. A zero denominator renders as `No Data`, not `0.0%`.

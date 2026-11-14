@@ -54,6 +54,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v12-shipped-rack-counts",
         "operations-kpi-live-v13-mic-n71-breakdowns",
         "operations-kpi-live-v14-trailer-inspection-details",
+        "operations-kpi-live-v15-description-family-mapping",
     }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
@@ -66,6 +67,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v12-shipped-rack-counts",
                 "operations-kpi-live-v13-mic-n71-breakdowns",
                 "operations-kpi-live-v14-trailer-inspection-details",
+                "operations-kpi-live-v15-description-family-mapping",
             }:
                 for unique_field, total_field, label in (
                     ("unique_pieces_loaded", "parts_loaded", "loaded unique-piece"),
@@ -84,6 +86,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v12-shipped-rack-counts",
                 "operations-kpi-live-v13-mic-n71-breakdowns",
                 "operations-kpi-live-v14-trailer-inspection-details",
+                "operations-kpi-live-v15-description-family-mapping",
             }:
                 for quantity_field in ("receiving_quantity", "final_quantity"):
                     if quantity_field not in row:
@@ -98,6 +101,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v12-shipped-rack-counts",
                 "operations-kpi-live-v13-mic-n71-breakdowns",
                 "operations-kpi-live-v14-trailer-inspection-details",
+                "operations-kpi-live-v15-description-family-mapping",
             }:
                 required_yield_fields = (
                     "reject_ppy_total", "reject_ppy_approved", "reject_ppy_rejected_count",
@@ -110,6 +114,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v12-shipped-rack-counts",
                     "operations-kpi-live-v13-mic-n71-breakdowns",
                     "operations-kpi-live-v14-trailer-inspection-details",
+                    "operations-kpi-live-v15-description-family-mapping",
                 }:
                     required_yield_fields += ("ppy_repaint_count",)
                 missing_yield_fields = [field for field in required_yield_fields if field not in row]
@@ -129,6 +134,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v12-shipped-rack-counts",
                     "operations-kpi-live-v13-mic-n71-breakdowns",
                     "operations-kpi-live-v14-trailer-inspection-details",
+                    "operations-kpi-live-v15-description-family-mapping",
                 }:
                     if int(row["reject_ppy_approved"]) + int(row["reject_ppy_rejected_count"]) + int(row["reject_ppy_pending_count"]) != int(row["reject_ppy_total"]):
                         raise ValueError(f"{collection} reject PPY outcomes do not equal its total")
@@ -143,6 +149,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                         "operations-kpi-live-v12-shipped-rack-counts",
                         "operations-kpi-live-v13-mic-n71-breakdowns",
                         "operations-kpi-live-v14-trailer-inspection-details",
+                        "operations-kpi-live-v15-description-family-mapping",
                     }:
                         repaint_split_fields = (
                             "fuka_paint_fty_repaint_count",
@@ -233,6 +240,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 method_version in {
                     "operations-kpi-live-v13-mic-n71-breakdowns",
                     "operations-kpi-live-v14-trailer-inspection-details",
+                    "operations-kpi-live-v15-description-family-mapping",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -271,7 +279,10 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     raise ValueError(f"{collection} complete assembly MIC/Painted split does not equal complete_assy_sets")
                 if int(row["mic_assembled_bumper_count"]) + int(row["painted_assembled_bumper_count"]) != int(row.get("assembled_bumper_count", 0)):
                     raise ValueError(f"{collection} bumper MIC/Painted split does not equal assembled_bumper_count")
-            if method_version == "operations-kpi-live-v14-trailer-inspection-details":
+            if method_version in {
+                "operations-kpi-live-v14-trailer-inspection-details",
+                "operations-kpi-live-v15-description-family-mapping",
+            }:
                 inspection_fields = (
                     "trailers_shipped",
                     "receiving_bumper_total",
@@ -340,6 +351,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 method_version in {
                     "operations-kpi-live-v13-mic-n71-breakdowns",
                     "operations-kpi-live-v14-trailer-inspection-details",
+                    "operations-kpi-live-v15-description-family-mapping",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -358,14 +370,16 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v12-shipped-rack-counts",
                     "operations-kpi-live-v13-mic-n71-breakdowns",
                     "operations-kpi-live-v14-trailer-inspection-details",
+                    "operations-kpi-live-v15-description-family-mapping",
                 },
             )
 
     if snapshot.get("scope", {}).get("method_version") in {
         "operations-kpi-live-v13-mic-n71-breakdowns",
         "operations-kpi-live-v14-trailer-inspection-details",
+        "operations-kpi-live-v15-description-family-mapping",
     }:
-        allowed_line_sets = {"FUKA", "Bumpers", "N71-6164", "Fairings"}
+        allowed_line_sets = {"FUKA", "Bumpers", "N71-6164", "Fairings", "Other"}
         report_shipping = [row for row in snapshot.get("shipping", []) if row.get("date") == snapshot["report_date"]]
         unexpected_line_sets = sorted(
             {str(row.get("line_set") or "") for row in report_shipping} - allowed_line_sets
@@ -447,7 +461,7 @@ def _rate_split(row: Dict[str, Any], numerator: str, denominator: str) -> str:
 
 
 def _shipped_piece_detail(snapshot: Dict[str, Any], report_date: str) -> str:
-    counts = {"fuka": 0, "bumpers": 0, "n71_6164": 0, "fairings": 0}
+    counts = {"fuka": 0, "bumpers": 0, "n71_6164": 0, "fairings": 0, "other": 0}
     for row in snapshot.get("shipping", []):
         if row.get("date") != report_date:
             continue
@@ -461,12 +475,17 @@ def _shipped_piece_detail(snapshot: Dict[str, Any], report_date: str) -> str:
             counts["fuka"] += pieces
         elif line_set in {"chassis fairings", "fairings"}:
             counts["fairings"] += pieces
-    return (
+        elif line_set == "other":
+            counts["other"] += pieces
+    detail = (
         f"{format_int(counts['fuka'])} FUKA / "
         f"{format_int(counts['bumpers'])} Bumpers / "
         f"{format_int(counts['n71_6164'])} N71-6164 / "
         f"{format_int(counts['fairings'])} Fairings"
     )
+    if counts["other"]:
+        detail += f" / {format_int(counts['other'])} Other"
+    return detail
 
 
 def _repaint_line_set_detail(row: Dict[str, Any]) -> str:
@@ -565,7 +584,7 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         _card(
             "Finesse %",
             format_percent(current["finesse_percentage"]),
-            f"{format_int(current.get('paint_fty_repair_count'))} / {format_int(current.get('reject_fty_rejected_count'))} rejected first passes\n{_finesse_detail(current)}",
+            f"{format_int(current.get('paint_fty_repair_count'))} Repaired / {format_int(current.get('reject_fty_rejected_count'))} Total Rejected\n{_finesse_detail(current)}",
             "#38856d",
         ),
         _card("Repaint PPY", format_percent(current["repaint_ppy"]), f"{format_int(current.get('ppy_approved'))} / {format_int(current.get('paint_decision_pieces'))} exits", "#d78d23"),

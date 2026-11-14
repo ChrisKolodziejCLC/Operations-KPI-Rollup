@@ -95,7 +95,7 @@ function rateBreakdown(row, numerator, denominator) {
 }
 
 function shippedPieceDetail(snapshot) {
-  const counts = {fuka:0, bumpers:0, n71:0, fairings:0};
+  const counts = {fuka:0, bumpers:0, n71:0, fairings:0, other:0};
   (snapshot.shipping || []).forEach(row => {
     if (row.date !== snapshot.report_date) return;
     const lineSet = String(row.line_set || '').trim().toLowerCase();
@@ -104,13 +104,16 @@ function shippedPieceDetail(snapshot) {
     else if (lineSet === 'n71-6164') counts.n71 += pieces;
     else if (lineSet === 'fenders' || lineSet === 'fuka') counts.fuka += pieces;
     else if (lineSet === 'chassis fairings' || lineSet === 'fairings') counts.fairings += pieces;
+    else if (lineSet === 'other') counts.other += pieces;
   });
-  return [
+  const details = [
     `${integer(counts.fuka)} FUKA`,
     `${integer(counts.bumpers)} Bumpers`,
     `${integer(counts.n71)} N71-6164`,
     `${integer(counts.fairings)} Fairings`
   ];
+  if (counts.other) details.push(`${integer(counts.other)} Other`);
+  return details;
 }
 
 function repaintLineSetDetail(row) {
@@ -290,7 +293,7 @@ function renderCards(snapshot) {
     current.paint_fty_repair_count === undefined || current.reject_fty_rejected_count === undefined ? [
       'Finesse detail pending refresh'
     ] : [
-      `${integer(current.paint_fty_repair_count)} / ${integer(current.reject_fty_rejected_count)} Repaired / Rejected`,
+      `${integer(current.paint_fty_repair_count)} Repaired / ${integer(current.reject_fty_rejected_count)} Total Rejected`,
       `${integer(current.fuka_paint_fty_repair_count)} FUKA Repaired`,
       `${integer(current.fairing_paint_fty_repair_count)} Fairings Repaired`,
       `${integer(current.bumper_paint_fty_repair_count)} Bumpers Repaired`
@@ -459,8 +462,16 @@ function renderShipping(snapshot) {
   });
   const totals = [...grouped.values()].map(rows => rows.reduce((sum, row) => sum + Number(row.pieces), 0));
   const maximum = Math.max(...totals, 1);
-  const colors = {'Bumpers':palette.red, 'Chassis Fairings':palette.blue, 'Fenders':palette.teal};
+  const colors = {'FUKA':palette.teal, 'Fairings':palette.blue, 'Bumpers':palette.red, 'N71-6164':palette.amber, 'Other':palette.purple};
   const container = $('#shipping-chart'); container.replaceChildren();
+  const present = new Set(snapshot.shipping.map(row => row.line_set));
+  const legend = document.createElement('div'); legend.className = 'shipping-legend';
+  ['FUKA', 'Fairings', 'Bumpers', 'N71-6164', 'Other'].filter(label => present.has(label)).forEach(label => {
+    const item = document.createElement('span'); item.className = 'shipping-legend-item';
+    const swatch = document.createElement('span'); swatch.className = 'shipping-legend-swatch'; swatch.style.background = colors[label];
+    item.append(swatch, text(label)); legend.append(item);
+  });
+  container.append(legend);
   [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).forEach(([day, rows]) => {
     const total = rows.reduce((sum, row) => sum + Number(row.pieces), 0);
     const line = document.createElement('div'); line.className = 'shipping-day';

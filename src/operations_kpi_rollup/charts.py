@@ -98,11 +98,17 @@ def _painter_throughput(rows: List[Dict[str, Any]], path: Path) -> None:
 def _shipping(rows: List[Dict[str, Any]], path: Path) -> None:
     fig, ax = _new_figure("Current Week Shipping by Line Set", "Daily non-service pieces; total labels appear at the end of each bar.")
     dates = sorted({row["date"] for row in rows})
-    line_sets = ["Bumpers", "Chassis Fairings", "Fenders"]
-    colors = [COLORS["red"], COLORS["blue"], COLORS["teal"]]
+    line_sets = [
+        ("FUKA", COLORS["teal"]),
+        ("Fairings", COLORS["blue"]),
+        ("Bumpers", COLORS["red"]),
+        ("N71-6164", COLORS["amber"]),
+        ("Other", COLORS["purple"]),
+    ]
+    present = {row["line_set"] for row in rows}
     y = np.arange(len(dates))
     left = np.zeros(len(dates))
-    for line_set, color in zip(line_sets, colors):
+    for line_set, color in (item for item in line_sets if item[0] in present):
         values = np.array([
             next((row.get("pieces", 0) for row in rows if row["date"] == day and row["line_set"] == line_set), 0)
             for day in dates
@@ -115,7 +121,7 @@ def _shipping(rows: List[Dict[str, Any]], path: Path) -> None:
     ax.invert_yaxis()
     ax.grid(axis="x", color=COLORS["grid"], linewidth=0.7)
     ax.grid(axis="y", visible=False)
-    ax.legend(loc="upper left", ncol=3, frameon=False, fontsize=8)
+    ax.legend(loc="upper left", ncol=min(5, max(1, len(present))), frameon=False, fontsize=8)
     ax.set_xlim(right=max(left.max() * 1.12, 1))
     _save(fig, path)
 
