@@ -76,8 +76,18 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.18.0-description-family-mapping" in html
+            assert "0.19.0-receiving-finesse" in html
             assert 'id="refresh-countdown"' in html
+            assert 'id="cards"' in html
+            assert 'id="throughput-chart"' not in html
+            assert 'id="quality-chart"' not in html
+            assert 'id="daily-table"' not in html
+            assert 'id="period-table"' not in html
+            assert 'id="defect-table"' not in html
+            assert 'id="shipping-chart"' not in html
+            assert 'id="painter-panel"' not in html
+            assert 'id="quality-notes"' not in html
+            assert 'id="attention-items"' not in html
 
         with urlopen(base + "/app.js", timeout=5) as response:
             javascript = response.read().decode("utf-8")
@@ -107,7 +117,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "values.push(`${integer(row.n71)} N71-6164`)" not in javascript
             assert "stagedMetricCard(current.staged_carts, current.staged_pieces" in javascript
             assert "`${optionalInteger(carts)} Carts / ${optionalInteger(pieces)} Pieces`" in javascript
-            assert "Finesse detail pending refresh" in javascript
+            assert "Finesse detail pending Receiving refresh" in javascript
             assert "dualYieldCard('PPY (Paint Process Yield)'" in javascript
             assert "dualYieldCard('FTY (First Time Yield)'" in javascript
             assert "metric.details.forEach" in javascript
@@ -116,11 +126,12 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "`${integer(current.reject_fty_pending_count)} Pending`" in javascript
             assert "'Repaint %'" in javascript
             assert "'Finesse %'" in javascript
-            assert "ratio(current.paint_fty_repair_count, current.reject_fty_rejected_count)" in javascript
-            assert "FUKA Repaired" in javascript
+            assert "ratio(finesseRepair, finesseRepair + finesseRepaint)" in javascript
+            assert "Resolved Receiving Rejects" in javascript
+            assert "Repaint / ${integer(current.finesse_pending_count)} Pending" in javascript
             assert "Fairings Repaired" in javascript
             assert "Bumpers Repaired" in javascript
-            assert "Total Rejected" in javascript
+            assert "Other Repaired" in javascript
             assert "current.ppy_repaint_count" in javascript
             assert "reject_ppy_approved" in javascript
             assert "reject_fty_approved" in javascript
@@ -180,6 +191,14 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "refreshReport(localDateISO(), true)" not in javascript
             assert "X-Operations-KPI-Refresh-Key" not in javascript
             assert "sessionStorage" not in javascript
+            render_body = javascript.split("function render(snapshot) {", 1)[1].split("\n}", 1)[0]
+            assert "renderCards(snapshot);" in render_body
+            assert "renderDaily(snapshot)" not in render_body
+            assert "renderPeriods(snapshot)" not in render_body
+            assert "renderDefects(snapshot)" not in render_body
+            assert "renderShipping(snapshot)" not in render_body
+            assert "renderPainters(snapshot)" not in render_body
+            assert "renderNotes(snapshot)" not in render_body
 
         with urlopen(base + "/styles.css", timeout=5) as response:
             styles = response.read().decode("utf-8")

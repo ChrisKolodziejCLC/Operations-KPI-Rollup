@@ -46,8 +46,8 @@ def test_migration_does_not_write_qpts_business_rows():
     assert "MERGE " not in sql
 
 
-def test_deployment_unit_pins_corrected_hash():
+def test_deployment_unit_has_advanced_past_category_mapping_hash():
     unit = SERVICE.read_text(encoding="utf-8")
 
-    assert f"Environment=KPI_SQL_PROCEDURE_HASH={CANDIDATE_HASH}" in unit
+    assert f"Environment=KPI_SQL_PROCEDURE_HASH={CANDIDATE_HASH}" not in unit
     assert f"Environment=KPI_SQL_PROCEDURE_HASH={BASE_HASH}" not in unit

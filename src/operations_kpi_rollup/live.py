@@ -15,7 +15,7 @@ from .odbc import execute_operations_rollup
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
 PERIOD_TYPE_ORDER = {"WEEK": 1, "MONTH": 2, "QUARTER": 3}
-CURRENT_METHOD_VERSION = "operations-kpi-live-v15-description-family-mapping"
+CURRENT_METHOD_VERSION = "operations-kpi-live-v16-receiving-finesse"
 
 
 def _integer(value: Any) -> int:
@@ -118,6 +118,13 @@ def _metric_fields(row: Mapping[str, Any]) -> Dict[str, int]:
         "receiving_bumper_approved": "receiving_bumper_approved",
         "receiving_fairing_total": "receiving_fairing_total",
         "receiving_fairing_approved": "receiving_fairing_approved",
+        "finesse_rejected_count": "finesse_rejected_count",
+        "finesse_repair_count": "finesse_repair_count",
+        "finesse_repaint_count": "finesse_repaint_count",
+        "finesse_pending_count": "finesse_pending_count",
+        "bumper_finesse_repair_count": "bumper_finesse_repair_count",
+        "fairing_finesse_repair_count": "fairing_finesse_repair_count",
+        "other_finesse_repair_count": "other_finesse_repair_count",
         "receiving_quantity": "receiving_quantity",
         "final_total": "final_total",
         "final_approved": "final_approved",
@@ -271,7 +278,7 @@ def snapshot_from_rollup(
             "Master Data Table supplies the preserved first EOL disposition. RepaintCount and load_line_repaint identify completed repaint passes; the current EDI EOL disposition supplies the latest completed repaint outcome.",
             "Repaint PPY counts non-repaint outcomes across every completed pass. Repaint FTY counts non-repaint outcomes only on initial passes. Repaint % is initial-pass repaint outcomes divided by initial passes.",
             "Reject PPY counts Approved outcomes across every completed pass. Reject FTY counts Approved outcomes only on initial passes. Repair, Repaint, Direct Repaint, and Reject are rejected outcomes; unresolved outcomes remain pending.",
-            "Finesse % is initial-pass Repair outcomes divided by all initial-pass rejected outcomes; pending outcomes are excluded. Its detail exposes only aggregate FUKA, Fairings, and Bumpers repair counts.",
+            "Finesse % is completed Finesse repairs divided by resolved first Receiving rejects (completed repair plus WFP/repaint); pending outcomes are excluded. The cohort is anchored to the first Receiving decision before any later Origin change, and product-family detail uses Description.",
             "Product-family detail uses normalized EDI Description: Fender is FUKA, Bumper is Bumpers, and Chassis Fairing is Fairings. EDI Origin remains only where it defines paint-process scope rather than product family.",
             "Pieces Staged mirrors the Paint Prep Wallboard queue: eligible EDI-loaded Origin F cart groups without a tblCarts_Paint booth scan, using three-day normal and seven-day active-repaint windows.",
             "The inspection-time hourly report is a reconciliation source, not the wallboard date grain; daily values can differ and should reconcile over longer periods.",
@@ -284,7 +291,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "5A4EA0319892EF663E13ED7EA8BC026D852F3DCC748EC450896B6D549464044D",
+                "AC7DFDADC5C86C638385CD59265DA5E78A35C6A6A50F7CD869A014F7F02639BE",
             ).upper(),
             "detail_result_sets_requested": False,
         },

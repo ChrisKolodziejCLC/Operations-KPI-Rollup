@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Operations KPI Rollup</title>
-  <link rel="stylesheet" href="/styles.css?v=0.18.0-description-family-mapping">
-  <script src="/app.js?v=0.18.0-description-family-mapping" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=0.19.0-receiving-finesse">
+  <script src="/app.js?v=0.19.0-receiving-finesse" defer></script>
 </head>
 <body>
   <header class="masthead">
@@ -45,58 +45,6 @@
     </section>
 
     <section id="cards" class="cards" aria-label="Headline metrics"></section>
-
-    <section class="panel chart-panel">
-      <div class="section-heading">
-        <div><p class="eyebrow">Current report week</p><h2>Daily performance</h2></div>
-        <p>Production-day throughput and first-pass quality.</p>
-      </div>
-      <div class="chart-grid">
-        <div><h3>Throughput</h3><div id="throughput-chart" class="chart"></div></div>
-        <div><h3>First-pass quality</h3><div id="quality-chart" class="chart"></div></div>
-      </div>
-      <div class="table-wrap"><table id="daily-table"></table></div>
-    </section>
-
-    <section class="panel">
-      <div class="section-heading">
-        <div><p class="eyebrow">Comparable grains</p><h2>Period rollups</h2></div>
-        <p>Averages use represented production days, not blank calendar dates.</p>
-      </div>
-      <div class="table-wrap"><table id="period-table"></table></div>
-    </section>
-
-    <section class="panel split-panel">
-      <div>
-        <div class="section-heading compact"><div><p class="eyebrow">Quality</p><h2>Top defects</h2></div></div>
-        <div class="table-wrap"><table id="defect-table"></table></div>
-      </div>
-      <div>
-        <div class="section-heading compact"><div><p class="eyebrow">Shipping</p><h2>Line-set mix</h2></div></div>
-        <div id="shipping-chart" class="shipping-chart"></div>
-      </div>
-    </section>
-
-    <section id="painter-panel" class="panel" hidden>
-      <div class="section-heading">
-        <div><p class="eyebrow">Restricted detail</p><h2>Painter throughput</h2></div>
-        <p>Hidden by default in the initial internal pilot.</p>
-      </div>
-      <div class="table-wrap"><table id="painter-table"></table></div>
-    </section>
-
-    <section class="panel notes-panel">
-      <div>
-        <p class="eyebrow">Data-quality controls</p>
-        <h2>What this build protects</h2>
-        <ol id="quality-notes"></ol>
-      </div>
-      <div>
-        <p class="eyebrow">Review before leadership promotion</p>
-        <h2>Attention items</h2>
-        <div id="attention-items"></div>
-      </div>
-    </section>
   </main>
 
   <footer>

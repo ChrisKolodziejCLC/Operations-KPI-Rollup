@@ -262,6 +262,20 @@ function renderCards(snapshot) {
   const paintCarts = paintCartSplit(current);
   const paintPieces = paintPieceSplit(current);
   const shippedDetail = shippedPieceDetail(snapshot);
+  const hasReceivingFinesse = current.finesse_repair_count !== undefined;
+  const finesseRepair = Number(current.finesse_repair_count || 0);
+  const finesseRepaint = Number(current.finesse_repaint_count || 0);
+  const finesseDetails = hasReceivingFinesse ? [
+    `${integer(finesseRepair)} Repaired / ${integer(finesseRepair + finesseRepaint)} Resolved Receiving Rejects`,
+    `${integer(finesseRepaint)} Repaint / ${integer(current.finesse_pending_count)} Pending`,
+    `${integer(current.bumper_finesse_repair_count)} Bumpers Repaired`,
+    `${integer(current.fairing_finesse_repair_count)} Fairings Repaired`
+  ] : [
+    'Finesse detail pending Receiving refresh'
+  ];
+  if (hasReceivingFinesse && Number(current.other_finesse_repair_count || 0) > 0) {
+    finesseDetails.push(`${integer(current.other_finesse_repair_count)} Other Repaired`);
+  }
   const cards = [
     ['Paint plan composite', percent(composite(current)), 'provisional · not standard OEE', palette.purple],
     ['Complete assy sets', integer(current.complete_assy_sets), current.mic_complete_assy_sets === undefined ? 'N33 / Chassis Fairing · dated by last assembled piece' : [`${integer(current.mic_complete_assy_sets)} MIC`, `${integer(current.painted_complete_assy_sets)} Painted`], palette.teal],
@@ -289,15 +303,10 @@ function renderCards(snapshot) {
   ));
   container.append(metricCard(
     'Finesse %',
-    percent(ratio(current.paint_fty_repair_count, current.reject_fty_rejected_count)),
-    current.paint_fty_repair_count === undefined || current.reject_fty_rejected_count === undefined ? [
-      'Finesse detail pending refresh'
-    ] : [
-      `${integer(current.paint_fty_repair_count)} Repaired / ${integer(current.reject_fty_rejected_count)} Total Rejected`,
-      `${integer(current.fuka_paint_fty_repair_count)} FUKA Repaired`,
-      `${integer(current.fairing_paint_fty_repair_count)} Fairings Repaired`,
-      `${integer(current.bumper_paint_fty_repair_count)} Bumpers Repaired`
-    ],
+    percent(hasReceivingFinesse
+      ? ratio(finesseRepair, finesseRepair + finesseRepaint)
+      : ratio(current.paint_fty_repair_count, current.reject_fty_rejected_count)),
+    finesseDetails,
     palette.green
   ));
   container.append(dualYieldCard('PPY (Paint Process Yield)', {
@@ -514,7 +523,7 @@ function render(snapshot) {
   $('#scope-label').textContent = `${snapshot.scope.label}. Method: ${snapshot.scope.method_version}.`;
   $('#date-input').value = snapshot.report_date;
   updateNavigationState();
-  renderCards(snapshot); renderDaily(snapshot); renderPeriods(snapshot); renderDefects(snapshot); renderShipping(snapshot); renderPainters(snapshot); renderNotes(snapshot);
+  renderCards(snapshot);
 }
 
 async function api(path, options = {}) {

@@ -39,7 +39,7 @@ Never place its value in Git, a unit `Environment=` line, a change record, comma
 
 Any approved procedure change must be committed as a hash-gated migration, previewed in a rolled-back SQL transaction, and paired with a reviewed reverse migration before it is applied. Update the pinned procedure hash in both source and the deployed unit only after the candidate hash is recorded.
 
-The live extractor enforces every aggregate invariant before saving a snapshot: Prd/BV/Svc load, paint, and staged totals; first-pass outcome totals; Finesse repair families; inspection families; prepared-trailer families; and shipped-rack families. Any mismatch blocks refresh rather than publishing a plausible-looking but internally inconsistent wallboard.
+The live extractor enforces every aggregate invariant before saving a snapshot: Prd/BV/Svc load, paint, and staged totals; first-pass outcome totals; first-Receiving Finesse outcomes and repair families; inspection families; prepared-trailer families; and shipped-rack families. Any mismatch blocks refresh rather than publishing a plausible-looking but internally inconsistent wallboard.
 
 ## Rollback
 

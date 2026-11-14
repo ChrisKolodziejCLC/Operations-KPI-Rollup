@@ -67,6 +67,8 @@ Version 0.17.0 simplifies the production-flow cards and adds the requested queue
 
 Version 0.18.0 corrects every product-family split after live source evidence proved that EDI `Origin` mixes physical Bumpers and Chassis Fairings. Repaint, Finesse, Receiving FTY, Final FTY, Pieces Shipped, shipping mix, and shipped-rack classifications now use normalized EDI `Description`: `Fender` = FUKA, `Bumper` = Bumpers, and `Chassis Fairing` = Fairings. N71-6164 remains its requested exclusive shipping/rack subset, while all-inclusive bumper fields still use `Description = Bumper`. Workflow scope fields such as staged paint carts and painted pieces shipped retain their existing Origin-based definitions because they describe process flow, not product family. The Finesse headline detail is also clarified to `Repaired / Total Rejected`. Headline totals, yield formulas, refresh ownership, snapshot grain, permissions, and QPTS business rows are unchanged.
 
+Version 0.19.0 moves Finesse to its intended Receiving-inspection cohort. It starts with each non-service part's first Receiving reject, so Brownsville Origin-B parts remain represented even if a later repaint changes current Origin to F. Completed `repair_disposition = Repaired` parts are the numerator; completed WFP/repaint outcomes form the other resolved outcome; pending outcomes remain visible and are excluded from the percentage denominator. Repair detail uses normalized Description for Bumpers and Fairings. The browser keeps the header, date controls, and complete three-row tile grid while removing the obsolete charts and report sections beneath the tiles. Their aggregate snapshot fields remain available for future chart designs.
+
 Run the safe local fixture mode:
 
 ```bash

@@ -44,14 +44,17 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `paint_fty_total` / `paint_fty_approved` | Physical initial passes, and initial passes with a resolved non-repaint outcome. Their ratio is Repaint FTY. |
 | `paint_fty_repaint_count` | Initial passes whose preserved first EOL disposition is Repaint or Direct Repaint. Its ratio to `paint_fty_total` is the standalone Repaint %. |
 | `fuka_paint_fty_repaint_count` / `bumper_paint_fty_repaint_count` / `fairing_paint_fty_repaint_count` | Aggregate product-family split of `paint_fty_repaint_count`, displayed in FUKA / Bumpers / Fairings order. Families use normalized EDI `Description`: `Fender` = FUKA, `Bumper` = Bumpers, and `Chassis Fairing` = Fairings. These fields expose no part-level rows and do not change the Repaint % formula. |
-| `paint_fty_repair_count` | Initial physical passes whose preserved first EOL disposition is Repair. Its ratio to `reject_fty_rejected_count` is Finesse %. Pending outcomes are excluded from the denominator. |
-| `fuka_paint_fty_repair_count` / `fairing_paint_fty_repair_count` / `bumper_paint_fty_repair_count` | Aggregate product-family split of `paint_fty_repair_count`, displayed as repaired quantities using the same normalized EDI `Description` rule. These three fields must sum to the Repair total. The Finesse detail labels the denominator as `Total Rejected`. |
+| `paint_fty_repair_count` | Legacy paint-pass audit field: initial physical passes whose preserved first EOL disposition is Repair. It remains in the snapshot for compatibility but no longer drives the Finesse tile. |
+| `fuka_paint_fty_repair_count` / `fairing_paint_fty_repair_count` / `bumper_paint_fty_repair_count` | Legacy aggregate product-family split of `paint_fty_repair_count`. These fields remain reconciliation-gated but no longer drive the Finesse tile. |
 | `reject_ppy_total` / `reject_ppy_approved` | All physical paint passes, and passes with an Approved EOL outcome. Their ratio is Reject PPY. |
 | `reject_ppy_rejected_count` / `reject_ppy_pending_count` | All EOL Repair, Repaint, Direct Repaint, or Reject outcomes for those passes; and passes with no EOL outcome yet. |
 | `reject_fty_total` / `reject_fty_approved` | Initial physical passes, and initial passes with an Approved preserved first EOL disposition. Their ratio is Reject FTY. |
 | `reject_fty_rejected_count` / `reject_fty_pending_count` | Non-approved and pending EOL outcomes restricted to initial physical passes. |
 | `receiving_total` / `receiving_approved` | Parts with a first receiving decision and those approved first pass. |
 | `receiving_bumper_total` / `receiving_bumper_approved` / `receiving_fairing_total` / `receiving_fairing_approved` | Receiving first-decision totals and approvals split by normalized EDI `Description` into all Bumpers and all Chassis Fairings. Both totals and approvals reconcile to the overall Receiving FTY fields. |
+| `finesse_rejected_count` | Parts whose first Receiving decision is reject. The cohort is fixed before any later repaint changes current Origin, so Origin B parts are not filtered out. It equals `receiving_total - receiving_approved`. |
+| `finesse_repair_count` / `finesse_repaint_count` / `finesse_pending_count` | Outcomes for the first-Receiving-reject cohort. `repair_disposition = Repaired` is completed Finesse repair; `repair_disposition = WFP` or current line-end disposition Repaint is repaint; all other outcomes remain pending. The three fields sum to `finesse_rejected_count`. |
+| `bumper_finesse_repair_count` / `fairing_finesse_repair_count` / `other_finesse_repair_count` | Description-based product-family split of completed Finesse repairs. These fields sum to `finesse_repair_count`. |
 | `receiving_quantity` | Distinct non-service parts dated by `insp_receive_stamp`. |
 | `final_total` / `final_approved` | Parts with a first final decision and those approved first pass. |
 | `final_fuka_total` / `final_fuka_approved` / `final_bumper_total` / `final_bumper_approved` / `final_fairing_total` / `final_fairing_approved` | Final-inspection first-decision totals and approvals split by normalized EDI `Description` into FUKA, all Bumpers, and all Chassis Fairings. Family totals and approvals reconcile to the overall Final FTY fields. |
@@ -89,8 +92,10 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 - `Repaint FTY = paint_fty_approved / paint_fty_total`
 - `Repaint % = paint_fty_repaint_count / paint_fty_total`
 - `fuka_paint_fty_repaint_count + bumper_paint_fty_repaint_count + fairing_paint_fty_repaint_count = paint_fty_repaint_count`
-- `Finesse % = paint_fty_repair_count / reject_fty_rejected_count`
-- `fuka_paint_fty_repair_count + fairing_paint_fty_repair_count + bumper_paint_fty_repair_count = paint_fty_repair_count`
+- `Finesse % = finesse_repair_count / (finesse_repair_count + finesse_repaint_count)`; pending is displayed but excluded from the denominator
+- `finesse_rejected_count = receiving_total - receiving_approved`
+- `finesse_repair_count + finesse_repaint_count + finesse_pending_count = finesse_rejected_count`
+- `bumper_finesse_repair_count + fairing_finesse_repair_count + other_finesse_repair_count = finesse_repair_count`
 - `Reject PPY = reject_ppy_approved / reject_ppy_total`
 - `Reject FTY = reject_fty_approved / reject_fty_total`
 - `Receiving FTY = receiving_approved / receiving_total`
@@ -125,6 +130,9 @@ The live SQL adapter is read-only and emits this contract. It must:
 - `paint_fty_approved + paint_fty_repaint_count + reject_fty_pending_count = paint_fty_total`.
 - `fuka_paint_fty_repaint_count + bumper_paint_fty_repaint_count + fairing_paint_fty_repaint_count = paint_fty_repaint_count` for every daily and aggregate metric row.
 - `fuka_paint_fty_repair_count + fairing_paint_fty_repair_count + bumper_paint_fty_repair_count = paint_fty_repair_count`, and repairs cannot exceed `reject_fty_rejected_count`.
+- `finesse_rejected_count = receiving_total - receiving_approved`.
+- `finesse_repair_count + finesse_repaint_count + finesse_pending_count = finesse_rejected_count`.
+- `bumper_finesse_repair_count + fairing_finesse_repair_count + other_finesse_repair_count = finesse_repair_count`.
 - `reject_ppy_approved + reject_ppy_rejected_count + reject_ppy_pending_count = reject_ppy_total`.
 - `reject_fty_approved + reject_fty_rejected_count + reject_fty_pending_count = reject_fty_total`.
 - Every displayed rate retains a denominator greater than or equal to its numerator where the outcome classes are exclusive.

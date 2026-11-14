@@ -85,6 +85,13 @@ def metric_row(period_type, start, end, available=1, days=1):
         "receiving_bumper_approved": "88",
         "receiving_fairing_total": "9",
         "receiving_fairing_approved": "9",
+        "finesse_rejected_count": "2",
+        "finesse_repair_count": "1",
+        "finesse_repaint_count": "1",
+        "finesse_pending_count": "0",
+        "bumper_finesse_repair_count": "1",
+        "fairing_finesse_repair_count": "0",
+        "other_finesse_repair_count": "0",
         "receiving_quantity": "98",
         "final_total": "101",
         "final_approved": "100",
@@ -148,7 +155,7 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
 
 
 def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
-    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "5a4ea0319892ef663e13ed7ea8bc026d852f3dcc748ec450896b6d549464044d")
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "ac7dfdadc5c86c638385cd59265da5e78a35c6a6a50f7cd869a014f7f02639be")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -184,8 +191,8 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert cards_by_label["Repaint %"]["value"] == "3.3%"
     assert cards_by_label["Repaint %"]["detail"] == "3 / 90 initial passes"
     assert cards_by_label["Repaint %"]["secondary_detail"] == "1 FUKA / 1 Bumpers / 1 Fairings"
-    assert cards_by_label["Finesse %"]["value"] == "40.0%"
-    assert cards_by_label["Finesse %"]["detail"] == "2 Repaired / 5 Total Rejected\nFUKA 1 repaired\nFairings 1 repaired\nBumpers 0 repaired"
+    assert cards_by_label["Finesse %"]["value"] == "50.0%"
+    assert cards_by_label["Finesse %"]["detail"] == "1 Repaired / 2 Resolved Receiving Rejects\n1 Repaint / 0 Pending\n1 Bumpers Repaired\n0 Fairings Repaired"
     assert cards_by_label["Repaint PPY"]["value"] == "94.7%"
     assert cards_by_label["Reject PPY"]["value"] == "93.7%"
     assert cards_by_label["Repaint FTY"]["value"] == "95.6%"
@@ -203,8 +210,8 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert [row["pieces"] for row in snapshot["shipping"]] == [55, 20, 5, 10]
     assert snapshot["painters"] == []
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
-    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "5A4EA0319892EF663E13ED7EA8BC026D852F3DCC748EC450896B6D549464044D"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v15-description-family-mapping"
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "AC7DFDADC5C86C638385CD59265DA5E78A35C6A6A50F7CD869A014F7F02639BE"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v16-receiving-finesse"
 
 
 def test_repaint_line_set_split_must_equal_total():
@@ -270,6 +277,36 @@ def test_v14_inspection_and_finesse_splits_are_guarded():
         assert str(error) == "daily staged cart split does not equal staged_carts"
     else:
         raise AssertionError("invalid staged cart split was accepted")
+
+
+def test_v16_receiving_finesse_cohort_is_balanced():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["daily"][-1]["finesse_rejected_count"] = 3
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily Finesse rejected count does not equal first Receiving rejects"
+    else:
+        raise AssertionError("an invalid Receiving reject cohort was accepted")
+
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["daily"][-1]["finesse_pending_count"] = 1
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily Finesse outcomes do not equal first Receiving rejects"
+    else:
+        raise AssertionError("unbalanced Finesse outcomes were accepted")
+
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["daily"][-1]["other_finesse_repair_count"] = 1
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily Finesse repair family split does not equal finesse_repair_count"
+    else:
+        raise AssertionError("an invalid Finesse family split was accepted")
 
 
 def test_v13_mic_and_n71_breakdowns_are_guarded():
@@ -345,6 +382,9 @@ def test_v13_saved_snapshot_can_load_before_first_v14_refresh():
         "final_fairing_total", "final_fairing_approved",
         "paint_fty_repair_count", "fuka_paint_fty_repair_count",
         "fairing_paint_fty_repair_count", "bumper_paint_fty_repair_count",
+        "finesse_rejected_count", "finesse_repair_count", "finesse_repaint_count",
+        "finesse_pending_count", "bumper_finesse_repair_count",
+        "fairing_finesse_repair_count", "other_finesse_repair_count",
         "staged_carts", "production_staged_carts", "bv_staged_carts", "service_staged_carts",
         "staged_pieces", "production_staged_pieces", "bv_staged_pieces", "service_staged_pieces",
     )
@@ -356,6 +396,25 @@ def test_v13_saved_snapshot_can_load_before_first_v14_refresh():
     cards_by_label = {card["label"]: card for card in prepare_context(snapshot)["cards"]}
     assert cards_by_label["Trailers"]["value"] == "4 Prepped / No Data Shipped"
     assert cards_by_label["Finesse %"]["value"] == "No Data"
+
+
+def test_v15_saved_snapshot_can_load_before_first_v16_refresh():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["scope"]["method_version"] = "operations-kpi-live-v15-description-family-mapping"
+    v16_fields = (
+        "finesse_rejected_count", "finesse_repair_count", "finesse_repaint_count",
+        "finesse_pending_count", "bumper_finesse_repair_count",
+        "fairing_finesse_repair_count", "other_finesse_repair_count",
+    )
+    for collection in ("daily", "periods"):
+        for row in snapshot[collection]:
+            for field in v16_fields:
+                row.pop(field)
+    validate_snapshot(snapshot)
+    finesse = {card["label"]: card for card in prepare_context(snapshot)["cards"]}["Finesse %"]
+    assert finesse["value"] == "40.0%"
+    assert finesse["detail"] == "FUKA 1 repaired\nFairings 1 repaired\nBumpers 0 repaired"
 
 
 def test_load_split_must_equal_total():
@@ -571,6 +630,6 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "5A4EA0319892EF663E13ED7EA8BC026D852F3DCC748EC450896B6D549464044D" in captured["query"]
+    assert "AC7DFDADC5C86C638385CD59265DA5E78A35C6A6A50F7CD869A014F7F02639BE" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]
