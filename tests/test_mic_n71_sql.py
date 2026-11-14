@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 FORWARD = ROOT / "sql" / "2026-11-13-add-mic-n71-breakdowns.sql"
 ROLLBACK = ROOT / "sql" / "2026-11-13-rollback-mic-n71-breakdowns.sql"
+SERVICE = ROOT / "deploy" / "operations-kpi-rollup.service"
 OLD_HASH = "142E3C5764E0E80D4694D085C42DAF82EC153CEBEA757C965BE02B19A61FF373"
 NEW_HASH = "415953E2A0675AADA2C99A7BABC4F43DBB04B21ACB7BB8D9361AF094C96B7CE3"
 
@@ -42,3 +43,10 @@ def test_reverse_migration_is_hash_gated_and_restores_exact_old_definition():
     assert "REPLACE(@CandidateDefinition, @NewShippingCase, @OldShippingCase)" in sql
     assert "Dashboard MIC/N71 rollback candidate hash mismatch." in sql
     assert "ASTER_OPERATIONS_KPI_MIC_N71_BREAKDOWNS_ROLLBACK_V1" in sql
+
+
+def test_deployment_unit_pins_the_reviewed_candidate_hash():
+    unit = SERVICE.read_text(encoding="utf-8")
+
+    assert f"Environment=KPI_SQL_PROCEDURE_HASH={NEW_HASH}" in unit
+    assert f"Environment=KPI_SQL_PROCEDURE_HASH={OLD_HASH}" not in unit
