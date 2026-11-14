@@ -13,7 +13,7 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `daily` | array | One row per calendar date in the displayed report week. |
 | `periods` | array | Separate weekly, monthly, and quarterly aggregate rows. |
 | `painters` | array | Painter/booth throughput rows; the committed fixture uses aliases. |
-| `shipping` | array | Date and line-set piece counts. |
+| `shipping` | array | Date and exclusive FUKA, Bumpers, N71-6164, and Fairings piece counts. |
 | `top_defects` | array | Aggregate step, defect description, and count. |
 | `attention` | object | Reviewed exceptions suitable for the report. |
 | `data_quality_notes` | array | Method limitations shown to the reader. |
@@ -28,11 +28,15 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `parts_loaded` / `carts_loaded` | Loaded piece events (including repaint loads) and distinct non-null loaded carts. |
 | `unique_pieces_loaded` | Distinct QPTS Part IDs represented by load events on that report date. For aggregate periods, this is the sum of the represented daily distinct counts, not a cross-day deduplication. |
 | `production_parts_loaded` / `bv_parts_loaded` / `service_parts_loaded` | Loaded piece events split into ordinary production, BV (`N33` or `N71-6171`), and QPTS `Model = Service`. Service takes precedence over BV; the three fields sum to `parts_loaded`. |
+| `n71_6164_parts_loaded` | N71-6164 loaded piece events within `production_parts_loaded`. The wallboard subtracts this subset from its displayed Prd value so Prd / BV / N71-6164 / Svc are exclusive and still sum to `parts_loaded`. |
 | `production_carts_loaded` / `bv_carts_loaded` / `service_carts_loaded` | Distinct loaded carts under the same classes. Cart precedence is Service, then BV, then Prd so each cart is counted once and the three fields sum to `carts_loaded`. |
+| `n71_6164_carts_loaded` | Loaded carts in the Prd class that contain N71-6164. It is a subset of `production_carts_loaded`; Service and BV cart precedence remains unchanged. |
 | `paint_carts` / `paint_pieces_processed` | Distinct paint carts and oven-exit pieces under the approved scope. |
 | `unique_pieces_processed` | Distinct QPTS Part IDs represented by paint oven-exit events on that report date. For aggregate periods, this is the sum of the represented daily distinct counts, not a cross-day deduplication. |
 | `production_paint_carts` / `bv_paint_carts` / `service_paint_carts` | Distinct oven-exit carts split into Prd, BV, and Svc using the same exclusive cart precedence. |
+| `n71_6164_paint_carts` | Oven-exit carts in the Prd class that contain N71-6164, retained as a subset for backward compatibility and displayed as an exclusive category after subtraction from Prd. |
 | `production_paint_pieces_processed` / `bv_paint_pieces_processed` / `service_paint_pieces_processed` | Oven-exit piece events split into Prd, BV, and Svc. |
+| `n71_6164_paint_pieces_processed` | N71-6164 oven-exit piece events within `production_paint_pieces_processed`; the displayed Prd value excludes this subset. |
 | `paint_decision_pieces` / `ppy_approved` | All physical paint passes, and passes with a resolved non-repaint outcome. Their ratio is Repaint PPY. The matching `production_`, `bv_`, and `service_` fields retain each class numerator and denominator. |
 | `ppy_repaint_count` | Physical passes whose EOL outcome is Repaint or Direct Repaint. Together with pending outcomes and `ppy_approved`, it reconciles to all paint passes. |
 | `paint_fty_total` / `paint_fty_approved` | Physical initial passes, and initial passes with a resolved non-repaint outcome. Their ratio is Repaint FTY. |
@@ -49,10 +53,10 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `eol_inspected` | End-of-line inspections under the approved event-count rule. |
 | `painted_parts_shipped` | Non-service painted pieces shipped. |
 | `bumpers_shipped` / `parts_shipped` | Non-service bumper pieces and all non-service pieces shipped. |
-| `complete_assy_sets` | Four-piece N33/Chassis Fairing sets dated by the latest `AssembledDate` among the set's pieces. |
-| `assembled_bumper_count` | N71-6171 parts dated by `AssembledDate`. |
+| `complete_assy_sets` | Four-piece N33/Chassis Fairing sets dated by the latest `AssembledDate` among the set's pieces. `mic_complete_assy_sets` counts sets whose four pieces all have normalized `Color = MIC`; `painted_complete_assy_sets` counts the remaining non-MIC sets. The current source window has no mixed/blank sets, and the two detail fields sum to the headline. |
+| `assembled_bumper_count` | N71-6171 parts dated by `AssembledDate`. `mic_assembled_bumper_count` uses normalized `Color = MIC`; `painted_assembled_bumper_count` is the non-MIC complement. |
 | `trailers_prepared` | Prepared trailers as of the snapshot cutoff. `fuka_trailers_prepared`, `bumper_trailers_prepared`, `fairing_trailers_prepared`, and the internal `other_trailers_prepared` integrity bucket sum to this total. Trailers have no service category. Mixed historical trailers are classified by dominant piece type. |
-| `racks_shipped` | Distinct nonblank physical `Rack` values on shipped, non-service pieces, grouped by ship date. `fuka_racks_shipped`, `bumper_racks_shipped`, `fairing_racks_shipped`, and the internal `other_racks_shipped` integrity bucket sum to this total. Mixed racks are counted once under their dominant line set with deterministic FUKA, then Bumpers, then Fairings tie order. Rack IDs are not included in the snapshot. |
+| `racks_shipped` | Distinct nonblank physical `Rack` values on shipped, non-service pieces, grouped by ship date. `fuka_racks_shipped`, `bumper_racks_shipped`, `n71_6164_racks_shipped`, `fairing_racks_shipped`, and the internal `other_racks_shipped` integrity bucket sum to this total. Mixed racks are counted once under their dominant family with deterministic N71-6164, FUKA, Bumpers, then Fairings tie order. Rack IDs are not included in the snapshot. |
 | `pieces_scheduled` / `hours_scheduled` / `paint_hours` | Inputs to the provisional paint-plan composite. |
 
 Every ratio is calculated by the renderer from a saved numerator and denominator. A zero denominator renders as `No Data`, not `0.0%`.
@@ -64,11 +68,17 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 - `carts_loaded = production_carts_loaded + bv_carts_loaded + service_carts_loaded`
 - `paint_carts = production_paint_carts + bv_paint_carts + service_paint_carts`
 - `paint_pieces_processed = production_paint_pieces_processed + bv_paint_pieces_processed + service_paint_pieces_processed`
+- `displayed Prd loaded pieces = production_parts_loaded - n71_6164_parts_loaded`
+- `displayed Prd loaded carts = production_carts_loaded - n71_6164_carts_loaded`
+- `displayed Prd paint pieces = production_paint_pieces_processed - n71_6164_paint_pieces_processed`
+- `displayed Prd paint carts = production_paint_carts - n71_6164_paint_carts`
+- `complete_assy_sets = mic_complete_assy_sets + painted_complete_assy_sets`
+- `assembled_bumper_count = mic_assembled_bumper_count + painted_assembled_bumper_count`
 - `0 <= unique_pieces_loaded <= parts_loaded`
 - `0 <= unique_pieces_processed <= paint_pieces_processed`
 - legacy class splits remain auditable, but the wallboard displays overall exit-day yield because a narrow class can have repaint exits without initial exits on that day
 - `trailers_prepared = FUKA + Bumpers + Fairings + internal Other`
-- `racks_shipped = fuka_racks_shipped + bumper_racks_shipped + fairing_racks_shipped + other_racks_shipped`
+- `racks_shipped = fuka_racks_shipped + bumper_racks_shipped + n71_6164_racks_shipped + fairing_racks_shipped + other_racks_shipped`
 - `Repaint PPY = ppy_approved / paint_decision_pieces`
 - `Repaint FTY = paint_fty_approved / paint_fty_total`
 - `Repaint % = paint_fty_repaint_count / paint_fty_total`

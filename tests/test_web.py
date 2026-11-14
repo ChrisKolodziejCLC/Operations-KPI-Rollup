@@ -76,7 +76,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.15.0-yield-detail-rows" in html
+            assert "0.16.0-mic-n71-breakdowns" in html
             assert 'id="refresh-countdown"' in html
 
         with urlopen(base + "/app.js", timeout=5) as response:
@@ -85,22 +85,26 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "production_parts_loaded" in javascript
             assert "bv_parts_loaded" in javascript
             assert "service_parts_loaded" in javascript
+            assert "n71_6164_parts_loaded" in javascript
             assert "production_carts_loaded" in javascript
             assert "bv_carts_loaded" in javascript
             assert "service_carts_loaded" in javascript
+            assert "n71_6164_carts_loaded" in javascript
             assert "production_paint_carts" in javascript
             assert "bv_paint_carts" in javascript
             assert "service_paint_carts" in javascript
+            assert "n71_6164_paint_carts" in javascript
             assert "production_paint_pieces_processed" in javascript
             assert "bv_paint_pieces_processed" in javascript
             assert "service_paint_pieces_processed" in javascript
+            assert "n71_6164_paint_pieces_processed" in javascript
             assert "unique_pieces_loaded" in javascript
             assert "unique_pieces_processed" in javascript
             assert "splitMetricCard('Pieces loaded', current.parts_loaded" in javascript
             assert "splitMetricCard('Pieces painted', current.paint_pieces_processed" in javascript
             assert "unique === undefined ? '—' : integer(unique)" in javascript
             assert "metric-split-total" in javascript
-            assert "${integer(row.production)} Prd / ${integer(row.bv)} BV / ${integer(row.service)} Svc" in javascript
+            assert "values.push(`${integer(row.n71)} N71-6164`)" in javascript
             assert "dualYieldCard('PPY (Paint Process Yield)'" in javascript
             assert "dualYieldCard('FTY (First Time Yield)'" in javascript
             assert "metric.details.forEach" in javascript
@@ -114,6 +118,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "yieldRatio(metric.numerator, metric.denominator)" in javascript
             assert "fuka_racks_shipped" in javascript
             assert "bumper_racks_shipped" in javascript
+            assert "n71_6164_racks_shipped" in javascript
             assert "fairing_racks_shipped" in javascript
             assert "Rack detail pending refresh" in javascript
             assert "count === 1 ? 'rack' : 'racks'" in javascript
@@ -121,12 +126,17 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "shippedPieceDetail(snapshot)" in javascript
             assert "`${integer(counts.fuka)} FUKA`" in javascript
             assert "`${integer(counts.bumpers)} Bumpers`" in javascript
+            assert "`${integer(counts.n71)} N71-6164`" in javascript
             assert "`${integer(counts.fairings)} Fairings`" in javascript
             assert "repaintLineSetDetail(current)" in javascript
             assert "${integer(row.fuka_paint_fty_repaint_count)} FUKA / ${integer(row.bumper_paint_fty_repaint_count)} Bumpers / ${integer(row.fairing_paint_fty_repaint_count)} Fairings" in javascript
             assert "provisional · not standard OEE" in javascript
             assert "N33 / Chassis Fairing · dated by last assembled piece" in javascript
             assert "N71-6171 · AssembledDate" in javascript
+            assert "mic_complete_assy_sets" in javascript
+            assert "painted_complete_assy_sets" in javascript
+            assert "mic_assembled_bumper_count" in javascript
+            assert "painted_assembled_bumper_count" in javascript
             assert "metric-detail-list" in javascript
             assert "metric-detail-row" in javascript
             assert "First Decisions" in javascript

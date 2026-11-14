@@ -62,30 +62,34 @@ function rangeLabel(rows) {
 
 function loadSplit(row) {
   if (row.production_parts_loaded === undefined && row.service_parts_loaded === undefined) {
-    return {production: row.parts_loaded, bv: 0, service: 0};
+    return {production: row.parts_loaded, bv: 0, n71: undefined, service: 0};
   }
-  return {production: row.production_parts_loaded, bv: row.bv_parts_loaded || 0, service: row.service_parts_loaded};
+  const n71 = row.n71_6164_parts_loaded === undefined ? undefined : Number(row.n71_6164_parts_loaded || 0);
+  return {production: Number(row.production_parts_loaded || 0) - Number(n71 || 0), bv: row.bv_parts_loaded || 0, n71, service: row.service_parts_loaded};
 }
 
 function cartSplit(row) {
   if (row.production_carts_loaded === undefined && row.service_carts_loaded === undefined) {
-    return {production: row.carts_loaded, bv: 0, service: 0};
+    return {production: row.carts_loaded, bv: 0, n71: undefined, service: 0};
   }
-  return {production: row.production_carts_loaded, bv: row.bv_carts_loaded || 0, service: row.service_carts_loaded};
+  const n71 = row.n71_6164_carts_loaded === undefined ? undefined : Number(row.n71_6164_carts_loaded || 0);
+  return {production: Number(row.production_carts_loaded || 0) - Number(n71 || 0), bv: row.bv_carts_loaded || 0, n71, service: row.service_carts_loaded};
 }
 
 function paintCartSplit(row) {
   if (row.production_paint_carts === undefined && row.service_paint_carts === undefined) {
-    return {production: row.paint_carts, bv: 0, service: 0};
+    return {production: row.paint_carts, bv: 0, n71: undefined, service: 0};
   }
-  return {production: row.production_paint_carts, bv: row.bv_paint_carts || 0, service: row.service_paint_carts};
+  const n71 = row.n71_6164_paint_carts === undefined ? undefined : Number(row.n71_6164_paint_carts || 0);
+  return {production: Number(row.production_paint_carts || 0) - Number(n71 || 0), bv: row.bv_paint_carts || 0, n71, service: row.service_paint_carts};
 }
 
 function paintPieceSplit(row) {
   if (row.production_paint_pieces_processed === undefined && row.service_paint_pieces_processed === undefined) {
-    return {production: row.paint_pieces_processed, bv: 0, service: 0};
+    return {production: row.paint_pieces_processed, bv: 0, n71: undefined, service: 0};
   }
-  return {production: row.production_paint_pieces_processed, bv: row.bv_paint_pieces_processed || 0, service: row.service_paint_pieces_processed};
+  const n71 = row.n71_6164_paint_pieces_processed === undefined ? undefined : Number(row.n71_6164_paint_pieces_processed || 0);
+  return {production: Number(row.production_paint_pieces_processed || 0) - Number(n71 || 0), bv: row.bv_paint_pieces_processed || 0, n71, service: row.service_paint_pieces_processed};
 }
 
 function rateBreakdown(row, numerator, denominator) {
@@ -94,18 +98,20 @@ function rateBreakdown(row, numerator, denominator) {
 }
 
 function shippedPieceDetail(snapshot) {
-  const counts = {fuka:0, bumpers:0, fairings:0};
+  const counts = {fuka:0, bumpers:0, n71:0, fairings:0};
   (snapshot.shipping || []).forEach(row => {
     if (row.date !== snapshot.report_date) return;
     const lineSet = String(row.line_set || '').trim().toLowerCase();
     const pieces = Number(row.pieces || 0);
     if (lineSet === 'bumpers') counts.bumpers += pieces;
+    else if (lineSet === 'n71-6164') counts.n71 += pieces;
     else if (lineSet === 'fenders' || lineSet === 'fuka') counts.fuka += pieces;
     else if (lineSet === 'chassis fairings' || lineSet === 'fairings') counts.fairings += pieces;
   });
   return [
     `${integer(counts.fuka)} FUKA`,
     `${integer(counts.bumpers)} Bumpers`,
+    `${integer(counts.n71)} N71-6164`,
     `${integer(counts.fairings)} Fairings`
   ];
 }
@@ -122,6 +128,7 @@ function rackDetail(row) {
     ['bumper_racks_shipped', 'Bumper'],
     ['fairing_racks_shipped', 'Fairing']
   ];
+  if (row.n71_6164_racks_shipped !== undefined) fields.splice(2, 0, ['n71_6164_racks_shipped', 'N71-6164']);
   if (!fields.every(([field]) => row[field] !== undefined)) return ['Rack detail pending refresh'];
   const values = fields.map(([field, label]) => {
     const count = Number(row[field] || 0);
@@ -174,7 +181,10 @@ function splitMetricCard(label, total, unique, rows, color) {
     const line = document.createElement('div'); line.className = 'metric-split-row';
     const rowLabel = document.createElement('span'); rowLabel.className = 'metric-split-label'; rowLabel.append(text(row.label));
     const value = document.createElement('small'); value.className = 'metric-split-value';
-    value.append(text(`${integer(row.production)} Prd / ${integer(row.bv)} BV / ${integer(row.service)} Svc`));
+    const values = [`${integer(row.production)} Prd`, `${integer(row.bv)} BV`];
+    if (row.n71 !== undefined) values.push(`${integer(row.n71)} N71-6164`);
+    values.push(`${integer(row.service)} Svc`);
+    value.append(text(values.join(' / ')));
     line.append(rowLabel, value); list.append(line);
   });
   card.append(labelNode, totalNode, list);
@@ -216,19 +226,19 @@ function renderCards(snapshot) {
     ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} First Decisions`, palette.green],
     ['Final FTY', percent(ratio(current.final_approved, current.final_total)), `${integer(current.final_approved)} / ${integer(current.final_total)} First Decisions`, palette.purple],
     ['Paint plan composite', percent(composite(current)), 'provisional · not standard OEE', palette.purple],
-    ['Complete assy sets', integer(current.complete_assy_sets), 'N33 / Chassis Fairing · dated by last assembled piece', palette.teal],
-    ['Assembled bumpers', integer(current.assembled_bumper_count), 'N71-6171 · AssembledDate', palette.blue],
+    ['Complete assy sets', integer(current.complete_assy_sets), current.mic_complete_assy_sets === undefined ? 'N33 / Chassis Fairing · dated by last assembled piece' : [`${integer(current.mic_complete_assy_sets)} MIC`, `${integer(current.painted_complete_assy_sets)} Painted`], palette.teal],
+    ['Assembled bumpers', integer(current.assembled_bumper_count), current.mic_assembled_bumper_count === undefined ? 'N71-6171 · AssembledDate' : [`${integer(current.mic_assembled_bumper_count)} MIC`, `${integer(current.painted_assembled_bumper_count)} Painted`], palette.blue],
     ['Pieces shipped', integer(current.parts_shipped), shippedDetail, palette.red],
     ['Trailers prepared', integer(current.trailers_prepared), trailerDetail, palette.amber]
   ];
   const container = $('#cards'); container.replaceChildren();
   container.append(splitMetricCard('Pieces loaded', current.parts_loaded, current.unique_pieces_loaded, [
-    {label:'Carts', production:carts.production, bv:carts.bv, service:carts.service},
-    {label:'Pieces', production:loaded.production, bv:loaded.bv, service:loaded.service}
+    {label:'Carts', production:carts.production, bv:carts.bv, n71:carts.n71, service:carts.service},
+    {label:'Pieces', production:loaded.production, bv:loaded.bv, n71:loaded.n71, service:loaded.service}
   ], palette.teal));
   container.append(splitMetricCard('Pieces painted', current.paint_pieces_processed, current.unique_pieces_processed, [
-    {label:'Carts', production:paintCarts.production, bv:paintCarts.bv, service:paintCarts.service},
-    {label:'Pieces', production:paintPieces.production, bv:paintPieces.bv, service:paintPieces.service}
+    {label:'Carts', production:paintCarts.production, bv:paintCarts.bv, n71:paintCarts.n71, service:paintCarts.service},
+    {label:'Pieces', production:paintPieces.production, bv:paintPieces.bv, n71:paintPieces.n71, service:paintPieces.service}
   ], palette.blue));
   container.append(dualYieldCard('PPY (Paint Process Yield)', {
     numerator:current.ppy_approved, denominator:current.paint_decision_pieces,

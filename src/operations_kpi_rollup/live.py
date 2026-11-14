@@ -15,7 +15,7 @@ from .odbc import execute_operations_rollup
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
 PERIOD_TYPE_ORDER = {"WEEK": 1, "MONTH": 2, "QUARTER": 3}
-CURRENT_METHOD_VERSION = "operations-kpi-live-v12-shipped-rack-counts"
+CURRENT_METHOD_VERSION = "operations-kpi-live-v13-mic-n71-breakdowns"
 
 
 def _integer(value: Any) -> int:
@@ -53,19 +53,23 @@ def _metric_fields(row: Mapping[str, Any]) -> Dict[str, int]:
         "production_parts_loaded": "production_parts_loaded",
         "bv_parts_loaded": "bv_parts_loaded",
         "service_parts_loaded": "service_parts_loaded",
+        "n71_6164_parts_loaded": "n71_6164_parts_loaded",
         "unique_pieces_loaded": "unique_pieces_loaded",
         "carts_loaded": "carts_loaded",
         "production_carts_loaded": "production_carts_loaded",
         "bv_carts_loaded": "bv_carts_loaded",
         "service_carts_loaded": "service_carts_loaded",
+        "n71_6164_carts_loaded": "n71_6164_carts_loaded",
         "paint_processed": "paint_carts",
         "production_paint_carts": "production_paint_carts",
         "bv_paint_carts": "bv_paint_carts",
         "service_paint_carts": "service_paint_carts",
+        "n71_6164_paint_carts": "n71_6164_paint_carts",
         "paint_pieces_processed": "paint_pieces_processed",
         "production_paint_pieces_processed": "production_paint_pieces_processed",
         "bv_paint_pieces_processed": "bv_paint_pieces_processed",
         "service_paint_pieces_processed": "service_paint_pieces_processed",
+        "n71_6164_paint_pieces_processed": "n71_6164_paint_pieces_processed",
         "unique_pieces_processed": "unique_pieces_processed",
         "paint_decision_pieces": "paint_decision_pieces",
         "production_paint_decision_pieces": "production_paint_decision_pieces",
@@ -107,7 +111,11 @@ def _metric_fields(row: Mapping[str, Any]) -> Dict[str, int]:
         "bumpers_shipped": "bumpers_shipped",
         "parts_shipped": "parts_shipped",
         "complete_assy_sets": "complete_assy_sets",
+        "mic_complete_assy_sets": "mic_complete_assy_sets",
+        "painted_complete_assy_sets": "painted_complete_assy_sets",
         "assembled_bumper_count": "assembled_bumper_count",
+        "mic_assembled_bumper_count": "mic_assembled_bumper_count",
+        "painted_assembled_bumper_count": "painted_assembled_bumper_count",
         "trailers_prepared": "trailers_prepared",
         "fuka_trailers_prepared": "fuka_trailers_prepared",
         "bumper_trailers_prepared": "bumper_trailers_prepared",
@@ -116,6 +124,7 @@ def _metric_fields(row: Mapping[str, Any]) -> Dict[str, int]:
         "racks_shipped": "racks_shipped",
         "fuka_racks_shipped": "fuka_racks_shipped",
         "bumper_racks_shipped": "bumper_racks_shipped",
+        "n71_6164_racks_shipped": "n71_6164_racks_shipped",
         "fairing_racks_shipped": "fairing_racks_shipped",
         "other_racks_shipped": "other_racks_shipped",
         "pieces_scheduled": "pieces_scheduled",
@@ -248,7 +257,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "142E3C5764E0E80D4694D085C42DAF82EC153CEBEA757C965BE02B19A61FF373",
+                "415953E2A0675AADA2C99A7BABC4F43DBB04B21ACB7BB8D9361AF094C96B7CE3",
             ).upper(),
             "detail_result_sets_requested": False,
         },

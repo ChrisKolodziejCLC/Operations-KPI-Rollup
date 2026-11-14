@@ -52,6 +52,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v10-master-repaintcount-yields",
         "operations-kpi-live-v11-repaint-line-set-counts",
         "operations-kpi-live-v12-shipped-rack-counts",
+        "operations-kpi-live-v13-mic-n71-breakdowns",
     }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
@@ -62,6 +63,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v10-master-repaintcount-yields",
                 "operations-kpi-live-v11-repaint-line-set-counts",
                 "operations-kpi-live-v12-shipped-rack-counts",
+                "operations-kpi-live-v13-mic-n71-breakdowns",
             }:
                 for unique_field, total_field, label in (
                     ("unique_pieces_loaded", "parts_loaded", "loaded unique-piece"),
@@ -78,6 +80,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v10-master-repaintcount-yields",
                 "operations-kpi-live-v11-repaint-line-set-counts",
                 "operations-kpi-live-v12-shipped-rack-counts",
+                "operations-kpi-live-v13-mic-n71-breakdowns",
             }:
                 for quantity_field in ("receiving_quantity", "final_quantity"):
                     if quantity_field not in row:
@@ -90,6 +93,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v10-master-repaintcount-yields",
                 "operations-kpi-live-v11-repaint-line-set-counts",
                 "operations-kpi-live-v12-shipped-rack-counts",
+                "operations-kpi-live-v13-mic-n71-breakdowns",
             }:
                 required_yield_fields = (
                     "reject_ppy_total", "reject_ppy_approved", "reject_ppy_rejected_count",
@@ -100,6 +104,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v10-master-repaintcount-yields",
                     "operations-kpi-live-v11-repaint-line-set-counts",
                     "operations-kpi-live-v12-shipped-rack-counts",
+                    "operations-kpi-live-v13-mic-n71-breakdowns",
                 }:
                     required_yield_fields += ("ppy_repaint_count",)
                 missing_yield_fields = [field for field in required_yield_fields if field not in row]
@@ -117,6 +122,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v10-master-repaintcount-yields",
                     "operations-kpi-live-v11-repaint-line-set-counts",
                     "operations-kpi-live-v12-shipped-rack-counts",
+                    "operations-kpi-live-v13-mic-n71-breakdowns",
                 }:
                     if int(row["reject_ppy_approved"]) + int(row["reject_ppy_rejected_count"]) + int(row["reject_ppy_pending_count"]) != int(row["reject_ppy_total"]):
                         raise ValueError(f"{collection} reject PPY outcomes do not equal its total")
@@ -129,6 +135,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     if method_version in {
                         "operations-kpi-live-v11-repaint-line-set-counts",
                         "operations-kpi-live-v12-shipped-rack-counts",
+                        "operations-kpi-live-v13-mic-n71-breakdowns",
                     }:
                         repaint_split_fields = (
                             "fuka_paint_fty_repaint_count",
@@ -215,17 +222,83 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 ),
                 "trailer type", require_complete_splits,
             )
-            _validate_split(
-                row, collection, "racks_shipped",
-                (
+            if (
+                method_version == "operations-kpi-live-v13-mic-n71-breakdowns"
+                or "n71_6164_racks_shipped" in row
+            ):
+                required_breakdown_fields = (
+                    "n71_6164_parts_loaded",
+                    "n71_6164_carts_loaded",
+                    "n71_6164_paint_carts",
+                    "n71_6164_paint_pieces_processed",
+                    "mic_complete_assy_sets",
+                    "painted_complete_assy_sets",
+                    "mic_assembled_bumper_count",
+                    "painted_assembled_bumper_count",
+                    "n71_6164_racks_shipped",
+                )
+                missing_breakdown_fields = [field for field in required_breakdown_fields if field not in row]
+                if missing_breakdown_fields:
+                    raise ValueError(
+                        f"{collection} MIC/N71 breakdown fields are missing: "
+                        + ", ".join(missing_breakdown_fields)
+                    )
+                if any(int(row[field]) < 0 for field in required_breakdown_fields):
+                    raise ValueError(f"{collection} MIC/N71 breakdown count is negative")
+                for detail_field, parent_field, label in (
+                    ("n71_6164_parts_loaded", "production_parts_loaded", "loaded N71-6164"),
+                    ("n71_6164_carts_loaded", "production_carts_loaded", "loaded-cart N71-6164"),
+                    ("n71_6164_paint_carts", "production_paint_carts", "paint-cart N71-6164"),
+                    (
+                        "n71_6164_paint_pieces_processed",
+                        "production_paint_pieces_processed",
+                        "painted N71-6164",
+                    ),
+                ):
+                    if int(row[detail_field]) > int(row.get(parent_field, 0)):
+                        raise ValueError(f"{collection} {label} count exceeds its production bucket")
+                if int(row["mic_complete_assy_sets"]) + int(row["painted_complete_assy_sets"]) != int(row.get("complete_assy_sets", 0)):
+                    raise ValueError(f"{collection} complete assembly MIC/Painted split does not equal complete_assy_sets")
+                if int(row["mic_assembled_bumper_count"]) + int(row["painted_assembled_bumper_count"]) != int(row.get("assembled_bumper_count", 0)):
+                    raise ValueError(f"{collection} bumper MIC/Painted split does not equal assembled_bumper_count")
+            rack_split_fields = (
+                "fuka_racks_shipped",
+                "bumper_racks_shipped",
+                "fairing_racks_shipped",
+                "other_racks_shipped",
+            )
+            if (
+                method_version == "operations-kpi-live-v13-mic-n71-breakdowns"
+                or "n71_6164_racks_shipped" in row
+            ):
+                rack_split_fields = (
                     "fuka_racks_shipped",
                     "bumper_racks_shipped",
+                    "n71_6164_racks_shipped",
                     "fairing_racks_shipped",
                     "other_racks_shipped",
-                ),
+                )
+            _validate_split(
+                row, collection, "racks_shipped",
+                rack_split_fields,
                 "rack type",
-                method_version == "operations-kpi-live-v12-shipped-rack-counts",
+                method_version in {
+                    "operations-kpi-live-v12-shipped-rack-counts",
+                    "operations-kpi-live-v13-mic-n71-breakdowns",
+                },
             )
+
+    if snapshot.get("scope", {}).get("method_version") == "operations-kpi-live-v13-mic-n71-breakdowns":
+        allowed_line_sets = {"FUKA", "Bumpers", "N71-6164", "Fairings"}
+        report_shipping = [row for row in snapshot.get("shipping", []) if row.get("date") == snapshot["report_date"]]
+        unexpected_line_sets = sorted(
+            {str(row.get("line_set") or "") for row in report_shipping} - allowed_line_sets
+        )
+        if unexpected_line_sets:
+            raise ValueError("report-date shipping has unexpected line sets: " + ", ".join(unexpected_line_sets))
+        report_daily = next(row for row in snapshot["daily"] if row.get("date") == snapshot["report_date"])
+        if sum(int(row.get("pieces", 0)) for row in report_shipping) != int(report_daily.get("parts_shipped", 0)):
+            raise ValueError("report-date shipping detail does not equal parts_shipped")
 
 
 def _sort_by(rows: Iterable[Dict[str, Any]], key: str) -> List[Dict[str, Any]]:
@@ -250,34 +323,50 @@ def _card(
     }
 
 
-def _load_split(row: Dict[str, Any]) -> tuple[Any, Any, Any]:
+def _load_split(row: Dict[str, Any]) -> tuple[Any, Any, Any, Any]:
     if "production_parts_loaded" not in row and "service_parts_loaded" not in row:
-        return row.get("parts_loaded", 0), 0, 0
+        return row.get("parts_loaded", 0), 0, 0, 0
+    n71_6164 = row.get("n71_6164_parts_loaded", 0)
     return (
-        row.get("production_parts_loaded", 0),
+        int(row.get("production_parts_loaded", 0)) - int(n71_6164),
         row.get("bv_parts_loaded", 0),
+        n71_6164,
         row.get("service_parts_loaded", 0),
     )
 
 
-def _cart_split(row: Dict[str, Any]) -> tuple[Any, Any, Any]:
+def _cart_split(row: Dict[str, Any]) -> tuple[Any, Any, Any, Any]:
     if "production_carts_loaded" not in row and "service_carts_loaded" not in row:
-        return row.get("carts_loaded", 0), 0, 0
-    return row.get("production_carts_loaded", 0), row.get("bv_carts_loaded", 0), row.get("service_carts_loaded", 0)
-
-
-def _paint_cart_split(row: Dict[str, Any]) -> tuple[Any, Any, Any]:
-    if "production_paint_carts" not in row and "service_paint_carts" not in row:
-        return row.get("paint_carts", 0), 0, 0
-    return row.get("production_paint_carts", 0), row.get("bv_paint_carts", 0), row.get("service_paint_carts", 0)
-
-
-def _paint_piece_split(row: Dict[str, Any]) -> tuple[Any, Any, Any]:
-    if "production_paint_pieces_processed" not in row and "service_paint_pieces_processed" not in row:
-        return row.get("paint_pieces_processed", 0), 0, 0
+        return row.get("carts_loaded", 0), 0, 0, 0
+    n71_6164 = row.get("n71_6164_carts_loaded", 0)
     return (
-        row.get("production_paint_pieces_processed", 0),
+        int(row.get("production_carts_loaded", 0)) - int(n71_6164),
+        row.get("bv_carts_loaded", 0),
+        n71_6164,
+        row.get("service_carts_loaded", 0),
+    )
+
+
+def _paint_cart_split(row: Dict[str, Any]) -> tuple[Any, Any, Any, Any]:
+    if "production_paint_carts" not in row and "service_paint_carts" not in row:
+        return row.get("paint_carts", 0), 0, 0, 0
+    n71_6164 = row.get("n71_6164_paint_carts", 0)
+    return (
+        int(row.get("production_paint_carts", 0)) - int(n71_6164),
+        row.get("bv_paint_carts", 0),
+        n71_6164,
+        row.get("service_paint_carts", 0),
+    )
+
+
+def _paint_piece_split(row: Dict[str, Any]) -> tuple[Any, Any, Any, Any]:
+    if "production_paint_pieces_processed" not in row and "service_paint_pieces_processed" not in row:
+        return row.get("paint_pieces_processed", 0), 0, 0, 0
+    n71_6164 = row.get("n71_6164_paint_pieces_processed", 0)
+    return (
+        int(row.get("production_paint_pieces_processed", 0)) - int(n71_6164),
         row.get("bv_paint_pieces_processed", 0),
+        n71_6164,
         row.get("service_paint_pieces_processed", 0),
     )
 
@@ -290,7 +379,7 @@ def _rate_split(row: Dict[str, Any], numerator: str, denominator: str) -> str:
 
 
 def _shipped_piece_detail(snapshot: Dict[str, Any], report_date: str) -> str:
-    counts = {"fuka": 0, "bumpers": 0, "fairings": 0}
+    counts = {"fuka": 0, "bumpers": 0, "n71_6164": 0, "fairings": 0}
     for row in snapshot.get("shipping", []):
         if row.get("date") != report_date:
             continue
@@ -298,6 +387,8 @@ def _shipped_piece_detail(snapshot: Dict[str, Any], report_date: str) -> str:
         pieces = int(row.get("pieces") or 0)
         if line_set == "bumpers":
             counts["bumpers"] += pieces
+        elif line_set == "n71-6164":
+            counts["n71_6164"] += pieces
         elif line_set in {"fenders", "fuka"}:
             counts["fuka"] += pieces
         elif line_set in {"chassis fairings", "fairings"}:
@@ -305,6 +396,7 @@ def _shipped_piece_detail(snapshot: Dict[str, Any], report_date: str) -> str:
     return (
         f"{format_int(counts['fuka'])} FUKA / "
         f"{format_int(counts['bumpers'])} Bumpers / "
+        f"{format_int(counts['n71_6164'])} N71-6164 / "
         f"{format_int(counts['fairings'])} Fairings"
     )
 
@@ -325,11 +417,13 @@ def _repaint_line_set_detail(row: Dict[str, Any]) -> str:
 
 
 def _rack_detail(row: Dict[str, Any]) -> str:
-    fields = (
+    fields = [
         ("fuka_racks_shipped", "FUKA"),
         ("bumper_racks_shipped", "Bumper"),
         ("fairing_racks_shipped", "Fairing"),
-    )
+    ]
+    if "n71_6164_racks_shipped" in row:
+        fields.insert(2, ("n71_6164_racks_shipped", "N71-6164"))
     if not all(field in row for field, _ in fields):
         return "Rack detail pending refresh"
 
@@ -354,24 +448,34 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     months = [row for row in periods if row.get("period_type") == "MONTH"]
     quarters = [row for row in periods if row.get("period_type") == "QUARTER"]
     current_week = max(weeks, key=lambda row: row.get("period_start", "")) if weeks else None
-    production_loaded, bv_loaded, service_loaded = _load_split(current)
-    production_carts, bv_carts, service_carts = _cart_split(current)
-    production_paint_carts, bv_paint_carts, service_paint_carts = _paint_cart_split(current)
-    production_paint_pieces, bv_paint_pieces, service_paint_pieces = _paint_piece_split(current)
+    production_loaded, bv_loaded, n71_loaded, service_loaded = _load_split(current)
+    production_carts, bv_carts, n71_carts, service_carts = _cart_split(current)
+    production_paint_carts, bv_paint_carts, n71_paint_carts, service_paint_carts = _paint_cart_split(current)
+    production_paint_pieces, bv_paint_pieces, n71_paint_pieces, service_paint_pieces = _paint_piece_split(current)
     trailer_detail = _rack_detail(current)
     shipped_piece_detail = _shipped_piece_detail(snapshot, report_date)
+    complete_assy_detail = (
+        f"{format_int(current.get('mic_complete_assy_sets'))} MIC / {format_int(current.get('painted_complete_assy_sets'))} Painted"
+        if "mic_complete_assy_sets" in current and "painted_complete_assy_sets" in current
+        else "N33 / Chassis Fairing · dated by last assembled piece"
+    )
+    assembled_bumper_detail = (
+        f"{format_int(current.get('mic_assembled_bumper_count'))} MIC / {format_int(current.get('painted_assembled_bumper_count'))} Painted"
+        if "mic_assembled_bumper_count" in current and "painted_assembled_bumper_count" in current
+        else "N71-6171 · AssembledDate"
+    )
 
     cards = [
         _card(
             "Pieces loaded",
             f"{format_int(current.get('parts_loaded'))} Total / {format_int(current['unique_pieces_loaded']) if 'unique_pieces_loaded' in current else '—'} Unique",
-            f"Carts {format_int(production_carts)} Prd / {format_int(bv_carts)} BV / {format_int(service_carts)} Svc · Pieces {format_int(production_loaded)} Prd / {format_int(bv_loaded)} BV / {format_int(service_loaded)} Svc",
+            f"Carts {format_int(production_carts)} Prd / {format_int(bv_carts)} BV / {format_int(n71_carts)} N71-6164 / {format_int(service_carts)} Svc · Pieces {format_int(production_loaded)} Prd / {format_int(bv_loaded)} BV / {format_int(n71_loaded)} N71-6164 / {format_int(service_loaded)} Svc",
             "#147d86",
         ),
         _card(
             "Pieces painted",
             f"{format_int(current.get('paint_pieces_processed'))} Total / {format_int(current['unique_pieces_processed']) if 'unique_pieces_processed' in current else '—'} Unique",
-            f"Carts {format_int(production_paint_carts)} Prd / {format_int(bv_paint_carts)} BV / {format_int(service_paint_carts)} Svc · Pieces {format_int(production_paint_pieces)} Prd / {format_int(bv_paint_pieces)} BV / {format_int(service_paint_pieces)} Svc",
+            f"Carts {format_int(production_paint_carts)} Prd / {format_int(bv_paint_carts)} BV / {format_int(n71_paint_carts)} N71-6164 / {format_int(service_paint_carts)} Svc · Pieces {format_int(production_paint_pieces)} Prd / {format_int(bv_paint_pieces)} BV / {format_int(n71_paint_pieces)} N71-6164 / {format_int(service_paint_pieces)} Svc",
             "#2f6f9f",
         ),
         _card("Repaint PPY", format_percent(current["repaint_ppy"]), f"{format_int(current.get('ppy_approved'))} / {format_int(current.get('paint_decision_pieces'))} exits", "#d78d23"),
@@ -385,11 +489,21 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
             "#d78d23",
             secondary_detail=_repaint_line_set_detail(current),
         ),
-        _card("Receiving FTY", format_percent(current["receiving_fty"]), f"{format_int(current.get('receiving_approved'))} / {format_int(current.get('receiving_total'))} first decisions · Qty {format_int(current.get('receiving_quantity'))} by receive stamp", "#38856d"),
-        _card("Final FTY", format_percent(current["final_fty"]), f"{format_int(current.get('final_approved'))} / {format_int(current.get('final_total'))} first decisions · Qty {format_int(current.get('final_quantity'))} by final stamp", "#8a6aa8"),
+        _card("Receiving FTY", format_percent(current["receiving_fty"]), f"{format_int(current.get('receiving_approved'))} / {format_int(current.get('receiving_total'))} first decisions", "#38856d"),
+        _card("Final FTY", format_percent(current["final_fty"]), f"{format_int(current.get('final_approved'))} / {format_int(current.get('final_total'))} first decisions", "#8a6aa8"),
         _card("Paint plan composite", format_percent(current["paint_plan_composite"]), "proxy — not standard OEE", "#8a6aa8", "PROVISIONAL"),
-        _card("Complete assy sets", format_int(current.get("complete_assy_sets")), "N33 / Chassis Fairing · dated by last assembled piece", "#147d86"),
-        _card("Assembled bumpers", format_int(current.get("assembled_bumper_count")), "N71-6171 · AssembledDate", "#2f6f9f"),
+        _card(
+            "Complete assy sets",
+            format_int(current.get("complete_assy_sets")),
+            complete_assy_detail,
+            "#147d86",
+        ),
+        _card(
+            "Assembled bumpers",
+            format_int(current.get("assembled_bumper_count")),
+            assembled_bumper_detail,
+            "#2f6f9f",
+        ),
         _card("Pieces shipped", format_int(current.get("parts_shipped")), shipped_piece_detail, "#bb514b"),
         _card("Trailers prepared", format_int(current.get("trailers_prepared")), trailer_detail, "#d78d23"),
     ]
