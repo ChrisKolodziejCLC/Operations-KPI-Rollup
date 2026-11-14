@@ -92,10 +92,11 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 - `Repaint FTY = paint_fty_approved / paint_fty_total`
 - `Repaint % = paint_fty_repaint_count / paint_fty_total`
 - `fuka_paint_fty_repaint_count + bumper_paint_fty_repaint_count + fairing_paint_fty_repaint_count = paint_fty_repaint_count`
-- `Finesse % = finesse_repair_count / (finesse_repair_count + finesse_repaint_count)`; pending is displayed but excluded from the denominator
+- `Finesse % = (finesse_repair_count + paint_fty_repair_count) / (finesse_rejected_count + reject_fty_rejected_count)`; this combines the governed first-Receiving and GP-paint first-pass reject cohorts, and unresolved Receiving rejects remain in the denominator
 - `finesse_rejected_count = receiving_total - receiving_approved`
 - `finesse_repair_count + finesse_repaint_count + finesse_pending_count = finesse_rejected_count`
 - `bumper_finesse_repair_count + fairing_finesse_repair_count + other_finesse_repair_count = finesse_repair_count`
+- Displayed repaired-family totals combine the Receiving repair split with `fuka_paint_fty_repair_count`, `bumper_paint_fty_repair_count`, and `fairing_paint_fty_repair_count`; they reconcile to the combined Finesse numerator
 - `Reject PPY = reject_ppy_approved / reject_ppy_total`
 - `Reject FTY = reject_fty_approved / reject_fty_total`
 - `Receiving FTY = receiving_approved / receiving_total`

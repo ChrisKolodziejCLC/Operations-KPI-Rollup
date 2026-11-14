@@ -76,7 +76,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.19.0-receiving-finesse" in html
+            assert "0.20.0-combined-finesse-two-row" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="throughput-chart"' not in html
@@ -117,7 +117,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "values.push(`${integer(row.n71)} N71-6164`)" not in javascript
             assert "stagedMetricCard(current.staged_carts, current.staged_pieces" in javascript
             assert "`${optionalInteger(carts)} Carts / ${optionalInteger(pieces)} Pieces`" in javascript
-            assert "Finesse detail pending Receiving refresh" in javascript
+            assert "Finesse detail unavailable" in javascript
             assert "dualYieldCard('PPY (Paint Process Yield)'" in javascript
             assert "dualYieldCard('FTY (First Time Yield)'" in javascript
             assert "metric.details.forEach" in javascript
@@ -126,9 +126,12 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "`${integer(current.reject_fty_pending_count)} Pending`" in javascript
             assert "'Repaint %'" in javascript
             assert "'Finesse %'" in javascript
-            assert "ratio(finesseRepair, finesseRepair + finesseRepaint)" in javascript
-            assert "Resolved Receiving Rejects" in javascript
-            assert "Repaint / ${integer(current.finesse_pending_count)} Pending" in javascript
+            assert "ratio(finesseRepair, finesseRejected)" in javascript
+            assert "Repaired / ${integer(finesseRejected)} Rejected" in javascript
+            assert "finesse_rejected_count" in javascript
+            assert "paint_fty_repair_count" in javascript
+            assert "reject_fty_rejected_count" in javascript
+            assert "FUKA Repaired" in javascript
             assert "Fairings Repaired" in javascript
             assert "Bumpers Repaired" in javascript
             assert "Other Repaired" in javascript
@@ -142,8 +145,11 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "final_fuka_approved" in javascript
             assert "final_bumper_approved" in javascript
             assert "final_fairing_approved" in javascript
-            assert "trailerCountCard(current.trailers_prepared, current.trailers_shipped" in javascript
+            assert "trailerCountCard(current.trailers_prepared, current.trailers_shipped, [" in javascript
             assert "Shipped = DriverLog TimeOut departures" in javascript
+            assert "{label:'Bumper racks', value:current.bumper_racks_shipped}" in javascript
+            assert "{label:'FUKA racks', value:current.fuka_racks_shipped}" in javascript
+            assert "{label:'Fairing racks', value:current.fairing_racks_shipped}" in javascript
             assert "optionalInteger(metric.value)" in javascript
             assert "return values.join(' / ')" not in javascript
             assert "shippedPieceDetail(snapshot)" in javascript
@@ -215,6 +221,12 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert ".metric-card .metric-detail-row" in styles
             assert ".shipping-legend{" in styles
             assert "font-variant-numeric:tabular-nums" in styles
+            assert ".cards{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))" in styles
+            assert "body.wallboard .cards{grid-template-columns:repeat(7,minmax(0,1fr))}" in styles
+            assert ".inspection-detail-row{display:grid;grid-template-columns:minmax(0,1fr) auto" in styles
+            assert ".metric-card .inspection-detail-counts{grid-column:1/-1;justify-self:end" in styles
+            assert ".trailer-count-card{grid-column:span 1}" in styles
+            assert ".trailer-rack-list{display:grid" in styles
     finally:
         server.shutdown()
         server.server_close()

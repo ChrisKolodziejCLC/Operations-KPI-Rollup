@@ -111,18 +111,38 @@ def enrich_metric_row(row: Dict[str, Any]) -> Dict[str, Any]:
     enriched["repaint_percentage"] = safe_ratio(
         row.get("paint_fty_repaint_count"), row.get("paint_fty_total")
     )
-    if "finesse_repair_count" in row:
-        enriched["finesse_percentage"] = safe_ratio(
-            row.get("finesse_repair_count"),
-            as_decimal(row.get("finesse_repair_count")) + as_decimal(row.get("finesse_repaint_count")),
+    has_paint_finesse = "paint_fty_repair_count" in row
+    has_receiving_finesse = "finesse_repair_count" in row
+    if has_paint_finesse or has_receiving_finesse:
+        paint_repairs = as_decimal(row.get("paint_fty_repair_count"))
+        paint_rejects = as_decimal(row.get("reject_fty_rejected_count"))
+        receiving_repairs = as_decimal(row.get("finesse_repair_count")) if has_receiving_finesse else ZERO
+        receiving_rejects = as_decimal(row.get("finesse_rejected_count")) if has_receiving_finesse else ZERO
+        combined_repairs = paint_repairs + receiving_repairs
+        combined_rejects = paint_rejects + receiving_rejects
+        enriched["combined_finesse_repair_count"] = combined_repairs
+        enriched["combined_finesse_rejected_count"] = combined_rejects
+        enriched["combined_finesse_fuka_repair_count"] = as_decimal(
+            row.get("fuka_paint_fty_repair_count")
         )
+        enriched["combined_finesse_bumper_repair_count"] = as_decimal(
+            row.get("bumper_paint_fty_repair_count")
+        ) + (as_decimal(row.get("bumper_finesse_repair_count")) if has_receiving_finesse else ZERO)
+        enriched["combined_finesse_fairing_repair_count"] = as_decimal(
+            row.get("fairing_paint_fty_repair_count")
+        ) + (as_decimal(row.get("fairing_finesse_repair_count")) if has_receiving_finesse else ZERO)
+        enriched["combined_finesse_other_repair_count"] = (
+            as_decimal(row.get("other_finesse_repair_count")) if has_receiving_finesse else ZERO
+        )
+        enriched["finesse_percentage"] = safe_ratio(combined_repairs, combined_rejects)
     else:
-        # Compatibility for saved v14/v15 snapshots while the first v16 refresh settles.
-        enriched["finesse_percentage"] = (
-            safe_ratio(row.get("paint_fty_repair_count"), row.get("reject_fty_rejected_count"))
-            if "paint_fty_repair_count" in row
-            else None
-        )
+        enriched["combined_finesse_repair_count"] = None
+        enriched["combined_finesse_rejected_count"] = None
+        enriched["combined_finesse_fuka_repair_count"] = None
+        enriched["combined_finesse_bumper_repair_count"] = None
+        enriched["combined_finesse_fairing_repair_count"] = None
+        enriched["combined_finesse_other_repair_count"] = None
+        enriched["finesse_percentage"] = None
     enriched["schedule_attainment"] = safe_ratio(
         row.get("paint_pieces_processed"), row.get("pieces_scheduled")
     )

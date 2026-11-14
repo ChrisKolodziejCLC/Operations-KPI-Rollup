@@ -237,7 +237,7 @@ function inspectionYieldCard(label, numerator, denominator, rows, color) {
   return card;
 }
 
-function trailerCountCard(prepped, shipped, color) {
+function trailerCountCard(prepped, shipped, racks, color) {
   const card = document.createElement('article');
   card.className = 'metric-card trailer-count-card';
   card.style.setProperty('--accent', color);
@@ -250,7 +250,14 @@ function trailerCountCard(prepped, shipped, color) {
     column.append(metricLabel, value); grid.append(column);
   });
   const source = document.createElement('small'); source.className = 'trailer-count-source'; source.append(text('Shipped = DriverLog TimeOut departures'));
-  card.append(labelNode, grid, source);
+  const rackList = document.createElement('div'); rackList.className = 'trailer-rack-list';
+  racks.forEach(rack => {
+    const row = document.createElement('div'); row.className = 'trailer-rack-row';
+    const rackLabel = document.createElement('span'); rackLabel.className = 'trailer-rack-label'; rackLabel.append(text(rack.label));
+    const value = document.createElement('small'); value.className = 'trailer-rack-value'; value.append(text(optionalInteger(rack.value)));
+    row.append(rackLabel, value); rackList.append(row);
+  });
+  card.append(labelNode, grid, rackList, source);
   return card;
 }
 
@@ -262,18 +269,17 @@ function renderCards(snapshot) {
   const paintCarts = paintCartSplit(current);
   const paintPieces = paintPieceSplit(current);
   const shippedDetail = shippedPieceDetail(snapshot);
+  const hasPaintFinesse = current.paint_fty_repair_count !== undefined;
   const hasReceivingFinesse = current.finesse_repair_count !== undefined;
-  const finesseRepair = Number(current.finesse_repair_count || 0);
-  const finesseRepaint = Number(current.finesse_repaint_count || 0);
-  const finesseDetails = hasReceivingFinesse ? [
-    `${integer(finesseRepair)} Repaired / ${integer(finesseRepair + finesseRepaint)} Resolved Receiving Rejects`,
-    `${integer(finesseRepaint)} Repaint / ${integer(current.finesse_pending_count)} Pending`,
-    `${integer(current.bumper_finesse_repair_count)} Bumpers Repaired`,
-    `${integer(current.fairing_finesse_repair_count)} Fairings Repaired`
-  ] : [
-    'Finesse detail pending Receiving refresh'
-  ];
-  if (hasReceivingFinesse && Number(current.other_finesse_repair_count || 0) > 0) {
+  const finesseRepair = Number(current.paint_fty_repair_count || 0) + Number(current.finesse_repair_count || 0);
+  const finesseRejected = Number(current.reject_fty_rejected_count || 0) + Number(current.finesse_rejected_count || 0);
+  const finesseDetails = hasPaintFinesse || hasReceivingFinesse ? [
+    `${integer(finesseRepair)} Repaired / ${integer(finesseRejected)} Rejected`,
+    `${integer(current.fuka_paint_fty_repair_count)} FUKA Repaired`,
+    `${integer(Number(current.bumper_paint_fty_repair_count || 0) + Number(current.bumper_finesse_repair_count || 0))} Bumpers Repaired`,
+    `${integer(Number(current.fairing_paint_fty_repair_count || 0) + Number(current.fairing_finesse_repair_count || 0))} Fairings Repaired`
+  ] : ['Finesse detail unavailable'];
+  if (Number(current.other_finesse_repair_count || 0) > 0) {
     finesseDetails.push(`${integer(current.other_finesse_repair_count)} Other Repaired`);
   }
   const cards = [
@@ -303,9 +309,7 @@ function renderCards(snapshot) {
   ));
   container.append(metricCard(
     'Finesse %',
-    percent(hasReceivingFinesse
-      ? ratio(finesseRepair, finesseRepair + finesseRepaint)
-      : ratio(current.paint_fty_repair_count, current.reject_fty_rejected_count)),
+    percent(ratio(finesseRepair, finesseRejected)),
     finesseDetails,
     palette.green
   ));
@@ -355,7 +359,11 @@ function renderCards(snapshot) {
     ], palette.purple
   ));
   cards.forEach(card => container.append(metricCard(...card)));
-  container.append(trailerCountCard(current.trailers_prepared, current.trailers_shipped, palette.amber));
+  container.append(trailerCountCard(current.trailers_prepared, current.trailers_shipped, [
+    {label:'Bumper racks', value:current.bumper_racks_shipped},
+    {label:'FUKA racks', value:current.fuka_racks_shipped},
+    {label:'Fairing racks', value:current.fairing_racks_shipped}
+  ], palette.amber));
 }
 
 function renderTable(table, headers, rows, rowClass = () => '') {

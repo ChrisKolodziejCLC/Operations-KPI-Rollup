@@ -69,6 +69,8 @@ Version 0.18.0 corrects every product-family split after live source evidence pr
 
 Version 0.19.0 moves Finesse to its intended Receiving-inspection cohort. It starts with each non-service part's first Receiving reject, so Brownsville Origin-B parts remain represented even if a later repaint changes current Origin to F. Completed `repair_disposition = Repaired` parts are the numerator; completed WFP/repaint outcomes form the other resolved outcome; pending outcomes remain visible and are excluded from the percentage denominator. Repair detail uses normalized Description for Bumpers and Fairings. The browser keeps the header, date controls, and complete three-row tile grid while removing the obsolete charts and report sections beneath the tiles. Their aggregate snapshot fields remain available for future chart designs.
 
+Version 0.20.0 keeps the OEE/provisional paint-plan-composite tile and reflows all 14 tiles into two desktop rows. Finesse now combines the governed first-Receiving-reject cohort with GP-paint first-pass rejects: completed repairs from both stages are divided by all rejects from both stages, including unresolved Receiving rejects. The simplified detail shows repaired/rejected totals plus repaired FUKA, Bumper, and Fairing quantities. The Trailers tile restores shipped Bumper, FUKA, and Fairing rack quantities from the existing aggregate snapshot fields. No SQL, permissions, source-table rows, or OEE formula change is involved.
+
 Run the safe local fixture mode:
 
 ```bash

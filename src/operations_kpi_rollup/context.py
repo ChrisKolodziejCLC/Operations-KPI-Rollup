@@ -56,6 +56,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v14-trailer-inspection-details",
         "operations-kpi-live-v15-description-family-mapping",
         "operations-kpi-live-v16-receiving-finesse",
+        "operations-kpi-live-v17-combined-finesse-two-row",
     }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
@@ -70,6 +71,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v14-trailer-inspection-details",
                 "operations-kpi-live-v15-description-family-mapping",
                 "operations-kpi-live-v16-receiving-finesse",
+                "operations-kpi-live-v17-combined-finesse-two-row",
             }:
                 for unique_field, total_field, label in (
                     ("unique_pieces_loaded", "parts_loaded", "loaded unique-piece"),
@@ -90,6 +92,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v14-trailer-inspection-details",
                 "operations-kpi-live-v15-description-family-mapping",
                 "operations-kpi-live-v16-receiving-finesse",
+                "operations-kpi-live-v17-combined-finesse-two-row",
             }:
                 for quantity_field in ("receiving_quantity", "final_quantity"):
                     if quantity_field not in row:
@@ -106,6 +109,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v14-trailer-inspection-details",
                 "operations-kpi-live-v15-description-family-mapping",
                 "operations-kpi-live-v16-receiving-finesse",
+                "operations-kpi-live-v17-combined-finesse-two-row",
             }:
                 required_yield_fields = (
                     "reject_ppy_total", "reject_ppy_approved", "reject_ppy_rejected_count",
@@ -120,6 +124,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v14-trailer-inspection-details",
                     "operations-kpi-live-v15-description-family-mapping",
                     "operations-kpi-live-v16-receiving-finesse",
+                    "operations-kpi-live-v17-combined-finesse-two-row",
                 }:
                     required_yield_fields += ("ppy_repaint_count",)
                 missing_yield_fields = [field for field in required_yield_fields if field not in row]
@@ -141,6 +146,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v14-trailer-inspection-details",
                     "operations-kpi-live-v15-description-family-mapping",
                     "operations-kpi-live-v16-receiving-finesse",
+                    "operations-kpi-live-v17-combined-finesse-two-row",
                 }:
                     if int(row["reject_ppy_approved"]) + int(row["reject_ppy_rejected_count"]) + int(row["reject_ppy_pending_count"]) != int(row["reject_ppy_total"]):
                         raise ValueError(f"{collection} reject PPY outcomes do not equal its total")
@@ -157,6 +163,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                         "operations-kpi-live-v14-trailer-inspection-details",
                         "operations-kpi-live-v15-description-family-mapping",
                         "operations-kpi-live-v16-receiving-finesse",
+                        "operations-kpi-live-v17-combined-finesse-two-row",
                     }:
                         repaint_split_fields = (
                             "fuka_paint_fty_repaint_count",
@@ -249,6 +256,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v14-trailer-inspection-details",
                     "operations-kpi-live-v15-description-family-mapping",
                     "operations-kpi-live-v16-receiving-finesse",
+                    "operations-kpi-live-v17-combined-finesse-two-row",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -291,6 +299,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v14-trailer-inspection-details",
                 "operations-kpi-live-v15-description-family-mapping",
                 "operations-kpi-live-v16-receiving-finesse",
+                "operations-kpi-live-v17-combined-finesse-two-row",
             }:
                 inspection_fields = (
                     "trailers_shipped",
@@ -350,7 +359,10 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     raise ValueError(f"{collection} staged cart split does not equal staged_carts")
                 if sum(int(row[field]) for field in ("production_staged_pieces", "bv_staged_pieces", "service_staged_pieces")) != int(row["staged_pieces"]):
                     raise ValueError(f"{collection} staged piece split does not equal staged_pieces")
-            if method_version == "operations-kpi-live-v16-receiving-finesse":
+            if method_version in {
+                "operations-kpi-live-v16-receiving-finesse",
+                "operations-kpi-live-v17-combined-finesse-two-row",
+            }:
                 finesse_fields = (
                     "finesse_rejected_count",
                     "finesse_repair_count",
@@ -400,6 +412,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v14-trailer-inspection-details",
                     "operations-kpi-live-v15-description-family-mapping",
                     "operations-kpi-live-v16-receiving-finesse",
+                    "operations-kpi-live-v17-combined-finesse-two-row",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -420,6 +433,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v14-trailer-inspection-details",
                     "operations-kpi-live-v15-description-family-mapping",
                     "operations-kpi-live-v16-receiving-finesse",
+                    "operations-kpi-live-v17-combined-finesse-two-row",
                 },
             )
 
@@ -428,6 +442,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v14-trailer-inspection-details",
         "operations-kpi-live-v15-description-family-mapping",
         "operations-kpi-live-v16-receiving-finesse",
+        "operations-kpi-live-v17-combined-finesse-two-row",
     }:
         allowed_line_sets = {"FUKA", "Bumpers", "N71-6164", "Fairings", "Other"}
         report_shipping = [row for row in snapshot.get("shipping", []) if row.get("date") == snapshot["report_date"]]
@@ -569,23 +584,26 @@ def _inspection_family_detail(
 
 
 def _finesse_detail(row: Dict[str, Any]) -> str:
-    if "finesse_repair_count" in row:
-        repaired = int(row.get("finesse_repair_count") or 0)
-        repaint = int(row.get("finesse_repaint_count") or 0)
+    if row.get("combined_finesse_repair_count") is not None:
         lines = [
-            f"{format_int(repaired)} Repaired / {format_int(repaired + repaint)} Resolved Receiving Rejects",
-            f"{format_int(repaint)} Repaint / {format_int(row.get('finesse_pending_count'))} Pending",
-            f"{format_int(row.get('bumper_finesse_repair_count'))} Bumpers Repaired",
-            f"{format_int(row.get('fairing_finesse_repair_count'))} Fairings Repaired",
+            f"{format_int(row.get('combined_finesse_repair_count'))} Repaired / "
+            f"{format_int(row.get('combined_finesse_rejected_count'))} Rejected",
+            f"{format_int(row.get('combined_finesse_fuka_repair_count'))} FUKA Repaired",
+            f"{format_int(row.get('combined_finesse_bumper_repair_count'))} Bumpers Repaired",
+            f"{format_int(row.get('combined_finesse_fairing_repair_count'))} Fairings Repaired",
         ]
-        if int(row.get("other_finesse_repair_count") or 0):
-            lines.append(f"{format_int(row.get('other_finesse_repair_count'))} Other Repaired")
+        if int(row.get("combined_finesse_other_repair_count") or 0):
+            lines.append(f"{format_int(row.get('combined_finesse_other_repair_count'))} Other Repaired")
         return "\n".join(lines)
+    return "Finesse detail unavailable"
+
+
+def _trailer_rack_detail(row: Dict[str, Any]) -> str:
     return "\n".join(
         (
-            f"FUKA {format_int(row.get('fuka_paint_fty_repair_count'))} repaired",
-            f"Fairings {format_int(row.get('fairing_paint_fty_repair_count'))} repaired",
-            f"Bumpers {format_int(row.get('bumper_paint_fty_repair_count'))} repaired",
+            f"{format_int(row.get('bumper_racks_shipped'))} Bumper Racks",
+            f"{format_int(row.get('fuka_racks_shipped'))} FUKA Racks",
+            f"{format_int(row.get('fairing_racks_shipped'))} Fairing Racks",
         )
     )
 
@@ -688,7 +706,7 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         _card(
             "Trailers",
             f"{format_int(current.get('trailers_prepared'))} Prepped / {format_int(current.get('trailers_shipped'))} Shipped",
-            "DriverLog TimeOut departures",
+            _trailer_rack_detail(current),
             "#d78d23",
         ),
     ]

@@ -37,15 +37,27 @@ def test_repaint_and_reject_yields_use_saved_exit_day_counts():
         "reject_fty_approved": 247,
         "reject_fty_rejected_count": 24,
         "paint_fty_repair_count": 4,
+        "fuka_paint_fty_repair_count": 4,
+        "bumper_paint_fty_repair_count": 0,
+        "fairing_paint_fty_repair_count": 0,
+        "finesse_rejected_count": 41,
         "finesse_repair_count": 27,
         "finesse_repaint_count": 12,
+        "bumper_finesse_repair_count": 8,
+        "fairing_finesse_repair_count": 19,
+        "other_finesse_repair_count": 0,
     })
     assert enriched["repaint_ppy"] == Decimal("258") / Decimal("279")
     assert enriched["repaint_fty"] == Decimal("251") / Decimal("271")
     assert enriched["reject_ppy"] == Decimal("254") / Decimal("279")
     assert enriched["reject_fty"] == Decimal("247") / Decimal("271")
     assert enriched["repaint_percentage"] == Decimal("20") / Decimal("271")
-    assert enriched["finesse_percentage"] == Decimal("27") / Decimal("39")
+    assert enriched["finesse_percentage"] == Decimal("31") / Decimal("65")
+    assert enriched["combined_finesse_repair_count"] == Decimal("31")
+    assert enriched["combined_finesse_rejected_count"] == Decimal("65")
+    assert enriched["combined_finesse_fuka_repair_count"] == Decimal("4")
+    assert enriched["combined_finesse_bumper_repair_count"] == Decimal("8")
+    assert enriched["combined_finesse_fairing_repair_count"] == Decimal("19")
 
 
 def test_partial_week_uses_three_production_days():
