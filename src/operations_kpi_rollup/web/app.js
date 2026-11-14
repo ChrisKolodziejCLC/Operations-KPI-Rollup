@@ -112,6 +112,22 @@ function repaintLineSetDetail(row) {
   return `${integer(row.fuka_paint_fty_repaint_count)} FUKA / ${integer(row.bumper_paint_fty_repaint_count)} Bumpers / ${integer(row.fairing_paint_fty_repaint_count)} Fairings`;
 }
 
+function rackDetail(row) {
+  const fields = [
+    ['fuka_racks_shipped', 'FUKA'],
+    ['bumper_racks_shipped', 'Bumper'],
+    ['fairing_racks_shipped', 'Fairing']
+  ];
+  if (!fields.every(([field]) => row[field] !== undefined)) return 'Rack detail pending refresh';
+  const values = fields.map(([field, label]) => {
+    const count = Number(row[field] || 0);
+    return `${integer(count)} ${label} ${count === 1 ? 'rack' : 'racks'}`;
+  });
+  const other = Number(row.other_racks_shipped || 0);
+  if (other > 0) values.push(`${integer(other)} Other ${other === 1 ? 'rack' : 'racks'}`);
+  return values.join(' / ');
+}
+
 function composite(row) {
   const attainment = ratio(row.paint_pieces_processed, row.pieces_scheduled);
   const quality = yieldRatio(Number(row.paint_fty_total || 0) - Number(row.paint_fty_repaint_count || 0), row.paint_fty_total);
@@ -187,8 +203,7 @@ function renderCards(snapshot) {
   const paintCarts = paintCartSplit(current);
   const paintPieces = paintPieceSplit(current);
   const shippedDetail = shippedPieceDetail(snapshot);
-  let trailerDetail = `${integer(current.fuka_trailers_prepared)} FUKA / ${integer(current.bumper_trailers_prepared)} Bumpers / ${integer(current.fairing_trailers_prepared)} Fairings`;
-  if (Number(current.other_trailers_prepared || 0) > 0) trailerDetail += ` / ${integer(current.other_trailers_prepared)} Other`;
+  const trailerDetail = rackDetail(current);
   const cards = [
     ['Repaint %', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)), `${integer(current.paint_fty_repaint_count)} / ${integer(current.paint_fty_total)} initial passes`, palette.amber, repaintLineSetDetail(current)],
     ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} first decisions · Qty ${integer(current.receiving_quantity)} by receive stamp`, palette.green],

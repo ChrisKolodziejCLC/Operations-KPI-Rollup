@@ -51,6 +51,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v9-repaint-reject-yields",
         "operations-kpi-live-v10-master-repaintcount-yields",
         "operations-kpi-live-v11-repaint-line-set-counts",
+        "operations-kpi-live-v12-shipped-rack-counts",
     }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
@@ -60,6 +61,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v9-repaint-reject-yields",
                 "operations-kpi-live-v10-master-repaintcount-yields",
                 "operations-kpi-live-v11-repaint-line-set-counts",
+                "operations-kpi-live-v12-shipped-rack-counts",
             }:
                 for unique_field, total_field, label in (
                     ("unique_pieces_loaded", "parts_loaded", "loaded unique-piece"),
@@ -75,6 +77,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v9-repaint-reject-yields",
                 "operations-kpi-live-v10-master-repaintcount-yields",
                 "operations-kpi-live-v11-repaint-line-set-counts",
+                "operations-kpi-live-v12-shipped-rack-counts",
             }:
                 for quantity_field in ("receiving_quantity", "final_quantity"):
                     if quantity_field not in row:
@@ -86,6 +89,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v9-repaint-reject-yields",
                 "operations-kpi-live-v10-master-repaintcount-yields",
                 "operations-kpi-live-v11-repaint-line-set-counts",
+                "operations-kpi-live-v12-shipped-rack-counts",
             }:
                 required_yield_fields = (
                     "reject_ppy_total", "reject_ppy_approved", "reject_ppy_rejected_count",
@@ -95,6 +99,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 if method_version in {
                     "operations-kpi-live-v10-master-repaintcount-yields",
                     "operations-kpi-live-v11-repaint-line-set-counts",
+                    "operations-kpi-live-v12-shipped-rack-counts",
                 }:
                     required_yield_fields += ("ppy_repaint_count",)
                 missing_yield_fields = [field for field in required_yield_fields if field not in row]
@@ -111,6 +116,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 if method_version in {
                     "operations-kpi-live-v10-master-repaintcount-yields",
                     "operations-kpi-live-v11-repaint-line-set-counts",
+                    "operations-kpi-live-v12-shipped-rack-counts",
                 }:
                     if int(row["reject_ppy_approved"]) + int(row["reject_ppy_rejected_count"]) + int(row["reject_ppy_pending_count"]) != int(row["reject_ppy_total"]):
                         raise ValueError(f"{collection} reject PPY outcomes do not equal its total")
@@ -120,7 +126,10 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                         raise ValueError(f"{collection} repaint PPY outcomes do not equal physical paint passes")
                     if int(row.get("paint_fty_approved", 0)) + int(row.get("paint_fty_repaint_count", 0)) + int(row["reject_fty_pending_count"]) != int(row.get("paint_fty_total", 0)):
                         raise ValueError(f"{collection} repaint FTY outcomes do not equal initial paint passes")
-                    if method_version == "operations-kpi-live-v11-repaint-line-set-counts":
+                    if method_version in {
+                        "operations-kpi-live-v11-repaint-line-set-counts",
+                        "operations-kpi-live-v12-shipped-rack-counts",
+                    }:
                         repaint_split_fields = (
                             "fuka_paint_fty_repaint_count",
                             "bumper_paint_fty_repaint_count",
@@ -205,6 +214,17 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "other_trailers_prepared",
                 ),
                 "trailer type", require_complete_splits,
+            )
+            _validate_split(
+                row, collection, "racks_shipped",
+                (
+                    "fuka_racks_shipped",
+                    "bumper_racks_shipped",
+                    "fairing_racks_shipped",
+                    "other_racks_shipped",
+                ),
+                "rack type",
+                method_version == "operations-kpi-live-v12-shipped-rack-counts",
             )
 
 
@@ -304,6 +324,25 @@ def _repaint_line_set_detail(row: Dict[str, Any]) -> str:
     )
 
 
+def _rack_detail(row: Dict[str, Any]) -> str:
+    fields = (
+        ("fuka_racks_shipped", "FUKA"),
+        ("bumper_racks_shipped", "Bumper"),
+        ("fairing_racks_shipped", "Fairing"),
+    )
+    if not all(field in row for field, _ in fields):
+        return "Rack detail pending refresh"
+
+    detail = []
+    for field, label in fields:
+        count = int(row.get(field, 0))
+        detail.append(f"{format_int(count)} {label} {'rack' if count == 1 else 'racks'}")
+    other = int(row.get("other_racks_shipped", 0))
+    if other:
+        detail.append(f"{format_int(other)} Other {'rack' if other == 1 else 'racks'}")
+    return " / ".join(detail)
+
+
 def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     validate_snapshot(snapshot)
     report_date = snapshot["report_date"]
@@ -319,13 +358,7 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     production_carts, bv_carts, service_carts = _cart_split(current)
     production_paint_carts, bv_paint_carts, service_paint_carts = _paint_cart_split(current)
     production_paint_pieces, bv_paint_pieces, service_paint_pieces = _paint_piece_split(current)
-    trailer_detail = (
-        f"{format_int(current.get('fuka_trailers_prepared'))} FUKA / "
-        f"{format_int(current.get('bumper_trailers_prepared'))} Bumpers / "
-        f"{format_int(current.get('fairing_trailers_prepared'))} Fairings"
-    )
-    if current.get("other_trailers_prepared", 0):
-        trailer_detail += f" / {format_int(current.get('other_trailers_prepared'))} Other"
+    trailer_detail = _rack_detail(current)
     shipped_piece_detail = _shipped_piece_detail(snapshot, report_date)
 
     cards = [

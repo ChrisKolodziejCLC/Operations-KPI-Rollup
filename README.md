@@ -59,6 +59,8 @@ Version 0.12.0 makes that server-owned schedule visible. The header counts down 
 
 Version 0.13.0 keeps the Repaint % tile's existing total-repaint / initial-pass detail and adds a second small line with the aggregate FUKA, Bumpers, and Fairings repaint counts. Pieces Shipped presents its existing aggregate mix in that same FUKA / Bumpers / Fairings order. The rollup procedure adds only the three aggregate repaint line-set counts; the Repaint % numerator, denominator, formula, snapshot grain, and database permissions remain unchanged. Every accepted snapshot must reconcile the three line-set counts exactly to `paint_fty_repaint_count`.
 
+Version 0.14.0 keeps the Trailers Prepared headline as the unchanged total trailer count and replaces only its small category detail with physical racks shipped: each value is labeled `rack` or `racks` in FUKA / Bumpers / Fairings order. Racks come from the QPTS `Rack` field, are grouped once per ship date, and mixed racks are assigned to their dominant line set with deterministic FUKA / Bumpers / Fairings tie order. The procedure exposes only aggregate rack counts plus an internal Other integrity bucket; it does not expose rack IDs or part detail, and every pre-existing KPI result remains unchanged.
+
 Run the safe local fixture mode:
 
 ```bash

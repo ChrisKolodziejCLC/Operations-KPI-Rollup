@@ -52,6 +52,7 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `complete_assy_sets` | Four-piece N33/Chassis Fairing sets dated by the latest `AssembledDate` among the set's pieces. |
 | `assembled_bumper_count` | N71-6171 parts dated by `AssembledDate`. |
 | `trailers_prepared` | Prepared trailers as of the snapshot cutoff. `fuka_trailers_prepared`, `bumper_trailers_prepared`, `fairing_trailers_prepared`, and the internal `other_trailers_prepared` integrity bucket sum to this total. Trailers have no service category. Mixed historical trailers are classified by dominant piece type. |
+| `racks_shipped` | Distinct nonblank physical `Rack` values on shipped, non-service pieces, grouped by ship date. `fuka_racks_shipped`, `bumper_racks_shipped`, `fairing_racks_shipped`, and the internal `other_racks_shipped` integrity bucket sum to this total. Mixed racks are counted once under their dominant line set with deterministic FUKA, then Bumpers, then Fairings tie order. Rack IDs are not included in the snapshot. |
 | `pieces_scheduled` / `hours_scheduled` / `paint_hours` | Inputs to the provisional paint-plan composite. |
 
 Every ratio is calculated by the renderer from a saved numerator and denominator. A zero denominator renders as `No Data`, not `0.0%`.
@@ -67,6 +68,7 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 - `0 <= unique_pieces_processed <= paint_pieces_processed`
 - legacy class splits remain auditable, but the wallboard displays overall exit-day yield because a narrow class can have repaint exits without initial exits on that day
 - `trailers_prepared = FUKA + Bumpers + Fairings + internal Other`
+- `racks_shipped = fuka_racks_shipped + bumper_racks_shipped + fairing_racks_shipped + other_racks_shipped`
 - `Repaint PPY = ppy_approved / paint_decision_pieces`
 - `Repaint FTY = paint_fty_approved / paint_fty_total`
 - `Repaint % = paint_fty_repaint_count / paint_fty_total`

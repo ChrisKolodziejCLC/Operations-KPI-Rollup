@@ -15,7 +15,7 @@ from .odbc import execute_operations_rollup
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
 PERIOD_TYPE_ORDER = {"WEEK": 1, "MONTH": 2, "QUARTER": 3}
-CURRENT_METHOD_VERSION = "operations-kpi-live-v11-repaint-line-set-counts"
+CURRENT_METHOD_VERSION = "operations-kpi-live-v12-shipped-rack-counts"
 
 
 def _integer(value: Any) -> int:
@@ -113,6 +113,11 @@ def _metric_fields(row: Mapping[str, Any]) -> Dict[str, int]:
         "bumper_trailers_prepared": "bumper_trailers_prepared",
         "fairing_trailers_prepared": "fairing_trailers_prepared",
         "other_trailers_prepared": "other_trailers_prepared",
+        "racks_shipped": "racks_shipped",
+        "fuka_racks_shipped": "fuka_racks_shipped",
+        "bumper_racks_shipped": "bumper_racks_shipped",
+        "fairing_racks_shipped": "fairing_racks_shipped",
+        "other_racks_shipped": "other_racks_shipped",
         "pieces_scheduled": "pieces_scheduled",
         "hours_scheduled": "hours_scheduled",
         "paint_hours": "paint_hours",
@@ -243,7 +248,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "80689CEC1019830F14445EB5AE5B4CBE35A9CFFB7494688BB12D8481413B0C7A",
+                "142E3C5764E0E80D4694D085C42DAF82EC153CEBEA757C965BE02B19A61FF373",
             ).upper(),
             "detail_result_sets_requested": False,
         },

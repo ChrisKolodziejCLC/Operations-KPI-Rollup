@@ -76,7 +76,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.13.0-repaint-line-set" in html
+            assert "0.14.0-shipped-racks" in html
             assert 'id="refresh-countdown"' in html
 
         with urlopen(base + "/app.js", timeout=5) as response:
@@ -107,7 +107,11 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "reject_ppy_approved" in javascript
             assert "reject_fty_approved" in javascript
             assert "yieldRatio(metric.numerator, metric.denominator)" in javascript
-            assert "fuka_trailers_prepared" in javascript
+            assert "fuka_racks_shipped" in javascript
+            assert "bumper_racks_shipped" in javascript
+            assert "fairing_racks_shipped" in javascript
+            assert "Rack detail pending refresh" in javascript
+            assert "count === 1 ? 'rack' : 'racks'" in javascript
             assert "shippedPieceDetail(snapshot)" in javascript
             assert "${integer(counts.fuka)} FUKA / ${integer(counts.bumpers)} Bumpers / ${integer(counts.fairings)} Fairings" in javascript
             assert "repaintLineSetDetail(current)" in javascript
