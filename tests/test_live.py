@@ -27,6 +27,14 @@ def metric_row(period_type, start, end, available=1, days=1):
         "bv_carts_loaded": "5",
         "service_carts_loaded": "10",
         "n71_6164_carts_loaded": "2",
+        "staged_carts": "11",
+        "production_staged_carts": "11",
+        "bv_staged_carts": "0",
+        "service_staged_carts": "0",
+        "staged_pieces": "40",
+        "production_staged_pieces": "40",
+        "bv_staged_pieces": "0",
+        "service_staged_pieces": "0",
         "paint_processed": "35",
         "production_paint_carts": "20",
         "bv_paint_carts": "5",
@@ -59,6 +67,10 @@ def metric_row(period_type, start, end, available=1, days=1):
         "fuka_paint_fty_repaint_count": "1",
         "bumper_paint_fty_repaint_count": "1",
         "fairing_paint_fty_repaint_count": "1",
+        "paint_fty_repair_count": "2",
+        "fuka_paint_fty_repair_count": "1",
+        "fairing_paint_fty_repair_count": "1",
+        "bumper_paint_fty_repair_count": "0",
         "reject_ppy_total": "95",
         "reject_ppy_approved": "89",
         "reject_ppy_rejected_count": "5",
@@ -69,9 +81,19 @@ def metric_row(period_type, start, end, available=1, days=1):
         "reject_fty_pending_count": "1",
         "receiving_total": "99",
         "receiving_approved": "97",
+        "receiving_bumper_total": "90",
+        "receiving_bumper_approved": "88",
+        "receiving_fairing_total": "9",
+        "receiving_fairing_approved": "9",
         "receiving_quantity": "98",
         "final_total": "101",
         "final_approved": "100",
+        "final_fuka_total": "50",
+        "final_fuka_approved": "50",
+        "final_bumper_total": "40",
+        "final_bumper_approved": "39",
+        "final_fairing_total": "11",
+        "final_fairing_approved": "11",
         "final_quantity": "100",
         "eol_inspected": "98",
         "painted_parts_shipped": "85",
@@ -84,6 +106,7 @@ def metric_row(period_type, start, end, available=1, days=1):
         "mic_assembled_bumper_count": "7",
         "painted_assembled_bumper_count": "18",
         "trailers_prepared": "4",
+        "trailers_shipped": "3",
         "fuka_trailers_prepared": "2",
         "bumper_trailers_prepared": "1",
         "fairing_trailers_prepared": "1",
@@ -125,7 +148,7 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
 
 
 def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
-    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "415953e2a0675aada2c99a7babc4f43dbb04b21acb7bb8d9361af094c96b7ce3")
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "21149fde5db32871914f9846f6e29fcf7d071bc6189d7a2272e9e7e4fc0c2df3")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -148,41 +171,40 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert snapshot["daily"][-1]["bv_carts_loaded"] == 5
     assert snapshot["daily"][-1]["service_carts_loaded"] == 10
     cards = prepare_context(snapshot)["cards"]
-    assert cards[0]["label"] == "Pieces loaded"
-    assert cards[0]["value"] == "100 Total / 91 Unique"
-    assert cards[0]["detail"] == "Carts 23 Prd / 5 BV / 2 N71-6164 / 10 Svc · Pieces 60 Prd / 5 BV / 10 N71-6164 / 25 Svc"
-    assert cards[1]["label"] == "Pieces painted"
-    assert cards[1]["value"] == "96 Total / 84 Unique"
-    assert cards[1]["detail"] == "Carts 18 Prd / 5 BV / 2 N71-6164 / 10 Svc · Pieces 60 Prd / 5 BV / 5 N71-6164 / 26 Svc"
-    assert cards[2]["label"] == "Repaint PPY"
-    assert cards[2]["value"] == "94.7%"
-    assert cards[2]["detail"] == "90 / 95 exits"
-    assert cards[3]["label"] == "Reject PPY"
-    assert cards[3]["value"] == "93.7%"
-    assert cards[3]["detail"] == "89 / 95 exits · 1 pending"
-    assert cards[4]["label"] == "Repaint FTY"
-    assert cards[4]["value"] == "95.6%"
-    assert cards[5]["label"] == "Reject FTY"
-    assert cards[5]["value"] == "93.3%"
-    assert cards[6]["label"] == "Repaint %"
-    assert cards[6]["value"] == "3.3%"
-    assert cards[6]["detail"] == "3 / 90 initial passes"
-    assert cards[6]["secondary_detail"] == "1 FUKA / 1 Bumpers / 1 Fairings"
-    assert cards[7]["detail"] == "97 / 99 first decisions"
-    assert cards[8]["detail"] == "100 / 101 first decisions"
+    assert [card["label"] for card in cards[:5]] == [
+        "Pieces loaded", "Pieces staged", "Pieces painted", "Repaint %", "Finesse %"
+    ]
+    cards_by_label = {card["label"]: card for card in cards}
+    assert cards_by_label["Pieces loaded"]["value"] == "100 Total / 91 Unique"
+    assert cards_by_label["Pieces loaded"]["detail"] == "Carts 25 Prd / 5 BV / 10 Svc · Pieces 70 Prd / 5 BV / 25 Svc"
+    assert cards_by_label["Pieces staged"]["value"] == "11 Carts / 40 Pieces"
+    assert cards_by_label["Pieces staged"]["detail"] == "Carts 11 Prd / 0 BV / 0 Svc · Pieces 40 Prd / 0 BV / 0 Svc"
+    assert cards_by_label["Pieces painted"]["value"] == "96 Total / 84 Unique"
+    assert cards_by_label["Pieces painted"]["detail"] == "Carts 20 Prd / 5 BV / 10 Svc · Pieces 65 Prd / 5 BV / 26 Svc"
+    assert cards_by_label["Repaint %"]["value"] == "3.3%"
+    assert cards_by_label["Repaint %"]["detail"] == "3 / 90 initial passes"
+    assert cards_by_label["Repaint %"]["secondary_detail"] == "1 FUKA / 1 Bumpers / 1 Fairings"
+    assert cards_by_label["Finesse %"]["value"] == "40.0%"
+    assert cards_by_label["Finesse %"]["detail"] == "2 / 5 rejected first passes\nFUKA 1 repaired\nFairings 1 repaired\nBumpers 0 repaired"
+    assert cards_by_label["Repaint PPY"]["value"] == "94.7%"
+    assert cards_by_label["Reject PPY"]["value"] == "93.7%"
+    assert cards_by_label["Repaint FTY"]["value"] == "95.6%"
+    assert cards_by_label["Reject FTY"]["value"] == "93.3%"
+    assert cards_by_label["Receiving FTY"]["detail"] == "Bumpers 97.8% · 88 / 90\nFairings 100.0% · 9 / 9"
+    assert cards_by_label["Final FTY"]["detail"] == "FUKA 100.0% · 50 / 50\nBumpers 97.5% · 39 / 40\nFairings 100.0% · 11 / 11"
     assert cards[-2]["label"] == "Pieces shipped"
     assert cards[-2]["value"] == "90"
     assert cards[-2]["detail"] == "20 FUKA / 55 Bumpers / 5 N71-6164 / 10 Fairings"
-    assert cards[-1]["label"] == "Trailers prepared"
-    assert cards[-1]["value"] == "4"
-    assert cards[-1]["detail"] == "5 FUKA racks / 10 Bumper racks / 1 N71-6164 rack / 1 Fairing rack"
+    assert cards[-1]["label"] == "Trailers"
+    assert cards[-1]["value"] == "4 Prepped / 3 Shipped"
+    assert cards[-1]["detail"] == "DriverLog TimeOut departures"
     assert [row["period_type"] for row in snapshot["periods"]] == ["WEEK", "MONTH", "QUARTER"]
     assert snapshot["top_defects"] == [{"step": "End of Line", "description": "Dirt", "count": 7}]
     assert [row["pieces"] for row in snapshot["shipping"]] == [55, 20, 5, 10]
     assert snapshot["painters"] == []
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
-    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "415953E2A0675AADA2C99A7BABC4F43DBB04B21ACB7BB8D9361AF094C96B7CE3"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v13-mic-n71-breakdowns"
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "21149FDE5DB32871914F9846F6E29FCF7D071BC6189D7A2272E9E7E4FC0C2DF3"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v14-trailer-inspection-details"
 
 
 def test_repaint_line_set_split_must_equal_total():
@@ -209,6 +231,45 @@ def test_shipped_rack_split_must_equal_total():
         assert str(error) == "daily rack type split does not equal racks_shipped"
     else:
         raise AssertionError("invalid shipped rack split was accepted")
+
+
+def test_v14_inspection_and_finesse_splits_are_guarded():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["daily"][-1]["receiving_fairing_total"] = 10
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily receiving family totals do not equal receiving_total"
+    else:
+        raise AssertionError("invalid receiving family split was accepted")
+
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["daily"][-1]["final_fairing_approved"] = 10
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily final family approvals do not equal final_approved"
+    else:
+        raise AssertionError("invalid final family split was accepted")
+
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["daily"][-1]["fuka_paint_fty_repair_count"] = 2
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily finesse family repair counts do not equal paint_fty_repair_count"
+    else:
+        raise AssertionError("invalid finesse family split was accepted")
+
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["daily"][-1]["production_staged_carts"] = 10
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily staged cart split does not equal staged_carts"
+    else:
+        raise AssertionError("invalid staged cart split was accepted")
 
 
 def test_v13_mic_and_n71_breakdowns_are_guarded():
@@ -246,7 +307,7 @@ def test_v11_saved_snapshot_can_load_before_first_v12_refresh():
             for field in rack_fields:
                 row.pop(field)
     validate_snapshot(snapshot)
-    assert prepare_context(snapshot)["cards"][-1]["detail"] == "Rack detail pending refresh"
+    assert prepare_context(snapshot)["cards"][-1]["label"] == "Trailers"
 
 
 def test_v12_saved_snapshot_can_load_before_first_v13_refresh():
@@ -266,8 +327,35 @@ def test_v12_saved_snapshot_can_load_before_first_v13_refresh():
                 row.pop(field)
     validate_snapshot(snapshot)
     cards = prepare_context(snapshot)["cards"]
-    assert cards[-4]["detail"] == "N33 / Chassis Fairing · dated by last assembled piece"
-    assert cards[-3]["detail"] == "N71-6171 · AssembledDate"
+    cards_by_label = {card["label"]: card for card in cards}
+    assert cards_by_label["Complete assy sets"]["detail"] == "N33 / Chassis Fairing · dated by last assembled piece"
+    assert cards_by_label["Assembled bumpers"]["detail"] == "N71-6171 · AssembledDate"
+
+
+def test_v13_saved_snapshot_can_load_before_first_v14_refresh():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["scope"]["method_version"] = "operations-kpi-live-v13-mic-n71-breakdowns"
+    v14_fields = (
+        "trailers_shipped",
+        "receiving_bumper_total", "receiving_bumper_approved",
+        "receiving_fairing_total", "receiving_fairing_approved",
+        "final_fuka_total", "final_fuka_approved",
+        "final_bumper_total", "final_bumper_approved",
+        "final_fairing_total", "final_fairing_approved",
+        "paint_fty_repair_count", "fuka_paint_fty_repair_count",
+        "fairing_paint_fty_repair_count", "bumper_paint_fty_repair_count",
+        "staged_carts", "production_staged_carts", "bv_staged_carts", "service_staged_carts",
+        "staged_pieces", "production_staged_pieces", "bv_staged_pieces", "service_staged_pieces",
+    )
+    for collection in ("daily", "periods"):
+        for row in snapshot[collection]:
+            for field in v14_fields:
+                row.pop(field)
+    validate_snapshot(snapshot)
+    cards_by_label = {card["label"]: card for card in prepare_context(snapshot)["cards"]}
+    assert cards_by_label["Trailers"]["value"] == "4 Prepped / No Data Shipped"
+    assert cards_by_label["Finesse %"]["value"] == "No Data"
 
 
 def test_load_split_must_equal_total():
@@ -394,7 +482,8 @@ def test_v6_saved_snapshot_can_load_before_first_v7_refresh():
     validate_snapshot(snapshot)
     cards = prepare_context(snapshot)["cards"]
     assert cards[0]["value"] == "100 Total / — Unique"
-    assert cards[1]["value"] == "96 Total / — Unique"
+    cards_by_label = {card["label"]: card for card in cards}
+    assert cards_by_label["Pieces painted"]["value"] == "96 Total / — Unique"
 
 
 def test_v7_saved_snapshot_can_load_before_first_v8_refresh():
@@ -482,6 +571,6 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "415953E2A0675AADA2C99A7BABC4F43DBB04B21ACB7BB8D9361AF094C96B7CE3" in captured["query"]
+    assert "21149FDE5DB32871914F9846F6E29FCF7D071BC6189D7A2272E9E7E4FC0C2DF3" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]

@@ -63,6 +63,8 @@ Version 0.14.0 keeps the Trailers Prepared headline as the unchanged total trail
 
 Version 0.16.0 keeps the clarified PPY/FTY rows from 0.15.0 and adds governed aggregate detail requested by the metric owner. Complete assembly sets and assembled N71-6171 bumpers now show separate MIC and Painted rows. Pieces Loaded and Pieces Painted expose N71-6164 separately from the existing production bucket; Pieces Shipped and Trailers Prepared likewise show N71-6164 as an exclusive piece/rack category. Every new split is validated against its existing headline total, and the headline formulas, refresh behavior, and read-only database permissions remain unchanged.
 
+Version 0.17.0 simplifies the production-flow cards and adds the requested queue and quality context. Pieces Loaded and Pieces Painted return to `Prd / BV / Svc` detail; their retained N71-6164 subset fields remain available for audit but are no longer displayed on those two cards. A new Pieces Staged card mirrors the Paint Prep Wallboard contract: eligible Grand Prairie EDI-loaded cart groups with no `tblCarts_Paint` booth scan, using a three-day normal queue and seven-day active-repaint queue. Repaint % moves immediately after Pieces Painted, and Finesse % reports first-pass Repair outcomes as a percentage of all first-pass rejected outcomes, with FUKA, Fairings, and Bumpers repair counts. Receiving FTY now shows Bumpers and Fairings; Final FTY shows FUKA, Bumpers, and Fairings. The final trailer card compares prepared trailers with completed `DriverLog.TimeOut` departures. All additions remain aggregate-only, read-only, and reconciliation-gated.
+
 Run the safe local fixture mode:
 
 ```bash

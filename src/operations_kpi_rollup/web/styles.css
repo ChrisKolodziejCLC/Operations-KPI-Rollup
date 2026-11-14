@@ -43,7 +43,7 @@ button.secondary{border-color:#b6c7d0;background:#eef4f6;color:var(--navy)}
 #status{align-self:center;margin:0;color:var(--muted);font-size:.82rem}
 #status.error{color:#9a2e2a;font-weight:700}
 .method-banner{margin:1rem 0;padding:.85rem 1rem;border-left:4px solid var(--amber);background:#fff3d8;color:#5d451d;font-size:.84rem;line-height:1.45}
-.cards{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.75rem;margin:1rem 0}
+.cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.75rem;margin:1rem 0}
 .metric-card{position:relative;overflow:hidden;padding:1rem;background:var(--card);border:1px solid var(--line);box-shadow:0 4px 15px rgba(15,42,62,.04)}
 .metric-card::before{content:"";position:absolute;inset:0 auto 0 0;width:4px;background:var(--accent,var(--teal))}
 .metric-card span{display:block;color:var(--muted);font-size:.68rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
@@ -65,6 +65,19 @@ button.secondary{border-color:#b6c7d0;background:#eef4f6;color:var(--navy)}
 .metric-card .dual-yield-value{margin:.12rem 0;font-size:1.35rem;font-size:min(10.5cqw,1.35rem);line-height:1.05;white-space:nowrap}
 .dual-yield-details{display:grid;gap:.04rem;margin-top:.2rem}
 .metric-card .dual-yield-detail{font-size:.62rem;line-height:1.25;white-space:nowrap}
+.inspection-overall{margin-top:.05rem}
+.inspection-detail-list{display:grid;gap:.18rem;margin-top:.35rem;padding-top:.3rem;border-top:1px solid var(--line)}
+.inspection-detail-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:.3rem;align-items:baseline}
+.metric-card .inspection-detail-label{font-size:.58rem;min-width:0}
+.inspection-detail-rate{color:var(--navy);font-size:.7rem;white-space:nowrap}
+.metric-card .inspection-detail-counts{font-size:.62rem;white-space:nowrap}
+.trailer-count-card{grid-column:span 2}
+.trailer-count-grid{display:grid;grid-template-columns:1fr 1fr;gap:.65rem;margin-top:.35rem}
+.trailer-count-column{min-width:0}
+.trailer-count-column+.trailer-count-column{padding-left:.75rem;border-left:1px solid var(--line)}
+.metric-card .trailer-count-label{font-size:.62rem}
+.metric-card .trailer-count-value{margin:.1rem 0;font-size:1.75rem}
+.trailer-count-source{margin-top:.2rem}
 .panel{margin-top:1rem;padding:1.2rem;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow)}
 .section-heading{display:flex;justify-content:space-between;gap:2rem;align-items:end;padding-bottom:.8rem;border-bottom:3px solid var(--teal)}
 .section-heading.compact{border-bottom-width:2px}
@@ -99,7 +112,7 @@ footer{display:flex;justify-content:space-between;gap:1rem;padding:1rem max(2rem
 body.wallboard .control-bar{display:none}
 body.wallboard .method-banner{margin-top:0}
 body.wallboard main{max-width:none}
-body.wallboard .cards{grid-template-columns:repeat(6,minmax(0,1fr))}
+body.wallboard .cards{grid-template-columns:repeat(5,minmax(0,1fr))}
 body.wallboard .metric-card strong{font-size:2.2rem}
 body.wallboard .metric-card .metric-split-total{font-size:1.1rem;font-size:min(7.5cqw,2.2rem)}
 body.wallboard .metric-card .dual-yield-value{font-size:1.45rem;font-size:min(10.5cqw,1.45rem)}
@@ -109,6 +122,7 @@ body.wallboard .metric-card .dual-yield-detail{font-size:.68rem}
 @media(max-width:1100px){
   .cards{grid-template-columns:repeat(3,minmax(0,1fr))}
   body.wallboard .cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .trailer-count-card{grid-column:span 2}
   .control-bar{grid-template-columns:minmax(150px,1fr) auto auto auto}
   #status{grid-column:1/-1}
   .chart-grid{grid-template-columns:1fr}
@@ -121,6 +135,7 @@ body.wallboard .metric-card .dual-yield-detail{font-size:.68rem}
   .day-navigation{display:grid;grid-template-columns:repeat(3,1fr)}
   .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
   body.wallboard .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .trailer-count-card{grid-column:span 1}
   .split-panel,.notes-panel{grid-template-columns:1fr}
   .section-heading{align-items:flex-start;flex-direction:column;gap:.3rem}
   .section-heading>p{text-align:left}

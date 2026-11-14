@@ -35,12 +35,15 @@ def test_repaint_and_reject_yields_use_saved_exit_day_counts():
         "reject_ppy_approved": 254,
         "reject_fty_total": 271,
         "reject_fty_approved": 247,
+        "reject_fty_rejected_count": 24,
+        "paint_fty_repair_count": 4,
     })
     assert enriched["repaint_ppy"] == Decimal("258") / Decimal("279")
     assert enriched["repaint_fty"] == Decimal("251") / Decimal("271")
     assert enriched["reject_ppy"] == Decimal("254") / Decimal("279")
     assert enriched["reject_fty"] == Decimal("247") / Decimal("271")
     assert enriched["repaint_percentage"] == Decimal("20") / Decimal("271")
+    assert enriched["finesse_percentage"] == Decimal("4") / Decimal("24")
 
 
 def test_partial_week_uses_three_production_days():

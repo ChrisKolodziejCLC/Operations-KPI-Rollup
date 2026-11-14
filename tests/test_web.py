@@ -76,7 +76,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.16.0-mic-n71-breakdowns" in html
+            assert "0.17.0-trailer-inspection-finesse" in html
             assert 'id="refresh-countdown"' in html
 
         with urlopen(base + "/app.js", timeout=5) as response:
@@ -85,43 +85,54 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "production_parts_loaded" in javascript
             assert "bv_parts_loaded" in javascript
             assert "service_parts_loaded" in javascript
-            assert "n71_6164_parts_loaded" in javascript
+            assert "n71_6164_parts_loaded" not in javascript
             assert "production_carts_loaded" in javascript
             assert "bv_carts_loaded" in javascript
             assert "service_carts_loaded" in javascript
-            assert "n71_6164_carts_loaded" in javascript
+            assert "n71_6164_carts_loaded" not in javascript
             assert "production_paint_carts" in javascript
             assert "bv_paint_carts" in javascript
             assert "service_paint_carts" in javascript
-            assert "n71_6164_paint_carts" in javascript
+            assert "n71_6164_paint_carts" not in javascript
             assert "production_paint_pieces_processed" in javascript
             assert "bv_paint_pieces_processed" in javascript
             assert "service_paint_pieces_processed" in javascript
-            assert "n71_6164_paint_pieces_processed" in javascript
+            assert "n71_6164_paint_pieces_processed" not in javascript
             assert "unique_pieces_loaded" in javascript
             assert "unique_pieces_processed" in javascript
             assert "splitMetricCard('Pieces loaded', current.parts_loaded" in javascript
             assert "splitMetricCard('Pieces painted', current.paint_pieces_processed" in javascript
             assert "unique === undefined ? '—' : integer(unique)" in javascript
             assert "metric-split-total" in javascript
-            assert "values.push(`${integer(row.n71)} N71-6164`)" in javascript
+            assert "values.push(`${integer(row.n71)} N71-6164`)" not in javascript
+            assert "stagedMetricCard(current.staged_carts, current.staged_pieces" in javascript
+            assert "`${optionalInteger(carts)} Carts / ${optionalInteger(pieces)} Pieces`" in javascript
+            assert "Finesse detail pending refresh" in javascript
             assert "dualYieldCard('PPY (Paint Process Yield)'" in javascript
             assert "dualYieldCard('FTY (First Time Yield)'" in javascript
             assert "metric.details.forEach" in javascript
             assert "'Repaint' : 'Repaints'" in javascript
             assert "`${integer(current.reject_ppy_pending_count)} Pending`" in javascript
             assert "`${integer(current.reject_fty_pending_count)} Pending`" in javascript
-            assert "['Repaint %', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total))" in javascript
+            assert "'Repaint %'" in javascript
+            assert "'Finesse %'" in javascript
+            assert "ratio(current.paint_fty_repair_count, current.reject_fty_rejected_count)" in javascript
+            assert "FUKA Repaired" in javascript
+            assert "Fairings Repaired" in javascript
+            assert "Bumpers Repaired" in javascript
             assert "current.ppy_repaint_count" in javascript
             assert "reject_ppy_approved" in javascript
             assert "reject_fty_approved" in javascript
             assert "yieldRatio(metric.numerator, metric.denominator)" in javascript
-            assert "fuka_racks_shipped" in javascript
-            assert "bumper_racks_shipped" in javascript
-            assert "n71_6164_racks_shipped" in javascript
-            assert "fairing_racks_shipped" in javascript
-            assert "Rack detail pending refresh" in javascript
-            assert "count === 1 ? 'rack' : 'racks'" in javascript
+            assert "inspectionYieldCard(" in javascript
+            assert "receiving_bumper_approved" in javascript
+            assert "receiving_fairing_approved" in javascript
+            assert "final_fuka_approved" in javascript
+            assert "final_bumper_approved" in javascript
+            assert "final_fairing_approved" in javascript
+            assert "trailerCountCard(current.trailers_prepared, current.trailers_shipped" in javascript
+            assert "Shipped = DriverLog TimeOut departures" in javascript
+            assert "optionalInteger(metric.value)" in javascript
             assert "return values.join(' / ')" not in javascript
             assert "shippedPieceDetail(snapshot)" in javascript
             assert "`${integer(counts.fuka)} FUKA`" in javascript
@@ -129,7 +140,9 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "`${integer(counts.n71)} N71-6164`" in javascript
             assert "`${integer(counts.fairings)} Fairings`" in javascript
             assert "repaintLineSetDetail(current)" in javascript
-            assert "${integer(row.fuka_paint_fty_repaint_count)} FUKA / ${integer(row.bumper_paint_fty_repaint_count)} Bumpers / ${integer(row.fairing_paint_fty_repaint_count)} Fairings" in javascript
+            assert "`${integer(row.fuka_paint_fty_repaint_count)} FUKA`" in javascript
+            assert "`${integer(row.bumper_paint_fty_repaint_count)} Bumpers`" in javascript
+            assert "`${integer(row.fairing_paint_fty_repaint_count)} Fairings`" in javascript
             assert "provisional · not standard OEE" in javascript
             assert "N33 / Chassis Fairing · dated by last assembled piece" in javascript
             assert "N71-6171 · AssembledDate" in javascript
@@ -151,7 +164,11 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "serverClockOffsetMs" in javascript
             assert "Auto refresh in ${minutes}:${seconds}" in javascript
             assert javascript.index("['Pieces shipped'") > javascript.index("['Assembled bumpers'")
-            assert javascript.index("['Pieces shipped'") < javascript.index("['Trailers prepared'")
+            assert javascript.index("splitMetricCard('Pieces loaded'") < javascript.index("container.append(stagedMetricCard(")
+            assert javascript.index("container.append(stagedMetricCard(") < javascript.index("splitMetricCard('Pieces painted'")
+            assert javascript.index("splitMetricCard('Pieces painted'") < javascript.index("'Repaint %'")
+            assert javascript.index("'Repaint %'") < javascript.index("'Finesse %'")
+            assert javascript.index("['Pieces shipped'") < javascript.index("container.append(trailerCountCard(")
             assert "loadCachedReport(localDateISO(), true)" in javascript
             assert "refreshReport(localDateISO(), true)" not in javascript
             assert "X-Operations-KPI-Refresh-Key" not in javascript

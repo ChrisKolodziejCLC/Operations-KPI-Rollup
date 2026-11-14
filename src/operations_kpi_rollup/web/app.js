@@ -24,6 +24,7 @@ const svgNode = (name, attributes = {}) => {
 };
 const text = (value) => document.createTextNode(String(value ?? ''));
 const integer = (value) => Number(value || 0).toLocaleString();
+const optionalInteger = (value) => value === undefined || value === null ? 'No Data' : integer(value);
 const ratio = (numerator, denominator) => Number(denominator) > 0 ? Number(numerator || 0) / Number(denominator) : null;
 const yieldRatio = (numerator, denominator) => {
   const top = Number(numerator || 0), bottom = Number(denominator || 0);
@@ -62,34 +63,30 @@ function rangeLabel(rows) {
 
 function loadSplit(row) {
   if (row.production_parts_loaded === undefined && row.service_parts_loaded === undefined) {
-    return {production: row.parts_loaded, bv: 0, n71: undefined, service: 0};
+    return {production: row.parts_loaded, bv: 0, service: 0};
   }
-  const n71 = row.n71_6164_parts_loaded === undefined ? undefined : Number(row.n71_6164_parts_loaded || 0);
-  return {production: Number(row.production_parts_loaded || 0) - Number(n71 || 0), bv: row.bv_parts_loaded || 0, n71, service: row.service_parts_loaded};
+  return {production: row.production_parts_loaded || 0, bv: row.bv_parts_loaded || 0, service: row.service_parts_loaded};
 }
 
 function cartSplit(row) {
   if (row.production_carts_loaded === undefined && row.service_carts_loaded === undefined) {
-    return {production: row.carts_loaded, bv: 0, n71: undefined, service: 0};
+    return {production: row.carts_loaded, bv: 0, service: 0};
   }
-  const n71 = row.n71_6164_carts_loaded === undefined ? undefined : Number(row.n71_6164_carts_loaded || 0);
-  return {production: Number(row.production_carts_loaded || 0) - Number(n71 || 0), bv: row.bv_carts_loaded || 0, n71, service: row.service_carts_loaded};
+  return {production: row.production_carts_loaded || 0, bv: row.bv_carts_loaded || 0, service: row.service_carts_loaded};
 }
 
 function paintCartSplit(row) {
   if (row.production_paint_carts === undefined && row.service_paint_carts === undefined) {
-    return {production: row.paint_carts, bv: 0, n71: undefined, service: 0};
+    return {production: row.paint_carts, bv: 0, service: 0};
   }
-  const n71 = row.n71_6164_paint_carts === undefined ? undefined : Number(row.n71_6164_paint_carts || 0);
-  return {production: Number(row.production_paint_carts || 0) - Number(n71 || 0), bv: row.bv_paint_carts || 0, n71, service: row.service_paint_carts};
+  return {production: row.production_paint_carts || 0, bv: row.bv_paint_carts || 0, service: row.service_paint_carts};
 }
 
 function paintPieceSplit(row) {
   if (row.production_paint_pieces_processed === undefined && row.service_paint_pieces_processed === undefined) {
-    return {production: row.paint_pieces_processed, bv: 0, n71: undefined, service: 0};
+    return {production: row.paint_pieces_processed, bv: 0, service: 0};
   }
-  const n71 = row.n71_6164_paint_pieces_processed === undefined ? undefined : Number(row.n71_6164_paint_pieces_processed || 0);
-  return {production: Number(row.production_paint_pieces_processed || 0) - Number(n71 || 0), bv: row.bv_paint_pieces_processed || 0, n71, service: row.service_paint_pieces_processed};
+  return {production: row.production_paint_pieces_processed || 0, bv: row.bv_paint_pieces_processed || 0, service: row.service_paint_pieces_processed};
 }
 
 function rateBreakdown(row, numerator, denominator) {
@@ -118,25 +115,12 @@ function shippedPieceDetail(snapshot) {
 
 function repaintLineSetDetail(row) {
   const fields = ['fuka_paint_fty_repaint_count', 'bumper_paint_fty_repaint_count', 'fairing_paint_fty_repaint_count'];
-  if (!fields.every(field => row[field] !== undefined)) return 'Line-set detail pending refresh';
-  return `${integer(row.fuka_paint_fty_repaint_count)} FUKA / ${integer(row.bumper_paint_fty_repaint_count)} Bumpers / ${integer(row.fairing_paint_fty_repaint_count)} Fairings`;
-}
-
-function rackDetail(row) {
-  const fields = [
-    ['fuka_racks_shipped', 'FUKA'],
-    ['bumper_racks_shipped', 'Bumper'],
-    ['fairing_racks_shipped', 'Fairing']
+  if (!fields.every(field => row[field] !== undefined)) return ['Line-set detail pending refresh'];
+  return [
+    `${integer(row.fuka_paint_fty_repaint_count)} FUKA`,
+    `${integer(row.bumper_paint_fty_repaint_count)} Bumpers`,
+    `${integer(row.fairing_paint_fty_repaint_count)} Fairings`
   ];
-  if (row.n71_6164_racks_shipped !== undefined) fields.splice(2, 0, ['n71_6164_racks_shipped', 'N71-6164']);
-  if (!fields.every(([field]) => row[field] !== undefined)) return ['Rack detail pending refresh'];
-  const values = fields.map(([field, label]) => {
-    const count = Number(row[field] || 0);
-    return `${integer(count)} ${label} ${count === 1 ? 'rack' : 'racks'}`;
-  });
-  const other = Number(row.other_racks_shipped || 0);
-  if (other > 0) values.push(`${integer(other)} Other ${other === 1 ? 'rack' : 'racks'}`);
-  return values;
 }
 
 function composite(row) {
@@ -182,9 +166,27 @@ function splitMetricCard(label, total, unique, rows, color) {
     const rowLabel = document.createElement('span'); rowLabel.className = 'metric-split-label'; rowLabel.append(text(row.label));
     const value = document.createElement('small'); value.className = 'metric-split-value';
     const values = [`${integer(row.production)} Prd`, `${integer(row.bv)} BV`];
-    if (row.n71 !== undefined) values.push(`${integer(row.n71)} N71-6164`);
     values.push(`${integer(row.service)} Svc`);
     value.append(text(values.join(' / ')));
+    line.append(rowLabel, value); list.append(line);
+  });
+  card.append(labelNode, totalNode, list);
+  return card;
+}
+
+function stagedMetricCard(carts, pieces, rows, color) {
+  const card = document.createElement('article');
+  card.className = 'metric-card split-count-card staged-count-card';
+  card.style.setProperty('--accent', color);
+  const labelNode = document.createElement('span'); labelNode.append(text('Pieces staged'));
+  const totalNode = document.createElement('strong'); totalNode.className = 'metric-split-total';
+  totalNode.append(text(`${optionalInteger(carts)} Carts / ${optionalInteger(pieces)} Pieces`));
+  const list = document.createElement('div'); list.className = 'metric-split-list';
+  rows.forEach(row => {
+    const line = document.createElement('div'); line.className = 'metric-split-row';
+    const rowLabel = document.createElement('span'); rowLabel.className = 'metric-split-label'; rowLabel.append(text(row.label));
+    const value = document.createElement('small'); value.className = 'metric-split-value';
+    value.append(text(`${optionalInteger(row.production)} Prd / ${optionalInteger(row.bv)} BV / ${optionalInteger(row.service)} Svc`));
     line.append(rowLabel, value); list.append(line);
   });
   card.append(labelNode, totalNode, list);
@@ -212,6 +214,43 @@ function dualYieldCard(label, repaint, reject, color) {
   return card;
 }
 
+function inspectionYieldCard(label, numerator, denominator, rows, color) {
+  const card = document.createElement('article');
+  card.className = 'metric-card inspection-yield-card';
+  card.style.setProperty('--accent', color);
+  const labelNode = document.createElement('span'); labelNode.append(text(label));
+  const valueNode = document.createElement('strong'); valueNode.append(text(percent(yieldRatio(numerator, denominator))));
+  const overall = document.createElement('small'); overall.className = 'inspection-overall';
+  overall.append(text(`${integer(numerator)} / ${integer(denominator)} First Decisions`));
+  const list = document.createElement('div'); list.className = 'inspection-detail-list';
+  rows.forEach(row => {
+    const line = document.createElement('div'); line.className = 'inspection-detail-row';
+    const rowLabel = document.createElement('span'); rowLabel.className = 'inspection-detail-label'; rowLabel.append(text(row.label));
+    const rate = document.createElement('b'); rate.className = 'inspection-detail-rate'; rate.append(text(percent(yieldRatio(row.numerator, row.denominator))));
+    const counts = document.createElement('small'); counts.className = 'inspection-detail-counts'; counts.append(text(`${optionalInteger(row.numerator)} / ${optionalInteger(row.denominator)}`));
+    line.append(rowLabel, rate, counts); list.append(line);
+  });
+  card.append(labelNode, valueNode, overall, list);
+  return card;
+}
+
+function trailerCountCard(prepped, shipped, color) {
+  const card = document.createElement('article');
+  card.className = 'metric-card trailer-count-card';
+  card.style.setProperty('--accent', color);
+  const labelNode = document.createElement('span'); labelNode.append(text('Trailers'));
+  const grid = document.createElement('div'); grid.className = 'trailer-count-grid';
+  [{label:'Prepped', value:prepped}, {label:'Shipped', value:shipped}].forEach(metric => {
+    const column = document.createElement('div'); column.className = 'trailer-count-column';
+    const metricLabel = document.createElement('span'); metricLabel.className = 'trailer-count-label'; metricLabel.append(text(metric.label));
+    const value = document.createElement('strong'); value.className = 'trailer-count-value'; value.append(text(optionalInteger(metric.value)));
+    column.append(metricLabel, value); grid.append(column);
+  });
+  const source = document.createElement('small'); source.className = 'trailer-count-source'; source.append(text('Shipped = DriverLog TimeOut departures'));
+  card.append(labelNode, grid, source);
+  return card;
+}
+
 function renderCards(snapshot) {
   const current = snapshot.daily.find(row => row.date === snapshot.report_date);
   if (!current) return;
@@ -220,26 +259,44 @@ function renderCards(snapshot) {
   const paintCarts = paintCartSplit(current);
   const paintPieces = paintPieceSplit(current);
   const shippedDetail = shippedPieceDetail(snapshot);
-  const trailerDetail = rackDetail(current);
   const cards = [
-    ['Repaint %', percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)), [`${integer(current.paint_fty_repaint_count)} / ${integer(current.paint_fty_total)} initial passes`, repaintLineSetDetail(current)], palette.amber],
-    ['Receiving FTY', percent(ratio(current.receiving_approved, current.receiving_total)), `${integer(current.receiving_approved)} / ${integer(current.receiving_total)} First Decisions`, palette.green],
-    ['Final FTY', percent(ratio(current.final_approved, current.final_total)), `${integer(current.final_approved)} / ${integer(current.final_total)} First Decisions`, palette.purple],
     ['Paint plan composite', percent(composite(current)), 'provisional · not standard OEE', palette.purple],
     ['Complete assy sets', integer(current.complete_assy_sets), current.mic_complete_assy_sets === undefined ? 'N33 / Chassis Fairing · dated by last assembled piece' : [`${integer(current.mic_complete_assy_sets)} MIC`, `${integer(current.painted_complete_assy_sets)} Painted`], palette.teal],
     ['Assembled bumpers', integer(current.assembled_bumper_count), current.mic_assembled_bumper_count === undefined ? 'N71-6171 · AssembledDate' : [`${integer(current.mic_assembled_bumper_count)} MIC`, `${integer(current.painted_assembled_bumper_count)} Painted`], palette.blue],
-    ['Pieces shipped', integer(current.parts_shipped), shippedDetail, palette.red],
-    ['Trailers prepared', integer(current.trailers_prepared), trailerDetail, palette.amber]
+    ['Pieces shipped', integer(current.parts_shipped), shippedDetail, palette.red]
   ];
   const container = $('#cards'); container.replaceChildren();
   container.append(splitMetricCard('Pieces loaded', current.parts_loaded, current.unique_pieces_loaded, [
-    {label:'Carts', production:carts.production, bv:carts.bv, n71:carts.n71, service:carts.service},
-    {label:'Pieces', production:loaded.production, bv:loaded.bv, n71:loaded.n71, service:loaded.service}
+    {label:'Carts', production:carts.production, bv:carts.bv, service:carts.service},
+    {label:'Pieces', production:loaded.production, bv:loaded.bv, service:loaded.service}
   ], palette.teal));
+  container.append(stagedMetricCard(current.staged_carts, current.staged_pieces, [
+    {label:'Carts', production:current.production_staged_carts, bv:current.bv_staged_carts, service:current.service_staged_carts},
+    {label:'Pieces', production:current.production_staged_pieces, bv:current.bv_staged_pieces, service:current.service_staged_pieces}
+  ], palette.green));
   container.append(splitMetricCard('Pieces painted', current.paint_pieces_processed, current.unique_pieces_processed, [
-    {label:'Carts', production:paintCarts.production, bv:paintCarts.bv, n71:paintCarts.n71, service:paintCarts.service},
-    {label:'Pieces', production:paintPieces.production, bv:paintPieces.bv, n71:paintPieces.n71, service:paintPieces.service}
+    {label:'Carts', production:paintCarts.production, bv:paintCarts.bv, service:paintCarts.service},
+    {label:'Pieces', production:paintPieces.production, bv:paintPieces.bv, service:paintPieces.service}
   ], palette.blue));
+  container.append(metricCard(
+    'Repaint %',
+    percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)),
+    [`${integer(current.paint_fty_repaint_count)} / ${integer(current.paint_fty_total)} Initial Passes`, ...repaintLineSetDetail(current)],
+    palette.amber
+  ));
+  container.append(metricCard(
+    'Finesse %',
+    percent(ratio(current.paint_fty_repair_count, current.reject_fty_rejected_count)),
+    current.paint_fty_repair_count === undefined || current.reject_fty_rejected_count === undefined ? [
+      'Finesse detail pending refresh'
+    ] : [
+      `${integer(current.paint_fty_repair_count)} / ${integer(current.reject_fty_rejected_count)} Repaired / Rejected`,
+      `${integer(current.fuka_paint_fty_repair_count)} FUKA Repaired`,
+      `${integer(current.fairing_paint_fty_repair_count)} Fairings Repaired`,
+      `${integer(current.bumper_paint_fty_repair_count)} Bumpers Repaired`
+    ],
+    palette.green
+  ));
   container.append(dualYieldCard('PPY (Paint Process Yield)', {
     numerator:current.ppy_approved, denominator:current.paint_decision_pieces,
     details:[
@@ -270,7 +327,23 @@ function renderCards(snapshot) {
       `${integer(current.reject_fty_pending_count)} Pending`
     ]
   }, palette.blue));
+  container.append(inspectionYieldCard(
+    'Receiving FTY', current.receiving_approved, current.receiving_total,
+    [
+      {label:'Bumpers', numerator:current.receiving_bumper_approved, denominator:current.receiving_bumper_total},
+      {label:'Fairings', numerator:current.receiving_fairing_approved, denominator:current.receiving_fairing_total}
+    ], palette.green
+  ));
+  container.append(inspectionYieldCard(
+    'Final FTY', current.final_approved, current.final_total,
+    [
+      {label:'FUKA', numerator:current.final_fuka_approved, denominator:current.final_fuka_total},
+      {label:'Bumpers', numerator:current.final_bumper_approved, denominator:current.final_bumper_total},
+      {label:'Fairings', numerator:current.final_fairing_approved, denominator:current.final_fairing_total}
+    ], palette.purple
+  ));
   cards.forEach(card => container.append(metricCard(...card)));
+  container.append(trailerCountCard(current.trailers_prepared, current.trailers_shipped, palette.amber));
 }
 
 function renderTable(table, headers, rows, rowClass = () => '') {

@@ -111,6 +111,11 @@ def enrich_metric_row(row: Dict[str, Any]) -> Dict[str, Any]:
     enriched["repaint_percentage"] = safe_ratio(
         row.get("paint_fty_repaint_count"), row.get("paint_fty_total")
     )
+    enriched["finesse_percentage"] = (
+        safe_ratio(row.get("paint_fty_repair_count"), row.get("reject_fty_rejected_count"))
+        if "paint_fty_repair_count" in row
+        else None
+    )
     enriched["schedule_attainment"] = safe_ratio(
         row.get("paint_pieces_processed"), row.get("pieces_scheduled")
     )
