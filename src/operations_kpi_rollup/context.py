@@ -20,6 +20,7 @@ GP_LOCAL_REPAINT_METHODS = {
     "operations-kpi-live-v18-gp-local-repaint-lineage",
     "operations-kpi-live-v19-loaded-chart-series",
     "operations-kpi-live-v20-loaded-13-week-trend",
+    "operations-kpi-live-v21-loaded-goals-targets",
 }
 LOADED_CHART_FIELDS = (
     "parts_loaded",
@@ -77,6 +78,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v18-gp-local-repaint-lineage",
         "operations-kpi-live-v19-loaded-chart-series",
         "operations-kpi-live-v20-loaded-13-week-trend",
+        "operations-kpi-live-v21-loaded-goals-targets",
     }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
@@ -95,6 +97,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v18-gp-local-repaint-lineage",
                 "operations-kpi-live-v19-loaded-chart-series",
                 "operations-kpi-live-v20-loaded-13-week-trend",
+                "operations-kpi-live-v21-loaded-goals-targets",
             }:
                 for unique_field, total_field, label in (
                     ("unique_pieces_loaded", "parts_loaded", "loaded unique-piece"),
@@ -119,6 +122,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v18-gp-local-repaint-lineage",
                 "operations-kpi-live-v19-loaded-chart-series",
                 "operations-kpi-live-v20-loaded-13-week-trend",
+                "operations-kpi-live-v21-loaded-goals-targets",
             }:
                 for quantity_field in ("receiving_quantity", "final_quantity"):
                     if quantity_field not in row:
@@ -139,6 +143,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v18-gp-local-repaint-lineage",
                 "operations-kpi-live-v19-loaded-chart-series",
                 "operations-kpi-live-v20-loaded-13-week-trend",
+                "operations-kpi-live-v21-loaded-goals-targets",
             }:
                 required_yield_fields = (
                     "reject_ppy_total", "reject_ppy_approved", "reject_ppy_rejected_count",
@@ -157,6 +162,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v18-gp-local-repaint-lineage",
                     "operations-kpi-live-v19-loaded-chart-series",
                     "operations-kpi-live-v20-loaded-13-week-trend",
+                    "operations-kpi-live-v21-loaded-goals-targets",
                 }:
                     required_yield_fields += ("ppy_repaint_count",)
                 if method_version in GP_LOCAL_REPAINT_METHODS:
@@ -190,6 +196,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v18-gp-local-repaint-lineage",
                     "operations-kpi-live-v19-loaded-chart-series",
                     "operations-kpi-live-v20-loaded-13-week-trend",
+                    "operations-kpi-live-v21-loaded-goals-targets",
                 }:
                     if int(row["reject_ppy_approved"]) + int(row["reject_ppy_rejected_count"]) + int(row["reject_ppy_pending_count"]) != int(row["reject_ppy_total"]):
                         raise ValueError(f"{collection} reject PPY outcomes do not equal its total")
@@ -220,6 +227,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                         "operations-kpi-live-v18-gp-local-repaint-lineage",
                         "operations-kpi-live-v19-loaded-chart-series",
                         "operations-kpi-live-v20-loaded-13-week-trend",
+                        "operations-kpi-live-v21-loaded-goals-targets",
                     }:
                         repaint_split_fields = (
                             "fuka_paint_fty_repaint_count",
@@ -321,6 +329,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v18-gp-local-repaint-lineage",
                     "operations-kpi-live-v19-loaded-chart-series",
                     "operations-kpi-live-v20-loaded-13-week-trend",
+                    "operations-kpi-live-v21-loaded-goals-targets",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -367,6 +376,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v18-gp-local-repaint-lineage",
                 "operations-kpi-live-v19-loaded-chart-series",
                 "operations-kpi-live-v20-loaded-13-week-trend",
+                "operations-kpi-live-v21-loaded-goals-targets",
             }:
                 inspection_fields = (
                     "trailers_shipped",
@@ -432,6 +442,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v18-gp-local-repaint-lineage",
                 "operations-kpi-live-v19-loaded-chart-series",
                 "operations-kpi-live-v20-loaded-13-week-trend",
+                "operations-kpi-live-v21-loaded-goals-targets",
             }:
                 finesse_fields = (
                     "finesse_rejected_count",
@@ -486,6 +497,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v18-gp-local-repaint-lineage",
                     "operations-kpi-live-v19-loaded-chart-series",
                     "operations-kpi-live-v20-loaded-13-week-trend",
+                    "operations-kpi-live-v21-loaded-goals-targets",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -510,6 +522,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v18-gp-local-repaint-lineage",
                     "operations-kpi-live-v19-loaded-chart-series",
                     "operations-kpi-live-v20-loaded-13-week-trend",
+                    "operations-kpi-live-v21-loaded-goals-targets",
                 },
             )
 
@@ -565,7 +578,11 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
             if int(daily_30[-1][field]) != int(report_daily.get(field, 0)):
                 raise ValueError(f"loaded chart final daily {field} does not reconcile to the report day")
 
-    if snapshot.get("scope", {}).get("method_version") == "operations-kpi-live-v20-loaded-13-week-trend":
+    loaded_method = snapshot.get("scope", {}).get("method_version")
+    if loaded_method in {
+        "operations-kpi-live-v20-loaded-13-week-trend",
+        "operations-kpi-live-v21-loaded-goals-targets",
+    }:
         loaded = snapshot.get("chart_series", {}).get("loaded", {})
         hourly = loaded.get("hourly")
         weekly_13 = loaded.get("weekly_13")
@@ -603,6 +620,13 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "production_carts_loaded", "bv_carts_loaded", "service_carts_loaded"
             )) != int(row["carts_loaded"]):
                 raise ValueError("loaded chart hourly cart split does not equal total")
+            if loaded_method == "operations-kpi-live-v21-loaded-goals-targets":
+                if row.get("first_cart_loaded_at") is not None or row.get("last_cart_loaded_at") is not None:
+                    raise ValueError("loaded chart hourly rows must not expose loading-window timestamps")
+                if any(abs(float(row.get(field, 0))) > 0.0001 for field in (
+                    "load_span_minutes", "lunch_allowance_minutes", "net_loading_minutes",
+                )) or row.get("performance_scored") is not False:
+                    raise ValueError("loaded chart hourly rows must not carry daily performance values")
 
         report_week = report_date - timedelta(days=(report_date.weekday() + 1) % 7)
         expected_week_starts = [report_week - timedelta(weeks=offset) for offset in range(12, -1, -1)]
@@ -638,10 +662,130 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
             if not row["data_available"] and represented_days != 0:
                 raise ValueError("loaded chart unavailable week contains represented days")
 
+            if loaded_method == "operations-kpi-live-v21-loaded-goals-targets":
+                performance_days = int(row.get("performance_days", -1))
+                if performance_days < 0 or performance_days > represented_days:
+                    raise ValueError("loaded chart weekly performance-day count is invalid")
+                if not isinstance(row.get("performance_comparable"), bool):
+                    raise ValueError("loaded chart weekly performance-comparable flag must be boolean")
+                expected_comparable = not row["is_partial"] and performance_days > 0 and performance_days == represented_days
+                if row["performance_comparable"] is not expected_comparable:
+                    raise ValueError("loaded chart weekly performance-comparable flag is inconsistent")
+                net_minutes = float(row.get("net_loading_minutes", -1))
+                if net_minutes < 0 or (performance_days == 0 and abs(net_minutes) > 0.0001):
+                    raise ValueError("loaded chart weekly net loading minutes are invalid")
+                for rate_field in ("carts_per_net_hour", "pieces_per_net_hour"):
+                    value = row.get(rate_field)
+                    if performance_days == 0 and value is not None:
+                        raise ValueError("loaded chart empty performance week contains a rate")
+                    if value is not None and float(value) < 0:
+                        raise ValueError("loaded chart weekly performance rate is negative")
+
         report_daily = next(row for row in snapshot["daily"] if row.get("date") == snapshot["report_date"])
         for field in LOADED_CHART_FIELDS:
             if sum(int(row[field]) for row in hourly) != int(report_daily.get(field, 0)):
                 raise ValueError(f"loaded chart hourly {field} does not reconcile to the report day")
+
+        if loaded_method == "operations-kpi-live-v21-loaded-goals-targets":
+            model = loaded.get("performance_model")
+            selected_day = loaded.get("selected_day")
+            if not isinstance(model, dict) or not isinstance(selected_day, dict):
+                raise ValueError("loaded performance model and selected-day contract are required")
+            expected_model = {
+                "effective_date": "2026-11-16",
+                "baseline_start": "2026-09-08",
+                "baseline_end": "2026-11-15",
+                "baseline_completed_loading_days": 46,
+                "baseline_carts_loaded": 4787,
+                "baseline_pieces_loaded": 14214,
+                "lunch_allowance_minutes": 30,
+                "lunch_eligibility_span_minutes": 360,
+            }
+            for field, expected in expected_model.items():
+                if model.get(field) != expected:
+                    raise ValueError(f"loaded performance model {field} is not the approved value")
+            if model.get("partial_day_scoring") is not False:
+                raise ValueError("loaded performance model must exclude partial-day scoring")
+            net_baseline_minutes = float(model.get("baseline_net_loading_minutes", 0))
+            if abs(net_baseline_minutes - 34591.218) > 0.0001:
+                raise ValueError("loaded performance baseline net minutes are not approved")
+            baseline_hours = net_baseline_minutes / 60.0
+            cart_baseline = 4787 / baseline_hours
+            piece_baseline = 14214 / baseline_hours
+            target_fraction = float(model.get("target_gap_fraction", -1))
+            cart_goal = float(model.get("goal_carts_per_hour", -1))
+            piece_goal = float(model.get("goal_pieces_per_hour", -1))
+            if abs(target_fraction - 0.25) > 0.0001 or abs(cart_goal - 10.0) > 0.0001 or abs(piece_goal - 30.0) > 0.0001:
+                raise ValueError("loaded performance target formula inputs are not approved")
+            rates = {
+                "baseline_carts_per_hour": cart_baseline,
+                "baseline_pieces_per_hour": piece_baseline,
+                "target_carts_per_hour": cart_baseline + target_fraction * (cart_goal - cart_baseline),
+                "target_pieces_per_hour": piece_baseline + target_fraction * (piece_goal - piece_baseline),
+            }
+            for field, expected in rates.items():
+                if abs(float(model.get(field, -1)) - round(expected, 4)) > 0.0001:
+                    raise ValueError(f"loaded performance model {field} does not match its retained inputs")
+
+            for row in weekly_13:
+                performance_days = int(row["performance_days"])
+                net_hours = float(row["net_loading_minutes"]) / 60.0
+                target_goal_fields = (
+                    ("average_target_carts", float(model["target_carts_per_hour"])),
+                    ("average_goal_carts", cart_goal),
+                    ("average_target_pieces", float(model["target_pieces_per_hour"])),
+                    ("average_goal_pieces", piece_goal),
+                )
+                for field, rate in target_goal_fields:
+                    value = row.get(field)
+                    if not row["performance_comparable"]:
+                        if value is not None:
+                            raise ValueError("loaded chart non-comparable week contains a target or goal")
+                    elif value is None or abs(float(value) - round(rate * net_hours / performance_days, 1)) > 0.0001:
+                        raise ValueError("loaded chart weekly target or goal does not match net loading time")
+
+            scored = selected_day.get("performance_scored")
+            if not isinstance(scored, bool):
+                raise ValueError("loaded selected-day performance flag must be boolean")
+            first_at = selected_day.get("first_cart_loaded_at")
+            last_at = selected_day.get("last_cart_loaded_at")
+            if bool(first_at) is not bool(last_at):
+                raise ValueError("loaded selected-day loading-window timestamps are incomplete")
+            if first_at:
+                if datetime.fromisoformat(str(last_at)) < datetime.fromisoformat(str(first_at)):
+                    raise ValueError("loaded selected-day loading window is reversed")
+            span_minutes = float(selected_day.get("load_span_minutes", -1))
+            lunch_minutes = float(selected_day.get("lunch_allowance_minutes", -1))
+            net_minutes = float(selected_day.get("net_loading_minutes", -1))
+            if span_minutes < 0 or lunch_minutes not in {0.0, 30.0} or net_minutes < 0:
+                raise ValueError("loaded selected-day performance minutes are invalid")
+            if abs(net_minutes - max(0.0, span_minutes - lunch_minutes)) > 0.001:
+                raise ValueError("loaded selected-day net minutes do not match span less lunch allowance")
+            net_hours = net_minutes / 60.0
+            for total_field, rate_field in (
+                ("carts_loaded", "carts_per_net_hour"),
+                ("parts_loaded", "pieces_per_net_hour"),
+            ):
+                value = selected_day.get(rate_field)
+                expected = int(report_daily.get(total_field, 0)) / net_hours if net_hours > 0 else None
+                if expected is None:
+                    if value is not None:
+                        raise ValueError("loaded selected-day rate exists without net loading time")
+                elif value is None or abs(float(value) - round(expected, 1)) > 0.0001:
+                    raise ValueError("loaded selected-day rate does not match its total and net loading time")
+            expected_counts = (
+                ("target_carts", float(model["target_carts_per_hour"])),
+                ("goal_carts", cart_goal),
+                ("target_pieces", float(model["target_pieces_per_hour"])),
+                ("goal_pieces", piece_goal),
+            )
+            for field, rate in expected_counts:
+                value = selected_day.get(field)
+                if not scored:
+                    if value is not None:
+                        raise ValueError("loaded unscored selected day contains a target count")
+                elif value is None or abs(float(value) - round(rate * net_hours, 1)) > 0.0001:
+                    raise ValueError("loaded selected-day target count does not match net loading time")
 
     if snapshot.get("scope", {}).get("method_version") in {
         "operations-kpi-live-v13-mic-n71-breakdowns",
@@ -652,6 +796,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v18-gp-local-repaint-lineage",
         "operations-kpi-live-v19-loaded-chart-series",
         "operations-kpi-live-v20-loaded-13-week-trend",
+        "operations-kpi-live-v21-loaded-goals-targets",
     }:
         allowed_line_sets = {"FUKA", "Bumpers", "N71-6164", "Fairings", "Other"}
         report_shipping = [row for row in snapshot.get("shipping", []) if row.get("date") == snapshot["report_date"]]

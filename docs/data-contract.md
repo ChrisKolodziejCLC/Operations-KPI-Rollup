@@ -72,17 +72,17 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 
 Every ratio is calculated by the renderer from a saved numerator and denominator. A zero denominator renders as `No Data`, not `0.0%`.
 
-## Loaded chart series (method v19)
+## Loaded chart and performance series (method v21)
 
-`chart_series.loaded.hourly` contains exactly 24 ordered clock-hour buckets for the selected `report_date`. `chart_series.loaded.daily_30` contains exactly 30 ordered calendar-date buckets ending on that date. Each row contains:
+`chart_series.loaded.hourly` contains exactly 24 ordered clock-hour buckets for the selected `report_date`. `chart_series.loaded.weekly_13` contains 13 ordered Sunday-start weeks ending with the selected week. Each aggregate row retains total pieces, exclusive Prd/BV/Svc piece splits, unique pieces, total carts, and exclusive Prd/BV/Svc cart splits. Hourly piece events stay in their actual load-event hour; each distinct piece or cart is assigned to its first load-event hour so the 24 buckets reconcile to the daily card.
 
-- `bucket`, `is_partial`, and `data_available`;
-- `parts_loaded`, its exclusive `production_` / `bv_` / `service_` split, and `unique_pieces_loaded`;
-- `carts_loaded` and its exclusive `production_` / `bv_` / `service_` split.
+Daily procedure rows also contain aggregate loading-window fields: `first_cart_loaded_at`, `last_cart_loaded_at`, `load_span_minutes`, `lunch_allowance_minutes`, `net_loading_minutes`, and `performance_scored`. Net time runs from the first distinct-cart load through the last. Completed historical days spanning at least six hours receive the approved 30-minute lunch allowance. The current partial day is displayed but is not scored.
 
-Piece event totals remain in their actual load-event hour. A distinct piece is attributed to its first load-event hour that day, and a cart is attributed to its first load-event hour that day after the existing Service → BV → Prd cart-class precedence. This prevents a repeated load from making the sum of hourly unique pieces or carts exceed the existing daily distinct count. The daily series reuses `#DailyMetrics`; dates with no activity remain explicit zero buckets, and dates before the retained history boundary are marked `data_available = false`.
+`chart_series.loaded.performance_model` freezes the reviewed 2026-09-08 through 2026-11-15 baseline: 46 completed loading days, 4,787 carts, 14,214 pieces, and 34,591.218 net minutes. Those denominators produce baseline rates of 8.3033 carts/hour and 24.6548 pieces/hour. The long-term goals are 10 carts/hour and 30 pieces/hour. Each interim target is `baseline + 0.25 × (goal - baseline)`, or 8.7274 carts/hour and 25.9911 pieces/hour.
 
-The snapshot validator requires all category splits to reconcile per bucket, requires unique pieces not to exceed event totals, requires the 24 hourly sums to equal the existing report-date card row, and requires the final 30-day row to equal that same card row. No part IDs, cart IDs, employees, or other detail rows are present in the JSON contract.
+`chart_series.loaded.selected_day` exposes aggregate window/rate fields plus net-time-adjusted expected target and goal counts only when the day is scored. Weekly rows expose represented production days, performance days, net loading minutes, actual rates, and average target/goal counts. A week is comparable only when every represented day is scorable; partial or mixed-completeness weeks retain activity bars but have null target/goal comparison values and are excluded from performance trend calculations.
+
+The validator recomputes the frozen baselines, target formula, selected-day rates, expected counts, weekly comparison values, category reconciliation, and hourly-to-card totals. No part IDs, cart IDs, employees, DriverLog rows, or other detail records are present in the browser JSON contract.
 
 ## Derived values
 

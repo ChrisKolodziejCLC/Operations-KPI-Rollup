@@ -1,22 +1,20 @@
 # Future charting requirements
 
-Status: retained product intent; not yet implemented.
+Status: Loaded goals and targets were approved and implemented in v0.26.0; the rule remains future product intent for other metrics until each metric owner approves its baseline grain and direction.
 
 ## Goal and target lines
 
 Chris's charting rule is:
 
 - **Goal:** the theoretical requirement.
-- **Target:** move 25% of the way from the trailing 12-month average toward the theoretical requirement.
-
-Working formula:
+- **Target:** close 25% of the gap from an approved historical baseline toward that requirement.
 
 ```text
 T = theoretical requirement
-A12 = trailing 12-month average
+A = approved historical baseline
 
 Goal = T
-Target = A12 + 0.25 × (T - A12)
+Target = A + 0.25 × (T - A)
 ```
 
-This preserves the thought process as a 25% closure of the gap between actual 12-month performance and the theoretical requirement. Before implementation, confirm that this is the intended interpretation of “theoretical minus 12-month average, plus 25%,” along with the approved 12-month averaging grain and any handling needed for lower-is-better metrics.
+For Loaded, v0.26.0 freezes the reviewed available-history baseline from 2026-09-08 through 2026-11-15 rather than pretending a trailing 12 months exists. Its goals are 10 carts/hour and 30 pieces/hour. Net time is first distinct-cart load through last distinct-cart load, less a standard 30-minute lunch on completed days spanning at least six hours; partial days are not scored. Other tiles must separately approve the baseline period, higher- or lower-is-better direction, and comparable-time rules before this format is copied.

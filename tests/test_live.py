@@ -164,13 +164,24 @@ def result_sets():
         bucket = chart_start + timedelta(days=offset)
         available = bucket >= date(2026, 9, 8)
         represented = available and bucket.weekday() < 5
+        is_completed_loading_day = represented and bucket < report_week
+        is_selected_loading_day = bucket == report_date
+        timing = {
+            "first_cart_loaded_at": f"{bucket.isoformat()} 08:00:00",
+            "last_cart_loaded_at": f"{bucket.isoformat()} 18:30:00",
+            "load_span_minutes": "630.000",
+            "lunch_allowance_minutes": "30.000",
+            "net_loading_minutes": "600.000",
+            "performance_scored": "1",
+        } if is_completed_loading_day or is_selected_loading_day else {}
         daily_window.append({
             "grain": "DAY",
             "bucket_start": bucket.isoformat(),
             "is_partial": "0",
             "data_available": str(int(available)),
             "represented_day": str(int(represented)),
-            **(loaded if bucket == report_date else zero),
+            **(loaded if is_completed_loading_day or is_selected_loading_day else zero),
+            **timing,
         })
     return [
         {"index": 0, "rows": [{"history_start": "2026-09-08", "report_date": "2026-11-11"}]},
@@ -197,7 +208,7 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
 
 
 def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
-    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "c099469e8fc2f0c27a5b34b2a7d1afeb27223cea17148e0f05766d86698a57eb")
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "a7365336fffe5170a3d963d3c4599f158c97e29b2e01ffebd3c59a4ed817285f")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -259,9 +270,36 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert snapshot["chart_series"]["loaded"]["weekly_13"][-1]["average_carts_loaded"] == 13.3
     assert snapshot["chart_series"]["loaded"]["weekly_13"][-1]["is_partial"] is True
     assert snapshot["chart_series"]["loaded"]["weekly_13"][0]["data_available"] is False
+    model = snapshot["chart_series"]["loaded"]["performance_model"]
+    assert model["baseline_completed_loading_days"] == 46
+    assert model["baseline_net_loading_minutes"] == 34591.218
+    assert model["baseline_carts_loaded"] == 4787
+    assert model["baseline_pieces_loaded"] == 14214
+    assert model["baseline_carts_per_hour"] == 8.3033
+    assert model["target_carts_per_hour"] == 8.7274
+    assert model["goal_carts_per_hour"] == 10.0
+    assert model["baseline_pieces_per_hour"] == 24.6548
+    assert model["target_pieces_per_hour"] == 25.9911
+    assert model["goal_pieces_per_hour"] == 30.0
+    selected = snapshot["chart_series"]["loaded"]["selected_day"]
+    assert selected["performance_scored"] is True
+    assert selected["net_loading_minutes"] == 600.0
+    assert selected["carts_per_net_hour"] == 4.0
+    assert selected["pieces_per_net_hour"] == 10.0
+    assert selected["target_carts"] == 87.3
+    assert selected["goal_carts"] == 100.0
+    assert selected["target_pieces"] == 259.9
+    assert selected["goal_pieces"] == 300.0
+    latest_full_week = snapshot["chart_series"]["loaded"]["weekly_13"][-2]
+    assert latest_full_week["performance_days"] == 5
+    assert latest_full_week["performance_comparable"] is True
+    assert latest_full_week["average_target_carts"] == 87.3
+    assert latest_full_week["average_goal_carts"] == 100.0
+    assert latest_full_week["average_target_pieces"] == 259.9
+    assert latest_full_week["average_goal_pieces"] == 300.0
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
-    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "C099469E8FC2F0C27A5B34B2A7D1AFEB27223CEA17148E0F05766D86698A57EB"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v20-loaded-13-week-trend"
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "A7365336FFFE5170A3D963D3C4599F158C97E29B2E01FFEBD3C59A4ED817285F"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v21-loaded-goals-targets"
 
 
 def test_repaint_line_set_split_must_equal_total():
@@ -735,7 +773,7 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "C099469E8FC2F0C27A5B34B2A7D1AFEB27223CEA17148E0F05766D86698A57EB" in captured["query"]
+    assert "A7365336FFFE5170A3D963D3C4599F158C97E29B2E01FFEBD3C59A4ED817285F" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]
     assert 14 in captured["wanted"]

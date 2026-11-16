@@ -15,7 +15,7 @@ from .odbc import execute_operations_rollup
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
 PERIOD_TYPE_ORDER = {"WEEK": 1, "MONTH": 2, "QUARTER": 3}
-CURRENT_METHOD_VERSION = "operations-kpi-live-v20-loaded-13-week-trend"
+CURRENT_METHOD_VERSION = "operations-kpi-live-v21-loaded-goals-targets"
 LOADED_CHART_FIELDS = (
     "parts_loaded",
     "production_parts_loaded",
@@ -27,6 +27,17 @@ LOADED_CHART_FIELDS = (
     "bv_carts_loaded",
     "service_carts_loaded",
 )
+LOADED_BASELINE_START = "2026-09-08"
+LOADED_BASELINE_END = "2026-11-15"
+LOADED_BASELINE_DAYS = 46
+LOADED_BASELINE_CARTS = 4787
+LOADED_BASELINE_PIECES = 14214
+LOADED_BASELINE_NET_MINUTES = Decimal("34591.218")
+LOADED_CART_GOAL_RATE = Decimal("10")
+LOADED_PIECE_GOAL_RATE = Decimal("30")
+LOADED_TARGET_GAP_FRACTION = Decimal("0.25")
+LOADED_LUNCH_ALLOWANCE_MINUTES = 30
+LOADED_LUNCH_ELIGIBILITY_SPAN_MINUTES = 360
 
 
 def _integer(value: Any) -> int:
@@ -41,6 +52,33 @@ def _number(value: Any, places: int = 4) -> float:
     return round(float(Decimal(str(value))), places)
 
 
+def _loaded_performance_model() -> Dict[str, Any]:
+    baseline_hours = LOADED_BASELINE_NET_MINUTES / Decimal("60")
+    cart_baseline = Decimal(LOADED_BASELINE_CARTS) / baseline_hours
+    piece_baseline = Decimal(LOADED_BASELINE_PIECES) / baseline_hours
+    cart_target = cart_baseline + LOADED_TARGET_GAP_FRACTION * (LOADED_CART_GOAL_RATE - cart_baseline)
+    piece_target = piece_baseline + LOADED_TARGET_GAP_FRACTION * (LOADED_PIECE_GOAL_RATE - piece_baseline)
+    return {
+        "effective_date": "2026-11-16",
+        "baseline_start": LOADED_BASELINE_START,
+        "baseline_end": LOADED_BASELINE_END,
+        "baseline_completed_loading_days": LOADED_BASELINE_DAYS,
+        "baseline_net_loading_minutes": float(LOADED_BASELINE_NET_MINUTES),
+        "baseline_carts_loaded": LOADED_BASELINE_CARTS,
+        "baseline_pieces_loaded": LOADED_BASELINE_PIECES,
+        "baseline_carts_per_hour": round(float(cart_baseline), 4),
+        "baseline_pieces_per_hour": round(float(piece_baseline), 4),
+        "target_gap_fraction": float(LOADED_TARGET_GAP_FRACTION),
+        "target_carts_per_hour": round(float(cart_target), 4),
+        "target_pieces_per_hour": round(float(piece_target), 4),
+        "goal_carts_per_hour": float(LOADED_CART_GOAL_RATE),
+        "goal_pieces_per_hour": float(LOADED_PIECE_GOAL_RATE),
+        "lunch_allowance_minutes": LOADED_LUNCH_ALLOWANCE_MINUTES,
+        "lunch_eligibility_span_minutes": LOADED_LUNCH_ELIGIBILITY_SPAN_MINUTES,
+        "partial_day_scoring": False,
+    }
+
+
 def _date_text(value: Any) -> str:
     if value is None:
         return ""
@@ -49,6 +87,15 @@ def _date_text(value: Any) -> str:
     if wrapper:
         return datetime.fromtimestamp(int(wrapper.group(1)) / 1000, tz=timezone.utc).date().isoformat()
     return date.fromisoformat(text[:10]).isoformat()
+
+
+def _timestamp_text(value: Any) -> Optional[str]:
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None).isoformat(timespec="seconds")
+    text = str(value).strip().replace(" ", "T")
+    return datetime.fromisoformat(text).replace(tzinfo=None).isoformat(timespec="seconds")
 
 
 def _bucket_text(value: Any, grain: str) -> str:
@@ -217,6 +264,12 @@ def _loaded_chart_row(row: Mapping[str, Any]) -> Dict[str, Any]:
         "is_partial": bool(_integer(row.get("is_partial"))),
         "data_available": bool(_integer(row.get("data_available"))),
         "represented_day": bool(_integer(row.get("represented_day"))),
+        "first_cart_loaded_at": _timestamp_text(row.get("first_cart_loaded_at")),
+        "last_cart_loaded_at": _timestamp_text(row.get("last_cart_loaded_at")),
+        "load_span_minutes": _number(row.get("load_span_minutes"), 3),
+        "lunch_allowance_minutes": _number(row.get("lunch_allowance_minutes"), 3),
+        "net_loading_minutes": _number(row.get("net_loading_minutes"), 3),
+        "performance_scored": bool(_integer(row.get("performance_scored"))),
         **{field: _integer(row.get(field)) for field in LOADED_CHART_FIELDS},
     }
 
@@ -225,7 +278,11 @@ def _sunday_start(value: date) -> date:
     return value - timedelta(days=(value.weekday() + 1) % 7)
 
 
-def _loaded_weekly_rows(report_date: date, daily_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _loaded_weekly_rows(
+    report_date: date,
+    daily_rows: List[Dict[str, Any]],
+    performance_model: Mapping[str, Any],
+) -> List[Dict[str, Any]]:
     """Collapse the bounded daily chart rows into 13 Sunday-start weeks.
 
     Only represented production days participate in an average. A represented
@@ -251,18 +308,86 @@ def _loaded_weekly_rows(report_date: date, daily_rows: List[Dict[str, Any]]) -> 
         represented_days = len(represented)
         parts_total = sum(int(row["parts_loaded"]) for row in represented)
         carts_total = sum(int(row["carts_loaded"]) for row in represented)
+        performance_rows = [
+            row for row in represented
+            if row["performance_scored"] and float(row["net_loading_minutes"]) > 0
+        ]
+        performance_days = len(performance_rows)
+        net_loading_minutes = round(sum(float(row["net_loading_minutes"]) for row in performance_rows), 3)
+        comparable = (
+            observed_end == full_week_end
+            and performance_days > 0
+            and performance_days == represented_days
+        )
+        net_loading_hours = net_loading_minutes / 60.0
+        carts_per_hour = (
+            sum(int(row["carts_loaded"]) for row in performance_rows) / net_loading_hours
+            if net_loading_hours > 0 else None
+        )
+        pieces_per_hour = (
+            sum(int(row["parts_loaded"]) for row in performance_rows) / net_loading_hours
+            if net_loading_hours > 0 else None
+        )
+        average_target_carts = (
+            float(performance_model["target_carts_per_hour"]) * net_loading_hours / performance_days
+            if comparable else None
+        )
+        average_goal_carts = (
+            float(performance_model["goal_carts_per_hour"]) * net_loading_hours / performance_days
+            if comparable else None
+        )
+        average_target_pieces = (
+            float(performance_model["target_pieces_per_hour"]) * net_loading_hours / performance_days
+            if comparable else None
+        )
+        average_goal_pieces = (
+            float(performance_model["goal_pieces_per_hour"]) * net_loading_hours / performance_days
+            if comparable else None
+        )
         weeks.append({
             "bucket": week_start.isoformat(),
             "bucket_end": observed_end.isoformat(),
             "is_partial": observed_end < full_week_end,
             "data_available": any(row["data_available"] for row in rows),
             "represented_days": represented_days,
+            "performance_days": performance_days,
+            "performance_comparable": comparable,
+            "net_loading_minutes": net_loading_minutes,
             "parts_loaded_total": parts_total,
             "carts_loaded_total": carts_total,
             "average_parts_loaded": round(parts_total / represented_days, 1) if represented_days else None,
             "average_carts_loaded": round(carts_total / represented_days, 1) if represented_days else None,
+            "carts_per_net_hour": round(carts_per_hour, 1) if carts_per_hour is not None else None,
+            "pieces_per_net_hour": round(pieces_per_hour, 1) if pieces_per_hour is not None else None,
+            "average_target_carts": round(average_target_carts, 1) if average_target_carts is not None else None,
+            "average_goal_carts": round(average_goal_carts, 1) if average_goal_carts is not None else None,
+            "average_target_pieces": round(average_target_pieces, 1) if average_target_pieces is not None else None,
+            "average_goal_pieces": round(average_goal_pieces, 1) if average_goal_pieces is not None else None,
         })
     return weeks
+
+
+def _loaded_selected_day_performance(
+    row: Mapping[str, Any],
+    performance_model: Mapping[str, Any],
+) -> Dict[str, Any]:
+    net_minutes = float(row.get("net_loading_minutes") or 0)
+    net_hours = net_minutes / 60.0
+    scored = bool(row.get("performance_scored")) and net_hours > 0
+    return {
+        "first_cart_loaded_at": row.get("first_cart_loaded_at"),
+        "last_cart_loaded_at": row.get("last_cart_loaded_at"),
+        "load_span_minutes": round(float(row.get("load_span_minutes") or 0), 3),
+        "lunch_allowance_minutes": round(float(row.get("lunch_allowance_minutes") or 0), 3),
+        "net_loading_minutes": round(net_minutes, 3),
+        "performance_scored": scored,
+        "carts_per_net_hour": round(int(row.get("carts_loaded") or 0) / net_hours, 1) if net_hours > 0 else None,
+        "pieces_per_net_hour": round(int(row.get("parts_loaded") or 0) / net_hours, 1) if net_hours > 0 else None,
+        "target_carts": round(float(performance_model["target_carts_per_hour"]) * net_hours, 1) if scored else None,
+        "goal_carts": round(float(performance_model["goal_carts_per_hour"]) * net_hours, 1) if scored else None,
+        "target_pieces": round(float(performance_model["target_pieces_per_hour"]) * net_hours, 1) if scored else None,
+        "goal_pieces": round(float(performance_model["goal_pieces_per_hour"]) * net_hours, 1) if scored else None,
+    }
 
 
 def snapshot_from_rollup(
@@ -331,7 +456,8 @@ def snapshot_from_rollup(
     ]
     if [row["bucket"] for row in loaded_daily_window] != expected_daily_buckets:
         raise ValueError("The loaded-chart daily window is not the ordered 13-week source range.")
-    loaded_weekly_13 = _loaded_weekly_rows(report_date, loaded_daily_window)
+    loaded_performance_model = _loaded_performance_model()
+    loaded_weekly_13 = _loaded_weekly_rows(report_date, loaded_daily_window, loaded_performance_model)
 
     report_chart_day = next(
         (row for row in loaded_daily_window if row["bucket"] == report_date.isoformat()),
@@ -343,6 +469,7 @@ def snapshot_from_rollup(
     for field in LOADED_CHART_FIELDS:
         if int(report_chart_day[field]) != int(report_daily.get(field, 0)):
             raise ValueError(f"The loaded-chart report-day {field} does not reconcile to the daily result.")
+    loaded_selected_day = _loaded_selected_day_performance(report_chart_day, loaded_performance_model)
 
     timezone_name = os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis")
     observed_at = generated_at or datetime.now(ZoneInfo(timezone_name))
@@ -371,6 +498,8 @@ def snapshot_from_rollup(
             "loaded": {
                 "hourly": loaded_hourly,
                 "weekly_13": loaded_weekly_13,
+                "selected_day": loaded_selected_day,
+                "performance_model": loaded_performance_model,
             }
         },
         "attention": {
@@ -403,6 +532,7 @@ def snapshot_from_rollup(
             "Receiving and final quantities use insp_receive_stamp and insp_final_stamp; their FTY rates continue to use first inspection decisions and expose only reconciled aggregate product-family detail.",
             "Trailers Departed counts completed DriverLog departures dated by TimeOut; it is intentionally separate from EDI trailer-loading state.",
             "The Loaded chart is aggregate-only. Load events stay in their actual hour; a distinct piece or cart is assigned to its first load-event hour so all 24 buckets reconcile exactly to the daily card. The 13-week view averages total carts and pieces over represented production days; unavailable history and the partial selected week are excluded from trend calculations.",
+            "Loaded performance time runs from the first distinct cart load to the last distinct cart load. Completed days spanning at least six hours receive the approved 30-minute lunch allowance; partial days are shown but not scored. The frozen September 8 through November 15 baseline retains its carts, pieces, and net-minute denominators, and each interim target closes 25% of the gap from that baseline rate to the approved hourly goal.",
             "Preliminary OEE is the unchanged legacy paint-plan composite and remains excluded from this yield correction and its acceptance criteria.",
             painter_note,
         ],
@@ -410,7 +540,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "C099469E8FC2F0C27A5B34B2A7D1AFEB27223CEA17148E0F05766D86698A57EB",
+                "A7365336FFFE5170A3D963D3C4599F158C97E29B2E01FFEBD3C59A4ED817285F",
             ).upper(),
             "detail_result_sets_requested": False,
         },

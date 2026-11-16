@@ -81,6 +81,8 @@ Version 0.24.0 keeps the two selected-day hourly Carts and Pieces plots as total
 
 Version 0.25.0 adds visible whole-number values above every hourly point and 13-week column. Loaded-chart point and column labels, tooltips, and y-axis scales are rounded to the nearest whole cart or piece; the summary tiles and completed-week least-squares trend calculation retain decimal precision. The aggregate snapshot contract, KPI formulas, QPTS procedure and permissions, and cache-only wallboard polling remain unchanged.
 
+Version 0.26.0 adds the approved Loaded performance contract without exposing identifiers. Net loading time runs from the first distinct-cart load to the last distinct-cart load. A completed day spanning at least six hours receives the standard 30-minute lunch allowance; the current partial day is visible but not scored. Frozen September 8–November 15 history establishes baselines of 8.3033 carts/hour and 24.6548 pieces/hour. Interim targets close 25% of each gap to the long-term goals, yielding 8.7274 carts/hour against a 10.0 goal and 25.9911 pieces/hour against a 30.0 goal. The selected-day summary and 13-week charts show net-time-adjusted target and goal comparisons. Wallboard polling remains cache-only and all QPTS access remains read-only.
+
 Run the safe local fixture mode:
 
 ```bash

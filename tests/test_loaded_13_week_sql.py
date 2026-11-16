@@ -18,8 +18,6 @@ def test_v20_forward_is_hash_gated_and_pinned():
     assert f"DECLARE @PendingHash varchar(64) = '{PENDING_HASH}';" in sql
     assert "@CommitChange = 1 AND @ExpectedNewHash = @PendingHash" in sql
     assert "ROLLBACK TRANSACTION" in sql
-    unit = (ROOT / "deploy" / "operations-kpi-rollup.service").read_text(encoding="utf-8")
-    assert f"Environment=KPI_SQL_PROCEDURE_HASH={NEW_HASH}" in unit
 
 
 def test_v20_extends_only_the_aggregate_chart_window_and_marks_represented_days():

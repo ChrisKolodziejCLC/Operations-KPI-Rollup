@@ -32,6 +32,39 @@ def with_loaded_chart(snapshot):
     zero = {field: 0 for field in LOADED_CHART_FIELDS}
     values = {field: int(current.get(field, 0)) for field in LOADED_CHART_FIELDS}
     snapshot["chart_series"] = {"loaded": {
+        "performance_model": {
+            "effective_date": "2026-11-16",
+            "baseline_start": "2026-09-08",
+            "baseline_end": "2026-11-15",
+            "baseline_completed_loading_days": 46,
+            "baseline_net_loading_minutes": 34591.218,
+            "baseline_carts_loaded": 4787,
+            "baseline_pieces_loaded": 14214,
+            "baseline_carts_per_hour": 8.3033,
+            "baseline_pieces_per_hour": 24.6548,
+            "target_gap_fraction": 0.25,
+            "target_carts_per_hour": 8.7274,
+            "target_pieces_per_hour": 25.9911,
+            "goal_carts_per_hour": 10.0,
+            "goal_pieces_per_hour": 30.0,
+            "lunch_allowance_minutes": 30,
+            "lunch_eligibility_span_minutes": 360,
+            "partial_day_scoring": False,
+        },
+        "selected_day": {
+            "first_cart_loaded_at": None,
+            "last_cart_loaded_at": None,
+            "load_span_minutes": 0.0,
+            "lunch_allowance_minutes": 0.0,
+            "net_loading_minutes": 0.0,
+            "performance_scored": False,
+            "carts_per_net_hour": None,
+            "pieces_per_net_hour": None,
+            "target_carts": None,
+            "goal_carts": None,
+            "target_pieces": None,
+            "goal_pieces": None,
+        },
         "hourly": [
             {
                 "bucket": f"{report_date.isoformat()}T{hour:02d}:00:00",
@@ -65,10 +98,19 @@ def with_loaded_chart(snapshot):
             "is_partial": partial,
             "data_available": bool(available_days),
             "represented_days": len(represented_days),
+            "performance_days": 0,
+            "performance_comparable": False,
+            "net_loading_minutes": 0.0,
             "parts_loaded_total": parts_total,
             "carts_loaded_total": carts_total,
             "average_parts_loaded": round(parts_total / len(represented_days), 1) if represented_days else None,
             "average_carts_loaded": round(carts_total / len(represented_days), 1) if represented_days else None,
+            "carts_per_net_hour": None,
+            "pieces_per_net_hour": None,
+            "average_target_carts": None,
+            "average_goal_carts": None,
+            "average_target_pieces": None,
+            "average_goal_pieces": None,
         })
     return snapshot
 
@@ -129,7 +171,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.25.0-loaded-value-labels" in html
+            assert "0.26.0-loaded-goals-targets" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html
@@ -280,7 +322,16 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert javascript.count("hourlySummary:{label:") == 2
             assert "Day total" in javascript
             assert "Peak hour" in javascript
-            assert "Active hours" in javascript
+            assert "Active hours" not in javascript
+            assert "Net loading time" in javascript
+            assert "Actual rate" in javascript
+            assert "Interim target" in javascript
+            assert "Long-term goal" in javascript
+            assert "loadedPerformanceContract" in javascript
+            assert "average_target_carts" in javascript
+            assert "average_goal_pieces" in javascript
+            assert "Net-time interim target" in javascript
+            assert "Net-time long-term goal" in javascript
             assert "loadedWeeklySummary" in javascript
             assert "options.omitNull" in javascript
             assert "omitNull:true, verticalLabels:true, chartType:'bar'" in javascript
@@ -328,6 +379,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert ".loaded-chart-grid{display:grid;grid-template-columns:1fr 1fr" in styles
             assert ".loaded-chart-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))" in styles
             assert ".loaded-summary-table-wrap" in styles
+            assert ".loaded-performance-contract" in styles
             assert ".loaded-axis-label,.loaded-scale-label{font-variant-numeric:tabular-nums}" in styles
             assert ".loaded-value-label{" in styles
             assert ".chart-placeholder" in styles
