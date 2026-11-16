@@ -171,7 +171,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.28.0-loaded-goal-rates" in html
+            assert "0.29.0-weekly-full-width-references" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html
@@ -335,7 +335,12 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert javascript.count("value:performance.model.target_") == 2
             assert javascript.count("value:performance.model.goal_") == 2
             assert "class:'loaded-reference-line'" in javascript
-            assert "Target and goal segments appear only on fully comparable weeks" in javascript
+            assert javascript.count("spanFullWidth:true") == 4
+            assert "loaded-reference-line-full-width" in javascript
+            assert "points = [left + ',' + y(referencePoints[0].value)]" in javascript
+            assert "points.push((width - right) + ',' + y(referencePoints[referencePoints.length - 1].value))" in javascript
+            assert "Target and goal lines span the historical plot using values from fully comparable weeks" in javascript
+            assert "Target and goal segments appear only on fully comparable weeks" not in javascript
             assert "loadedWeeklySummary" in javascript
             assert "options.omitNull" in javascript
             assert "omitNull:true, verticalLabels:true, chartType:'bar'" in javascript

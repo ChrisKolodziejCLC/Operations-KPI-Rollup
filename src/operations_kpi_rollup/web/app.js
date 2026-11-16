@@ -584,6 +584,25 @@ function renderLoadedLineChart(container, rows, options) {
     trendLine.append(title); svg.append(trendLine);
   }
   references.forEach(reference => {
+    if (reference.spanFullWidth) {
+      const referencePoints = reference.values.map((value, index) => ({value, index}))
+        .filter(point => point.value !== null && Number.isFinite(point.value));
+      if (referencePoints.length) {
+        const points = [left + ',' + y(referencePoints[0].value)];
+        referencePoints.forEach(point => points.push(centerX(point.index) + ',' + y(point.value)));
+        points.push((width - right) + ',' + y(referencePoints[referencePoints.length - 1].value));
+        const line = svgNode('polyline', {
+          points:points.join(' '), fill:'none', stroke:reference.color,
+          'stroke-width':2.2, 'stroke-dasharray':reference.dash || '5 4',
+          'stroke-linejoin':'round', 'stroke-linecap':'round', opacity:.9,
+          class:'loaded-reference-line loaded-reference-line-full-width'
+        });
+        const title = svgNode('title');
+        title.append(text(reference.label + ' · full historical span from fully comparable weeks'));
+        line.append(title); svg.append(line);
+      }
+      return;
+    }
     let referenceSegment = [];
     const flushReference = () => {
       let line = null;
@@ -859,8 +878,8 @@ function renderLoadedCharts(snapshot) {
       ...weeklyOptions, field:'average_carts_loaded', label:'Daily average carts', color:palette.teal,
       ariaLabel:'Thirteen-week daily average carts loaded with linear trend, interim target, and long-term goal',
       references:[
-        {field:'average_target_carts', label:'Net-time interim target', color:palette.amber, dash:'6 4'},
-        {field:'average_goal_carts', label:'Net-time long-term goal', color:palette.red, dash:'3 4'}
+        {field:'average_target_carts', label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
+        {field:'average_goal_carts', label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
       ],
       summary:{label:'Carts', averageField:'average_carts_loaded', totalField:'carts_loaded_total'}
     }),
@@ -868,8 +887,8 @@ function renderLoadedCharts(snapshot) {
       ...weeklyOptions, field:'average_parts_loaded', label:'Daily average pieces', color:palette.blue,
       ariaLabel:'Thirteen-week daily average pieces loaded with linear trend, interim target, and long-term goal',
       references:[
-        {field:'average_target_pieces', label:'Net-time interim target', color:palette.amber, dash:'6 4'},
-        {field:'average_goal_pieces', label:'Net-time long-term goal', color:palette.red, dash:'3 4'}
+        {field:'average_target_pieces', label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
+        {field:'average_goal_pieces', label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
       ],
       summary:{label:'Pieces', averageField:'average_parts_loaded', totalField:'parts_loaded_total'}
     })
@@ -883,7 +902,7 @@ function renderLoadedCharts(snapshot) {
   if (weekly.some(row => row.data_available && !row.is_partial
     && Number(row.represented_days || 0) > 0 && !row.performance_comparable)) {
     const comparison = document.createElement('span'); comparison.className = 'chart-unavailable-note';
-    comparison.append(text('Target and goal segments appear only on fully comparable weeks; unscored weeks are left blank rather than inferred.'));
+    comparison.append(text('Target and goal lines span the historical plot using values from fully comparable weeks; unscored weeks do not create new reference values.'));
     weeklySection.section.append(comparison);
   }
   if (weekly.some(row => !row.data_available)) {
