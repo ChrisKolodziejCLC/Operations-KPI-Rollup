@@ -242,6 +242,17 @@ def test_v18_repaint_pending_counts_are_independent_from_reject_pending_counts()
     validate_snapshot(snapshot)
 
 
+def test_v18_repaint_and_reject_fty_denominators_are_independent():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    for collection in ("daily", "periods"):
+        for row in snapshot[collection]:
+            row["reject_fty_total"] -= 2
+            row["reject_fty_approved"] -= 2
+
+    validate_snapshot(snapshot)
+
+
 def test_v17_snapshot_can_load_without_gp_local_repaint_pending_counts():
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
@@ -252,6 +263,25 @@ def test_v17_snapshot_can_load_without_gp_local_repaint_pending_counts():
             row.pop("repaint_fty_pending_count")
 
     validate_snapshot(snapshot)
+
+
+def test_v17_snapshot_still_requires_matching_repaint_and_reject_fty_denominators():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["scope"]["method_version"] = "operations-kpi-live-v17-combined-finesse-two-row"
+    snapshot["daily"][-1]["reject_fty_total"] -= 1
+    snapshot["daily"][-1]["reject_fty_approved"] -= 1
+    for collection in ("daily", "periods"):
+        for row in snapshot[collection]:
+            row.pop("repaint_ppy_pending_count")
+            row.pop("repaint_fty_pending_count")
+
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily reject FTY total does not equal initial paint passes"
+    else:
+        raise AssertionError("v17 accepted diverging repaint and reject FTY denominators")
 
 
 def test_shipped_rack_split_must_equal_total():

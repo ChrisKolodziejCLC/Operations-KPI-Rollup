@@ -48,7 +48,7 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `fuka_paint_fty_repair_count` / `fairing_paint_fty_repair_count` / `bumper_paint_fty_repair_count` | Legacy aggregate product-family split of `paint_fty_repair_count`. These fields remain reconciliation-gated but no longer drive the Finesse tile. |
 | `reject_ppy_total` / `reject_ppy_approved` | All physical paint passes, and passes with an Approved EOL outcome. Their ratio is Reject PPY. |
 | `reject_ppy_rejected_count` / `reject_ppy_pending_count` | All EOL Repair, Repaint, Direct Repaint, or Reject outcomes for those passes; and passes with no EOL outcome yet. |
-| `reject_fty_total` / `reject_fty_approved` | Initial physical passes, and initial passes with an Approved preserved first EOL disposition. Their ratio is Reject FTY. |
+| `reject_fty_total` / `reject_fty_approved` | Initial passes under the unchanged Master/RepaintCount reject-outcome lineage, and those passes with an Approved preserved first EOL disposition. Their ratio is Reject FTY. From method v18 forward this denominator is intentionally independent from the GP-local `paint_fty_total` repaint denominator. |
 | `reject_fty_rejected_count` / `reject_fty_pending_count` | Non-approved and pending EOL outcomes restricted to initial physical passes. |
 | `receiving_total` / `receiving_approved` | Parts with a first receiving decision and those approved first pass. |
 | `receiving_bumper_total` / `receiving_bumper_approved` / `receiving_fairing_total` / `receiving_fairing_approved` | Receiving first-decision totals and approvals split by normalized EDI `Description` into all Bumpers and all Chassis Fairings. Both totals and approvals reconcile to the overall Receiving FTY fields. |
@@ -136,6 +136,7 @@ The live SQL adapter is read-only and emits this contract. It must:
 - `bumper_finesse_repair_count + fairing_finesse_repair_count + other_finesse_repair_count = finesse_repair_count`.
 - `reject_ppy_approved + reject_ppy_rejected_count + reject_ppy_pending_count = reject_ppy_total`.
 - `reject_fty_approved + reject_fty_rejected_count + reject_fty_pending_count = reject_fty_total`.
+- From method v18 forward, `reject_fty_total` and `paint_fty_total` are separate governed denominators and are not required to equal one another.
 - Every displayed rate retains a denominator greater than or equal to its numerator where the outcome classes are exclusive.
 - Receiving and final family totals and approvals reconcile exactly to their overall first-decision fields.
 - Staged Prd/BV/Svc cart-group and piece splits reconcile exactly to their staged totals.

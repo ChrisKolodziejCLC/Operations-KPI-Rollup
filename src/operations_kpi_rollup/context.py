@@ -146,7 +146,10 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     raise ValueError(f"{collection} reject yield count is negative")
                 if int(row["reject_ppy_total"]) != int(row.get("paint_decision_pieces", 0)):
                     raise ValueError(f"{collection} reject PPY total does not equal physical paint passes")
-                if int(row["reject_fty_total"]) != int(row.get("paint_fty_total", 0)):
+                if (
+                    method_version != "operations-kpi-live-v18-gp-local-repaint-lineage"
+                    and int(row["reject_fty_total"]) != int(row.get("paint_fty_total", 0))
+                ):
                     raise ValueError(f"{collection} reject FTY total does not equal initial paint passes")
                 if method_version in {
                     "operations-kpi-live-v10-master-repaintcount-yields",
