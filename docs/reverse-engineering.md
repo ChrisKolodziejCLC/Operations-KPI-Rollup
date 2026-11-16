@@ -66,7 +66,7 @@ The legacy formula was:
 
 `schedule attainment × no-repaint quality × active clock-hour coverage`
 
-where active coverage was distinct clock hours containing oven exits divided by scheduled hours. This is not Availability × Performance × Quality based on runtime and ideal cycle time. The replacement calls it **Paint plan composite** and marks it provisional.
+where active coverage was distinct clock hours containing oven exits divided by scheduled hours. This is not Availability × Performance × Quality based on runtime and ideal cycle time. The replacement displays it as **Preliminary OEE**, retains the unchanged paint-plan-composite formula, and marks it provisional.
 
 ### 7. Scope and pass-order inconsistencies
 

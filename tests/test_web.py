@@ -76,7 +76,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.20.1-cart-piece-labels" in html
+            assert "0.21.1-label-refresh" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert "Decision-use boundary" not in html
@@ -131,7 +131,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "`${integer(current.reject_ppy_pending_count)} Pending`" in javascript
             assert "`${integer(current.reject_fty_pending_count)} Pending`" in javascript
             assert "'Repaint %'" in javascript
-            assert "'Finesse %'" in javascript
+            assert "'Finesse Effectiveness'" in javascript
             assert "ratio(finesseRepair, finesseRejected)" in javascript
             assert "Repaired / ${integer(finesseRejected)} Rejected" in javascript
             assert "finesse_rejected_count" in javascript
@@ -152,7 +152,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "final_bumper_approved" in javascript
             assert "final_fairing_approved" in javascript
             assert "trailerCountCard(current.trailers_prepared, current.trailers_shipped, [" in javascript
-            assert "Shipped = DriverLog TimeOut departures" in javascript
+            assert "Departed = DriverLog TimeOut departures" in javascript
             assert "{label:'Bumper racks', value:current.bumper_racks_shipped}" in javascript
             assert "{label:'FUKA racks', value:current.fuka_racks_shipped}" in javascript
             assert "{label:'Fairing racks', value:current.fairing_racks_shipped}" in javascript
@@ -197,9 +197,11 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert javascript.index("splitMetricCard('Carts / Pieces loaded'") < javascript.index("container.append(stagedMetricCard(")
             assert javascript.index("container.append(stagedMetricCard(") < javascript.index("splitMetricCard('Carts / Pieces painted'")
             assert javascript.index("splitMetricCard('Carts / Pieces painted'") < javascript.index("'Repaint %'")
-            assert javascript.index("'Repaint %'") < javascript.index("'Finesse %'")
+            assert javascript.index("'Repaint %'") < javascript.index("'Finesse Effectiveness'")
             assert javascript.index("['Pieces shipped'") < javascript.index("container.append(trailerCountCard(")
             assert "loadCachedReport(localDateISO(), true)" in javascript
+            assert "const loadedToday = await loadCachedReport(today);" in javascript
+            assert "if (!loadedToday) await loadLatest();" in javascript
             assert "refreshReport(localDateISO(), true)" not in javascript
             assert "X-Operations-KPI-Refresh-Key" not in javascript
             assert "sessionStorage" not in javascript

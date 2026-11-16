@@ -18,7 +18,7 @@ def test_build_creates_safe_reproducible_preview(tmp_path):
     message = BytesParser(policy=policy.default).parsebytes(outputs["eml_preview"].read_bytes())
 
     assert saved_snapshot == snapshot
-    assert "Paint plan composite" in html
+    assert "Preliminary OEE" in html
     assert ">Paint OEE" not in html
     assert "301.0" in html
     assert message["X-Operations-KPI-Preview"] == "true"

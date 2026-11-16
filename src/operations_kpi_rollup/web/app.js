@@ -238,19 +238,19 @@ function inspectionYieldCard(label, numerator, denominator, rows, color) {
   return card;
 }
 
-function trailerCountCard(prepped, shipped, racks, color) {
+function trailerCountCard(loaded, departed, racks, color) {
   const card = document.createElement('article');
   card.className = 'metric-card trailer-count-card';
   card.style.setProperty('--accent', color);
   const labelNode = document.createElement('span'); labelNode.append(text('Trailers'));
   const grid = document.createElement('div'); grid.className = 'trailer-count-grid';
-  [{label:'Prepped', value:prepped}, {label:'Shipped', value:shipped}].forEach(metric => {
+  [{label:'Loaded', value:loaded}, {label:'Departed', value:departed}].forEach(metric => {
     const column = document.createElement('div'); column.className = 'trailer-count-column';
     const metricLabel = document.createElement('span'); metricLabel.className = 'trailer-count-label'; metricLabel.append(text(metric.label));
     const value = document.createElement('strong'); value.className = 'trailer-count-value'; value.append(text(optionalInteger(metric.value)));
     column.append(metricLabel, value); grid.append(column);
   });
-  const source = document.createElement('small'); source.className = 'trailer-count-source'; source.append(text('Shipped = DriverLog TimeOut departures'));
+  const source = document.createElement('small'); source.className = 'trailer-count-source'; source.append(text('Departed = DriverLog TimeOut departures'));
   const rackList = document.createElement('div'); rackList.className = 'trailer-rack-list';
   racks.forEach(rack => {
     const row = document.createElement('div'); row.className = 'trailer-rack-row';
@@ -284,7 +284,7 @@ function renderCards(snapshot) {
     finesseDetails.push(`${integer(current.other_finesse_repair_count)} Other Repaired`);
   }
   const cards = [
-    ['Paint plan composite', percent(composite(current)), 'provisional · not standard OEE', palette.purple],
+    ['Preliminary OEE', percent(composite(current)), 'provisional · not standard OEE', palette.purple],
     ['Complete assy sets', integer(current.complete_assy_sets), current.mic_complete_assy_sets === undefined ? 'N33 / Chassis Fairing · dated by last assembled piece' : [`${integer(current.mic_complete_assy_sets)} MIC`, `${integer(current.painted_complete_assy_sets)} Painted`], palette.teal],
     ['Assembled bumpers', integer(current.assembled_bumper_count), current.mic_assembled_bumper_count === undefined ? 'N71-6171 · AssembledDate' : [`${integer(current.mic_assembled_bumper_count)} MIC`, `${integer(current.painted_assembled_bumper_count)} Painted`], palette.blue],
     ['Pieces shipped', integer(current.parts_shipped), shippedDetail, palette.red]
@@ -309,7 +309,7 @@ function renderCards(snapshot) {
     palette.amber
   ));
   container.append(metricCard(
-    'Finesse %',
+    'Finesse Effectiveness',
     percent(ratio(finesseRepair, finesseRejected)),
     finesseDetails,
     palette.green
@@ -670,7 +670,8 @@ async function initialize() {
     await loadCachedReport(localDateISO(), true);
     setInterval(() => loadCachedReport(localDateISO(), true), WALLBOARD_POLL_MS);
   } else {
-    await loadLatest();
+    const loadedToday = await loadCachedReport(today);
+    if (!loadedToday) await loadLatest();
   }
   setInterval(loadHealth, HEALTH_POLL_MS);
   setInterval(renderRefreshCountdown, COUNTDOWN_TICK_MS);

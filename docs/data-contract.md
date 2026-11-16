@@ -44,8 +44,8 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `paint_fty_total` / `paint_fty_approved` | GP initial passes, and GP initial passes with a resolved non-repaint outcome. For BV-origin parts, the first physical GP oven exit is the GP initial pass regardless of Brownsville history. Their ratio is Repaint FTY. |
 | `paint_fty_repaint_count` / `repaint_fty_pending_count` | GP initial passes that require a later GP paint pass or have a GP-local Repaint/Direct Repaint disposition, and unresolved GP initial passes. The ratio of `paint_fty_repaint_count` to `paint_fty_total` is the standalone Repaint %. |
 | `fuka_paint_fty_repaint_count` / `bumper_paint_fty_repaint_count` / `fairing_paint_fty_repaint_count` | Aggregate product-family split of `paint_fty_repaint_count`, displayed in FUKA / Bumpers / Fairings order. Families use normalized EDI `Description`: `Fender` = FUKA, `Bumper` = Bumpers, and `Chassis Fairing` = Fairings. These fields expose no part-level rows and do not change the Repaint % formula. |
-| `paint_fty_repair_count` | Legacy paint-pass audit field: initial physical passes whose preserved first EOL disposition is Repair. It remains in the snapshot for compatibility but no longer drives the Finesse tile. |
-| `fuka_paint_fty_repair_count` / `fairing_paint_fty_repair_count` / `bumper_paint_fty_repair_count` | Legacy aggregate product-family split of `paint_fty_repair_count`. These fields remain reconciliation-gated but no longer drive the Finesse tile. |
+| `paint_fty_repair_count` | GP-paint first-pass Repair outcomes. It combines with `finesse_repair_count` in the Finesse Effectiveness numerator. |
+| `fuka_paint_fty_repair_count` / `fairing_paint_fty_repair_count` / `bumper_paint_fty_repair_count` | Aggregate product-family split of `paint_fty_repair_count`; these fields feed the displayed combined repair-family detail. |
 | `reject_ppy_total` / `reject_ppy_approved` | All physical paint passes, and passes with an Approved EOL outcome. Their ratio is Reject PPY. |
 | `reject_ppy_rejected_count` / `reject_ppy_pending_count` | All EOL Repair, Repaint, Direct Repaint, or Reject outcomes for those passes; and passes with no EOL outcome yet. |
 | `reject_fty_total` / `reject_fty_approved` | Initial passes under the unchanged Master/RepaintCount reject-outcome lineage, and those passes with an Approved preserved first EOL disposition. Their ratio is Reject FTY. From method v18 forward this denominator is intentionally independent from the GP-local `paint_fty_total` repaint denominator. |
@@ -92,7 +92,7 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 - `Repaint FTY = paint_fty_approved / paint_fty_total`
 - `Repaint % = paint_fty_repaint_count / paint_fty_total`
 - `fuka_paint_fty_repaint_count + bumper_paint_fty_repaint_count + fairing_paint_fty_repaint_count = paint_fty_repaint_count`
-- `Finesse % = (finesse_repair_count + paint_fty_repair_count) / (finesse_rejected_count + reject_fty_rejected_count)`; this combines the governed first-Receiving and GP-paint first-pass reject cohorts, and unresolved Receiving rejects remain in the denominator
+- `Finesse Effectiveness = (finesse_repair_count + paint_fty_repair_count) / (finesse_rejected_count + reject_fty_rejected_count)`; this combines the governed first-Receiving and GP-paint first-pass reject cohorts, and unresolved Receiving rejects remain in the denominator
 - `finesse_rejected_count = receiving_total - receiving_approved`
 - `finesse_repair_count + finesse_repaint_count + finesse_pending_count = finesse_rejected_count`
 - `bumper_finesse_repair_count + fairing_finesse_repair_count + other_finesse_repair_count = finesse_repair_count`
@@ -103,7 +103,7 @@ Every ratio is calculated by the renderer from a saved numerator and denominator
 - `receiving_total = receiving_bumper_total + receiving_fairing_total`, with the same invariant for approvals
 - `Final FTY = final_approved / final_total`
 - `final_total = final_fuka_total + final_bumper_total + final_fairing_total`, with the same invariant for approvals
-- `Paint plan composite = min(paint pieces / scheduled pieces, 1) × ((paint FTY total - repaint count) / paint FTY total) × min(active paint hours / scheduled hours, 1)`
+- `Preliminary OEE = min(paint pieces / scheduled pieces, 1) × ((paint FTY total - repaint count) / paint FTY total) × min(active paint hours / scheduled hours, 1)`; this is the unchanged provisional paint-plan composite, not standard OEE
 
 Every pass and its outcome is attributed to the physical oven-exit date. For non-BV parts, Item History supplies part/cart lineage for `paint_oven_exited` and `load_line_repaint`, Master Data Table supplies the preserved first EOL disposition, `RepaintCount` controls repaint ordinals, and current EDI supplies the latest completed repaint outcome. For BV-origin parts, Brownsville paint history is excluded from the GP repaint decision: the first physical GP oven exit is the GP initial pass, a later physical GP oven exit proves the preceding GP pass required repaint, and the latest pass uses its same-cart GP EOL history with a timestamp-gated current-EDI fallback. A pending outcome is not silently classified as good or repaint; its GP-local pending count remains visible and a later refresh can restate that oven-exit day. Reject/Finesse fields retain their separate existing outcome contract. The hourly report groups by inspection time and is a reconciliation source rather than the wallboard date grain. Period rows use their summed numerator and denominator.
 

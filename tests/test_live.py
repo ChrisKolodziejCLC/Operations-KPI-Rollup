@@ -181,7 +181,7 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert snapshot["daily"][-1]["service_carts_loaded"] == 10
     cards = prepare_context(snapshot)["cards"]
     assert [card["label"] for card in cards[:5]] == [
-        "Carts / Pieces loaded", "Carts / Pieces staged", "Carts / Pieces painted", "Repaint %", "Finesse %"
+        "Carts / Pieces loaded", "Carts / Pieces staged", "Carts / Pieces painted", "Repaint %", "Finesse Effectiveness"
     ]
     cards_by_label = {card["label"]: card for card in cards}
     assert cards_by_label["Carts / Pieces loaded"]["value"] == "100 Total / 91 Unique"
@@ -193,8 +193,8 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert cards_by_label["Repaint %"]["value"] == "3.3%"
     assert cards_by_label["Repaint %"]["detail"] == "3 / 90 initial passes"
     assert cards_by_label["Repaint %"]["secondary_detail"] == "1 FUKA / 1 Bumpers / 1 Fairings"
-    assert cards_by_label["Finesse %"]["value"] == "42.9%"
-    assert cards_by_label["Finesse %"]["detail"] == "3 Repaired / 7 Rejected\n1 FUKA Repaired\n1 Bumpers Repaired\n1 Fairings Repaired"
+    assert cards_by_label["Finesse Effectiveness"]["value"] == "42.9%"
+    assert cards_by_label["Finesse Effectiveness"]["detail"] == "3 Repaired / 7 Rejected\n1 FUKA Repaired\n1 Bumpers Repaired\n1 Fairings Repaired"
     assert cards_by_label["Repaint PPY"]["value"] == "94.7%"
     assert cards_by_label["Reject PPY"]["value"] == "93.7%"
     assert cards_by_label["Repaint FTY"]["value"] == "95.6%"
@@ -205,7 +205,7 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert cards[-2]["value"] == "90"
     assert cards[-2]["detail"] == "20 FUKA / 55 Bumpers / 5 N71-6164 / 10 Fairings"
     assert cards[-1]["label"] == "Trailers"
-    assert cards[-1]["value"] == "4 Prepped / 3 Shipped"
+    assert cards[-1]["value"] == "4 Loaded / 3 Departed"
     assert cards[-1]["detail"] == "10 Bumper Racks\n5 FUKA Racks\n1 Fairing Racks"
     assert [row["period_type"] for row in snapshot["periods"]] == ["WEEK", "MONTH", "QUARTER"]
     assert snapshot["top_defects"] == [{"step": "End of Line", "description": "Dirt", "count": 7}]
@@ -451,8 +451,8 @@ def test_v13_saved_snapshot_can_load_before_first_v14_refresh():
                 row.pop(field)
     validate_snapshot(snapshot)
     cards_by_label = {card["label"]: card for card in prepare_context(snapshot)["cards"]}
-    assert cards_by_label["Trailers"]["value"] == "4 Prepped / No Data Shipped"
-    assert cards_by_label["Finesse %"]["value"] == "No Data"
+    assert cards_by_label["Trailers"]["value"] == "4 Loaded / No Data Departed"
+    assert cards_by_label["Finesse Effectiveness"]["value"] == "No Data"
 
 
 def test_v15_saved_snapshot_can_load_before_first_v16_refresh():
@@ -469,7 +469,7 @@ def test_v15_saved_snapshot_can_load_before_first_v16_refresh():
             for field in v16_fields:
                 row.pop(field)
     validate_snapshot(snapshot)
-    finesse = {card["label"]: card for card in prepare_context(snapshot)["cards"]}["Finesse %"]
+    finesse = {card["label"]: card for card in prepare_context(snapshot)["cards"]}["Finesse Effectiveness"]
     assert finesse["value"] == "40.0%"
     assert finesse["detail"] == "2 Repaired / 5 Rejected\n1 FUKA Repaired\n0 Bumpers Repaired\n1 Fairings Repaired"
 

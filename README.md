@@ -73,6 +73,8 @@ Version 0.20.1 labels the Loaded, Staged, and Painted cards as `Carts / Pieces` 
 
 Version 0.21.0 makes repaint lineage plant-local for BV-origin parts. Their first physical Grand Prairie oven exit is now the GP initial pass; Brownsville `RepaintCount`, disposition, or receiving-reject history cannot by itself count as a GP repaint. A BV pass becomes a GP repaint failure only when a later physical GP pass proves it was repeated or when that pass has a GP-local Repaint/Direct Repaint disposition. Non-BV parts retain the reviewed Master Data Table, `RepaintCount`, and `load_line_repaint` contract. Separate repaint-pending fields keep Repaint PPY/FTY reconciliation independent from the unchanged Reject/Finesse outcome contract. The migration changes only the aggregate read procedure definition and writes no QPTS business rows.
 
+Version 0.21.1 relabels the unchanged metrics as `Finesse Effectiveness`, `Preliminary OEE`, and trailer `Loaded / Departed`. The trailer rack details remain distinct EDI racks on non-service `SHIPPED` rows dated by `ship_date`; they are not matched to DriverLog trailer identifiers. Only Departed uses completed `DriverLog.TimeOut` records. A normal browser reload now opens today's saved immutable snapshot before falling back to the latest available snapshot, so viewing a historical day does not make that day persist across page reloads. No SQL, formula, source row, permission, or automatic-refresh change is involved.
+
 Run the safe local fixture mode:
 
 ```bash

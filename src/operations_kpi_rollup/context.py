@@ -698,7 +698,7 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
             secondary_detail=_repaint_line_set_detail(current),
         ),
         _card(
-            "Finesse %",
+            "Finesse Effectiveness",
             format_percent(current["finesse_percentage"]),
             _finesse_detail(current),
             "#38856d",
@@ -725,7 +725,7 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
             ),
             "#8a6aa8",
         ),
-        _card("Paint plan composite", format_percent(current["paint_plan_composite"]), "proxy — not standard OEE", "#8a6aa8", "PROVISIONAL"),
+        _card("Preliminary OEE", format_percent(current["paint_plan_composite"]), "proxy — not standard OEE", "#8a6aa8", "PROVISIONAL"),
         _card(
             "Complete assy sets",
             format_int(current.get("complete_assy_sets")),
@@ -741,7 +741,7 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         _card("Pieces shipped", format_int(current.get("parts_shipped")), shipped_piece_detail, "#bb514b"),
         _card(
             "Trailers",
-            f"{format_int(current.get('trailers_prepared'))} Prepped / {format_int(current.get('trailers_shipped'))} Shipped",
+            f"{format_int(current.get('trailers_prepared'))} Loaded / {format_int(current.get('trailers_shipped'))} Departed",
             _trailer_rack_detail(current),
             "#d78d23",
         ),
