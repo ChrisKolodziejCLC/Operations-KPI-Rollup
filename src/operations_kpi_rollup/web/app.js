@@ -747,47 +747,6 @@ function loadedWeeklySummary(rows, options) {
   return summary;
 }
 
-function loadedPerformanceContract(loaded) {
-  const model = loaded?.performance_model;
-  const wrap = document.createElement('div'); wrap.className = 'loaded-performance-contract';
-  if (!model) return wrap;
-  const heading = document.createElement('div'); heading.className = 'loaded-performance-contract-heading';
-  const title = document.createElement('h4'); title.append(text('Loaded performance contract'));
-  const note = document.createElement('p');
-  note.append(text(
-    `${fullDateLabel(model.baseline_start)}–${fullDateLabel(model.baseline_end)} · `
-    + `${integer(model.baseline_completed_loading_days)} completed loading days · `
-    + 'target closes 25% of the baseline-to-goal gap'
-  ));
-  heading.append(title, note);
-  const table = document.createElement('table'); table.className = 'loaded-summary-table';
-  table.setAttribute('aria-label', 'Loaded baseline, interim target, and long-term goal rates');
-  const head = document.createElement('thead'); const headingRow = document.createElement('tr');
-  ['Metric', 'Baseline', 'Interim target', 'Long-term goal'].forEach(value => {
-    const th = document.createElement('th'); th.scope = 'col'; th.append(text(value)); headingRow.append(th);
-  });
-  head.append(headingRow);
-  const body = document.createElement('tbody');
-  [
-    ['Carts / hour', model.baseline_carts_per_hour, model.target_carts_per_hour, model.goal_carts_per_hour],
-    ['Pieces / hour', model.baseline_pieces_per_hour, model.target_pieces_per_hour, model.goal_pieces_per_hour]
-  ].forEach(values => {
-    const row = document.createElement('tr');
-    values.forEach((value, index) => {
-      const cell = document.createElement(index === 0 ? 'th' : 'td');
-      if (index === 0) cell.scope = 'row';
-      cell.append(text(index === 0 ? value : decimal(value))); row.append(cell);
-    });
-    body.append(row);
-  });
-  table.append(head, body);
-  const policy = document.createElement('small');
-  policy.append(text(
-    `Net time runs from first to last distinct-cart load. Completed spans of ${decimal(Number(model.lunch_eligibility_span_minutes) / 60)} hours or more receive a ${integer(model.lunch_allowance_minutes)}-minute lunch allowance. Partial days are not scored.`
-  ));
-  wrap.append(heading, table, policy); return wrap;
-}
-
 function loadedChartCard(title, note, rows, options) {
   const figure = document.createElement('figure'); figure.className = 'loaded-chart-card';
   const caption = document.createElement('figcaption');
@@ -856,7 +815,6 @@ function renderLoadedCharts(snapshot) {
     '13-week daily averages',
     'Sunday–Saturday · represented production days · partial selected week excluded from trend and target scoring'
   );
-  weeklySection.section.insertBefore(loadedPerformanceContract(loaded), weeklySection.grid);
   const weeklyOptions = {
     formatValue:wholeNumber, trend:true, omitNull:true, verticalLabels:true, chartType:'bar',
     bucketLabel:row => dateLabel(row.bucket),

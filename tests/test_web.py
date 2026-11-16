@@ -171,7 +171,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.30.0-horizontal-weekly-references" in html
+            assert "0.31.0-remove-performance-contract" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html
@@ -328,7 +328,9 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Actual rate" in javascript
             assert "Interim target" in javascript
             assert "Long-term goal" in javascript
-            assert "loadedPerformanceContract" in javascript
+            assert "loadedPerformanceContract" not in javascript
+            assert "Loaded performance contract" not in javascript
+            assert "Loaded baseline, interim target, and long-term goal rates" not in javascript
             assert "loadedWeeklyReferenceModel" in javascript
             assert "netLoadingMinutes / 60 / performanceDays" in javascript
             assert "value:weeklyReference.targetCarts" in javascript
@@ -396,7 +398,8 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert ".loaded-chart-grid{display:grid;grid-template-columns:1fr 1fr" in styles
             assert ".loaded-chart-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))" in styles
             assert ".loaded-summary-table-wrap" not in styles
-            assert ".loaded-performance-contract" in styles
+            assert ".loaded-performance-contract" not in styles
+            assert ".loaded-summary-table" not in styles
             assert ".loaded-axis-label,.loaded-scale-label{font-variant-numeric:tabular-nums}" in styles
             assert ".loaded-value-label{" in styles
             assert ".chart-placeholder" in styles
