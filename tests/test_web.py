@@ -171,7 +171,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.26.0-loaded-goals-targets" in html
+            assert "0.27.0-visible-goal-target-lines" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html
@@ -332,6 +332,10 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "average_goal_pieces" in javascript
             assert "Net-time interim target" in javascript
             assert "Net-time long-term goal" in javascript
+            assert javascript.count("value:performance.model.target_") == 2
+            assert javascript.count("value:performance.model.goal_") == 2
+            assert "class:'loaded-reference-line'" in javascript
+            assert "Target and goal segments appear only on fully comparable weeks" in javascript
             assert "loadedWeeklySummary" in javascript
             assert "options.omitNull" in javascript
             assert "omitNull:true, verticalLabels:true, chartType:'bar'" in javascript

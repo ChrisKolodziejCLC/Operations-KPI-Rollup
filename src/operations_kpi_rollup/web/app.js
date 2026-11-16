@@ -476,11 +476,20 @@ function renderLoadedLineChart(container, rows, options) {
   const values = rows.map(row => row.data_available && row[options.field] !== null
     ? Number(row[options.field]) : null);
   const trend = options.trend ? loadedLinearTrend(rows, options.field) : null;
-  const references = (options.references || []).map(reference => ({
-    ...reference,
-    values:rows.map(row => row.data_available && row[reference.field] !== null
-      && row[reference.field] !== undefined ? Number(row[reference.field]) : null)
-  }));
+  const references = (options.references || []).map(reference => {
+    const constantValue = Number(reference.value);
+    const hasConstantValue = reference.value !== null && reference.value !== undefined
+      && Number.isFinite(constantValue);
+    return {
+      ...reference,
+      values:rows.map(row => {
+        if (!row.data_available) return null;
+        if (hasConstantValue) return constantValue;
+        return row[reference.field] !== null && row[reference.field] !== undefined
+          ? Number(row[reference.field]) : null;
+      })
+    };
+  });
   const finiteValues = values.filter(value => value !== null && Number.isFinite(value));
   references.forEach(reference => finiteValues.push(
     ...reference.values.filter(value => value !== null && Number.isFinite(value))
@@ -577,12 +586,25 @@ function renderLoadedLineChart(container, rows, options) {
   references.forEach(reference => {
     let referenceSegment = [];
     const flushReference = () => {
+      let line = null;
       if (referenceSegment.length > 1) {
-        const line = svgNode('polyline', {
+        line = svgNode('polyline', {
           points:referenceSegment.join(' '), fill:'none', stroke:reference.color,
           'stroke-width':2.2, 'stroke-dasharray':reference.dash || '5 4',
-          'stroke-linejoin':'round', 'stroke-linecap':'round', opacity:.9
+          'stroke-linejoin':'round', 'stroke-linecap':'round', opacity:.9,
+          class:'loaded-reference-line'
         });
+      } else if (referenceSegment.length === 1) {
+        const [pointX, pointY] = referenceSegment[0].split(',').map(Number);
+        const halfSegment = Math.min(14, band * .34);
+        line = svgNode('line', {
+          x1:pointX - halfSegment, x2:pointX + halfSegment, y1:pointY, y2:pointY,
+          stroke:reference.color, 'stroke-width':2.2,
+          'stroke-dasharray':reference.dash || '5 4', 'stroke-linecap':'round', opacity:.9,
+          class:'loaded-reference-line'
+        });
+      }
+      if (line) {
         const title = svgNode('title'); title.append(text(reference.label));
         line.append(title); svg.append(line);
       }
@@ -797,16 +819,24 @@ function renderLoadedCharts(snapshot) {
   hourlySection.grid.append(
     loadedChartCard('Carts loaded by hour', 'Total carts · first load event', hourly, {
       field:'carts_loaded', label:'Total carts', color:palette.teal, trend:false, formatValue:wholeNumber,
-      ariaLabel:'Hourly total carts loaded for ' + reportDay,
+      ariaLabel:'Hourly total carts loaded with interim target and long-term goal for ' + reportDay,
       bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
       verticalLabels:true, showTick:() => true, performance,
+      references:[
+        {value:performance.model.target_carts_per_hour, label:'Interim target', color:palette.amber, dash:'6 4'},
+        {value:performance.model.goal_carts_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'}
+      ],
       hourlySummary:{label:'Carts', field:'carts_loaded'}
     }),
     loadedChartCard('Pieces loaded by hour', 'Total load events', hourly, {
       field:'parts_loaded', label:'Total pieces', color:palette.blue, trend:false, formatValue:wholeNumber,
-      ariaLabel:'Hourly total pieces loaded for ' + reportDay,
+      ariaLabel:'Hourly total pieces loaded with interim target and long-term goal for ' + reportDay,
       bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
       verticalLabels:true, showTick:() => true, performance,
+      references:[
+        {value:performance.model.target_pieces_per_hour, label:'Interim target', color:palette.amber, dash:'6 4'},
+        {value:performance.model.goal_pieces_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'}
+      ],
       hourlySummary:{label:'Pieces', field:'parts_loaded'}
     })
   );
@@ -850,6 +880,12 @@ function renderLoadedCharts(snapshot) {
     note.append(text('The selected week is partial and is displayed but excluded from both trendlines.'));
     weeklySection.section.append(note);
   }
+  if (weekly.some(row => row.data_available && !row.is_partial
+    && Number(row.represented_days || 0) > 0 && !row.performance_comparable)) {
+    const comparison = document.createElement('span'); comparison.className = 'chart-unavailable-note';
+    comparison.append(text('Target and goal segments appear only on fully comparable weeks; unscored weeks are left blank rather than inferred.'));
+    weeklySection.section.append(comparison);
+  }
   if (weekly.some(row => !row.data_available)) {
     const unavailable = document.createElement('span'); unavailable.className = 'chart-unavailable-note';
     unavailable.append(text('Unavailable weeks before the September 8 history boundary are omitted, not zero.'));
@@ -861,7 +897,7 @@ function renderMetricCharts(snapshot) {
   $('#metric-chart-title').textContent = selectedChartLabel;
   const summary = $('#metric-chart-summary');
   if (selectedChartKey === 'loaded') {
-    summary.textContent = 'Hourly totals and net-time performance, followed by 13-week averages with trend, interim-target, and long-term-goal lines.';
+    summary.textContent = 'Hourly totals with interim-target and long-term-goal lines, followed by net-time-adjusted 13-week averages and trend.';
     renderLoadedCharts(snapshot); return;
   }
   summary.textContent = 'This tile is selectable; its chart contract will be added after the Loaded pilot layout is finalized.';
