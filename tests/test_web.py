@@ -43,10 +43,10 @@ def with_loaded_chart(snapshot):
             "baseline_carts_per_hour": 8.3033,
             "baseline_pieces_per_hour": 24.6548,
             "target_gap_fraction": 0.25,
-            "target_carts_per_hour": 8.7274,
-            "target_pieces_per_hour": 25.9911,
-            "goal_carts_per_hour": 10.0,
-            "goal_pieces_per_hour": 30.0,
+            "target_carts_per_hour": 9.2274,
+            "target_pieces_per_hour": 27.4911,
+            "goal_carts_per_hour": 12.0,
+            "goal_pieces_per_hour": 36.0,
             "lunch_allowance_minutes": 30,
             "lunch_eligibility_span_minutes": 360,
             "partial_day_scoring": False,
@@ -171,7 +171,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.27.0-visible-goal-target-lines" in html
+            assert "0.28.0-loaded-goal-rates" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html

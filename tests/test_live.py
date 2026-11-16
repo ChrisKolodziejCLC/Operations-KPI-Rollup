@@ -276,30 +276,65 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert model["baseline_carts_loaded"] == 4787
     assert model["baseline_pieces_loaded"] == 14214
     assert model["baseline_carts_per_hour"] == 8.3033
-    assert model["target_carts_per_hour"] == 8.7274
-    assert model["goal_carts_per_hour"] == 10.0
+    assert model["target_carts_per_hour"] == 9.2274
+    assert model["goal_carts_per_hour"] == 12.0
     assert model["baseline_pieces_per_hour"] == 24.6548
-    assert model["target_pieces_per_hour"] == 25.9911
-    assert model["goal_pieces_per_hour"] == 30.0
+    assert model["target_pieces_per_hour"] == 27.4911
+    assert model["goal_pieces_per_hour"] == 36.0
     selected = snapshot["chart_series"]["loaded"]["selected_day"]
     assert selected["performance_scored"] is True
     assert selected["net_loading_minutes"] == 600.0
     assert selected["carts_per_net_hour"] == 4.0
     assert selected["pieces_per_net_hour"] == 10.0
-    assert selected["target_carts"] == 87.3
-    assert selected["goal_carts"] == 100.0
-    assert selected["target_pieces"] == 259.9
-    assert selected["goal_pieces"] == 300.0
+    assert selected["target_carts"] == 92.3
+    assert selected["goal_carts"] == 120.0
+    assert selected["target_pieces"] == 274.9
+    assert selected["goal_pieces"] == 360.0
     latest_full_week = snapshot["chart_series"]["loaded"]["weekly_13"][-2]
     assert latest_full_week["performance_days"] == 5
     assert latest_full_week["performance_comparable"] is True
-    assert latest_full_week["average_target_carts"] == 87.3
-    assert latest_full_week["average_goal_carts"] == 100.0
-    assert latest_full_week["average_target_pieces"] == 259.9
-    assert latest_full_week["average_goal_pieces"] == 300.0
+    assert latest_full_week["average_target_carts"] == 92.3
+    assert latest_full_week["average_goal_carts"] == 120.0
+    assert latest_full_week["average_target_pieces"] == 274.9
+    assert latest_full_week["average_goal_pieces"] == 360.0
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
     assert snapshot["source_evidence"]["procedure_definition_sha256"] == "A7365336FFFE5170A3D963D3C4599F158C97E29B2E01FFEBD3C59A4ED817285F"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v21-loaded-goals-targets"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v22-loaded-goal-rates"
+
+
+def test_v21_loaded_goal_snapshot_remains_valid_for_saved_cache():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["scope"]["method_version"] = "operations-kpi-live-v21-loaded-goals-targets"
+    loaded = snapshot["chart_series"]["loaded"]
+    model = loaded["performance_model"]
+    model.update({
+        "target_carts_per_hour": 8.7274,
+        "goal_carts_per_hour": 10.0,
+        "target_pieces_per_hour": 25.9911,
+        "goal_pieces_per_hour": 30.0,
+    })
+
+    selected = loaded["selected_day"]
+    net_hours = selected["net_loading_minutes"] / 60.0
+    selected.update({
+        "target_carts": round(model["target_carts_per_hour"] * net_hours, 1),
+        "goal_carts": round(model["goal_carts_per_hour"] * net_hours, 1),
+        "target_pieces": round(model["target_pieces_per_hour"] * net_hours, 1),
+        "goal_pieces": round(model["goal_pieces_per_hour"] * net_hours, 1),
+    })
+    for row in loaded["weekly_13"]:
+        if not row["performance_comparable"]:
+            continue
+        average_hours = row["net_loading_minutes"] / 60.0 / row["performance_days"]
+        row.update({
+            "average_target_carts": round(model["target_carts_per_hour"] * average_hours, 1),
+            "average_goal_carts": round(model["goal_carts_per_hour"] * average_hours, 1),
+            "average_target_pieces": round(model["target_pieces_per_hour"] * average_hours, 1),
+            "average_goal_pieces": round(model["goal_pieces_per_hour"] * average_hours, 1),
+        })
+
+    validate_snapshot(snapshot)
 
 
 def test_repaint_line_set_split_must_equal_total():

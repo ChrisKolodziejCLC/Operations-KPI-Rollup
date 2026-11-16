@@ -15,7 +15,7 @@ from .odbc import execute_operations_rollup
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
 PERIOD_TYPE_ORDER = {"WEEK": 1, "MONTH": 2, "QUARTER": 3}
-CURRENT_METHOD_VERSION = "operations-kpi-live-v21-loaded-goals-targets"
+CURRENT_METHOD_VERSION = "operations-kpi-live-v22-loaded-goal-rates"
 LOADED_CHART_FIELDS = (
     "parts_loaded",
     "production_parts_loaded",
@@ -33,8 +33,8 @@ LOADED_BASELINE_DAYS = 46
 LOADED_BASELINE_CARTS = 4787
 LOADED_BASELINE_PIECES = 14214
 LOADED_BASELINE_NET_MINUTES = Decimal("34591.218")
-LOADED_CART_GOAL_RATE = Decimal("10")
-LOADED_PIECE_GOAL_RATE = Decimal("30")
+LOADED_CART_GOAL_RATE = Decimal("12")
+LOADED_PIECE_GOAL_RATE = Decimal("36")
 LOADED_TARGET_GAP_FRACTION = Decimal("0.25")
 LOADED_LUNCH_ALLOWANCE_MINUTES = 30
 LOADED_LUNCH_ELIGIBILITY_SPAN_MINUTES = 360
