@@ -316,7 +316,7 @@ class AppServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPI/0.21.1"
+    server_version = "OperationsKPI/0.22.0"
     sys_version = ""
 
     @property

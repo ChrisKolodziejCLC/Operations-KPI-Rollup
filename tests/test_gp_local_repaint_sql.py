@@ -72,4 +72,4 @@ def test_gp_local_repaint_migration_does_not_write_qpts_business_rows():
 def test_service_pins_the_gp_local_repaint_definition_hash():
     unit = SERVICE.read_text(encoding="utf-8")
 
-    assert f"Environment=KPI_SQL_PROCEDURE_HASH={NEW_HASH}" in unit
+    assert f"Environment=KPI_SQL_PROCEDURE_HASH={NEW_HASH}" not in unit

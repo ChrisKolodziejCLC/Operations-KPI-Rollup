@@ -11,6 +11,11 @@ from operations_kpi_rollup.web import AppState, _is_private_address, create_serv
 
 
 FIXTURE = Path(__file__).parents[1] / "examples" / "2026-09-16.json"
+LOADED_CHART_FIELDS = (
+    "parts_loaded", "production_parts_loaded", "bv_parts_loaded", "service_parts_loaded",
+    "unique_pieces_loaded", "carts_loaded", "production_carts_loaded",
+    "bv_carts_loaded", "service_carts_loaded",
+)
 
 
 def request_json(url, method="GET", payload=None, headers=None):
@@ -20,6 +25,34 @@ def request_json(url, method="GET", payload=None, headers=None):
         return response.status, json.loads(response.read())
 
 
+def with_loaded_chart(snapshot):
+    report_date = datetime.fromisoformat(snapshot["report_date"]).date()
+    current = next(row for row in snapshot["daily"] if row["date"] == snapshot["report_date"])
+    zero = {field: 0 for field in LOADED_CHART_FIELDS}
+    values = {field: int(current.get(field, 0)) for field in LOADED_CHART_FIELDS}
+    snapshot["chart_series"] = {"loaded": {
+        "hourly": [
+            {
+                "bucket": f"{report_date.isoformat()}T{hour:02d}:00:00",
+                "is_partial": False,
+                "data_available": True,
+                **(values if hour == 8 else zero),
+            }
+            for hour in range(24)
+        ],
+        "daily_30": [
+            {
+                "bucket": (report_date - timedelta(days=29 - offset)).isoformat(),
+                "is_partial": False,
+                "data_available": True,
+                **(values if offset == 29 else zero),
+            }
+            for offset in range(30)
+        ],
+    }}
+    return snapshot
+
+
 def snapshot_for(report_date):
     snapshot = json.loads(FIXTURE.read_text(encoding="utf-8"))
     date_text = report_date.isoformat()
@@ -27,7 +60,7 @@ def snapshot_for(report_date):
     snapshot["generated_at"] = datetime.now(ZoneInfo("America/Indiana/Indianapolis")).isoformat(timespec="seconds")
     snapshot["daily"][-1]["date"] = date_text
     snapshot["scope"]["method_version"] = CURRENT_METHOD_VERSION
-    return snapshot
+    return with_loaded_chart(snapshot)
 
 
 def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
@@ -76,9 +109,11 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.21.1-label-refresh" in html
+            assert "0.22.0-loaded-chart" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
+            assert 'id="metric-chart-panel"' in html
+            assert 'id="metric-chart-content"' in html
             assert "Decision-use boundary" not in html
             assert 'class="method-banner"' not in html
             assert 'id="scope-label"' not in html
@@ -205,8 +240,14 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "refreshReport(localDateISO(), true)" not in javascript
             assert "X-Operations-KPI-Refresh-Key" not in javascript
             assert "sessionStorage" not in javascript
+            assert "renderLoadedCharts(snapshot)" in javascript
+            assert "renderLoadedSeriesChart" in javascript
+            assert "Rolling 30 calendar days" in javascript
+            assert "Hourly · selected report day" in javascript
+            assert "selectMetricChart" in javascript
             render_body = javascript.split("function render(snapshot) {", 1)[1].split("\n}", 1)[0]
             assert "renderCards(snapshot);" in render_body
+            assert "renderMetricCharts(snapshot);" in render_body
             assert "renderDaily(snapshot)" not in render_body
             assert "renderPeriods(snapshot)" not in render_body
             assert "renderDefects(snapshot)" not in render_body
@@ -239,6 +280,9 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert ".metric-card .inspection-detail-counts{grid-column:1/-1;justify-self:end" in styles
             assert ".trailer-count-card{grid-column:span 1}" in styles
             assert ".trailer-rack-list{display:grid" in styles
+            assert ".metric-card.selectable-card" in styles
+            assert ".loaded-chart-grid{display:grid;grid-template-columns:1fr 1fr" in styles
+            assert ".chart-placeholder" in styles
     finally:
         server.shutdown()
         server.server_close()
@@ -249,6 +293,7 @@ def test_live_refresh_uses_private_lan_boundary_without_browser_key(tmp_path, mo
     monkeypatch.setenv("KPI_MIN_REFRESH_SECONDS", "0")
     source = json.loads(FIXTURE.read_text(encoding="utf-8"))
     source["scope"]["method_version"] = CURRENT_METHOD_VERSION
+    with_loaded_chart(source)
     monkeypatch.setattr(web, "refresh_live_snapshot", lambda report_date: source)
     state = AppState("live", tmp_path / "snapshots", FIXTURE)
     server = create_server("127.0.0.1", 0, state)
@@ -287,6 +332,7 @@ def test_historical_refresh_reuses_newest_immutable_snapshot(tmp_path, monkeypat
     monkeypatch.setenv("KPI_MIN_REFRESH_SECONDS", "0")
     source = json.loads(FIXTURE.read_text(encoding="utf-8"))
     source["scope"]["method_version"] = CURRENT_METHOD_VERSION
+    with_loaded_chart(source)
     report_date = datetime.fromisoformat(source["report_date"]).date()
     calls = []
 

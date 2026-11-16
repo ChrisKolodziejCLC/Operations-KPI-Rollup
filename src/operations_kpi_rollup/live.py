@@ -15,7 +15,18 @@ from .odbc import execute_operations_rollup
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
 PERIOD_TYPE_ORDER = {"WEEK": 1, "MONTH": 2, "QUARTER": 3}
-CURRENT_METHOD_VERSION = "operations-kpi-live-v18-gp-local-repaint-lineage"
+CURRENT_METHOD_VERSION = "operations-kpi-live-v19-loaded-chart-series"
+LOADED_CHART_FIELDS = (
+    "parts_loaded",
+    "production_parts_loaded",
+    "bv_parts_loaded",
+    "service_parts_loaded",
+    "unique_pieces_loaded",
+    "carts_loaded",
+    "production_carts_loaded",
+    "bv_carts_loaded",
+    "service_carts_loaded",
+)
 
 
 def _integer(value: Any) -> int:
@@ -38,6 +49,17 @@ def _date_text(value: Any) -> str:
     if wrapper:
         return datetime.fromtimestamp(int(wrapper.group(1)) / 1000, tz=timezone.utc).date().isoformat()
     return date.fromisoformat(text[:10]).isoformat()
+
+
+def _bucket_text(value: Any, grain: str) -> str:
+    day = _date_text(value)
+    if grain == "DAY":
+        return day
+    text = str(value or "").strip()
+    match = re.search(r"[T ](\d{2})", text)
+    if not match:
+        raise ValueError("The loaded-chart hourly bucket has no hour component.")
+    return f"{day}T{int(match.group(1)):02d}:00:00"
 
 
 def _sets_by_index(result_sets: Iterable[Mapping[str, Any]]) -> Dict[int, List[Dict[str, Any]]]:
@@ -186,6 +208,18 @@ def _period_row(row: Mapping[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _loaded_chart_row(row: Mapping[str, Any]) -> Dict[str, Any]:
+    grain = str(row.get("grain") or "").upper()
+    if grain not in {"HOUR", "DAY"}:
+        raise ValueError("The loaded-chart result contains an unsupported grain.")
+    return {
+        "bucket": _bucket_text(row.get("bucket_start"), grain),
+        "is_partial": bool(_integer(row.get("is_partial"))),
+        "data_available": bool(_integer(row.get("data_available"))),
+        **{field: _integer(row.get(field)) for field in LOADED_CHART_FIELDS},
+    }
+
+
 def snapshot_from_rollup(
     report_date: date,
     result_sets: Iterable[Mapping[str, Any]],
@@ -233,6 +267,18 @@ def snapshot_from_rollup(
         }
         for row in indexed.get(12, [])
     ]
+    loaded_chart_rows = [
+        (str(row.get("grain") or "").upper(), _loaded_chart_row(row))
+        for row in indexed.get(14, [])
+    ]
+    loaded_hourly = sorted(
+        (row for grain, row in loaded_chart_rows if grain == "HOUR"),
+        key=lambda row: row["bucket"],
+    )
+    loaded_daily_30 = sorted(
+        (row for grain, row in loaded_chart_rows if grain == "DAY"),
+        key=lambda row: row["bucket"],
+    )
 
     timezone_name = os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis")
     observed_at = generated_at or datetime.now(ZoneInfo(timezone_name))
@@ -257,6 +303,12 @@ def snapshot_from_rollup(
         "painters": painters,
         "shipping": shipping,
         "top_defects": top_defects,
+        "chart_series": {
+            "loaded": {
+                "hourly": loaded_hourly,
+                "daily_30": loaded_daily_30,
+            }
+        },
         "attention": {
             "items": [
                 {
@@ -286,6 +338,7 @@ def snapshot_from_rollup(
             "The inspection-time hourly report is a reconciliation source, not the wallboard date grain; daily values can differ and should reconcile over longer periods.",
             "Receiving and final quantities use insp_receive_stamp and insp_final_stamp; their FTY rates continue to use first inspection decisions and expose only reconciled aggregate product-family detail.",
             "Trailers Departed counts completed DriverLog departures dated by TimeOut; it is intentionally separate from EDI trailer-loading state.",
+            "The Loaded chart is aggregate-only. Load events stay in their actual hour; a distinct piece or cart is assigned to its first load-event hour so all 24 buckets reconcile exactly to the daily card. The rolling view contains 30 calendar dates, including zero-activity days.",
             "Preliminary OEE is the unchanged legacy paint-plan composite and remains excluded from this yield correction and its acceptance criteria.",
             painter_note,
         ],
@@ -293,7 +346,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "0B45A0737682B316113771E61A64F183EC04698FCEE48AF7F8B4CC94DABB7DC3",
+                "3293844115F1580DBEC0E39D0083125EB2F4517C31022E30CA54630A6F546E0A",
             ).upper(),
             "detail_result_sets_requested": False,
         },

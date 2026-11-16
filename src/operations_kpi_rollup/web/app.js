@@ -15,6 +15,9 @@ let autoRefreshRunning = false;
 let autoRefreshInProgress = false;
 let nextAutoRefreshAt = null;
 let serverClockOffsetMs = 0;
+let activeSnapshot = null;
+let selectedChartKey = 'loaded';
+let selectedChartLabel = 'Carts / Pieces Loaded';
 
 const $ = (selector) => document.querySelector(selector);
 const svgNode = (name, attributes = {}) => {
@@ -365,6 +368,222 @@ function renderCards(snapshot) {
     {label:'FUKA racks', value:current.fuka_racks_shipped},
     {label:'Fairing racks', value:current.fairing_racks_shipped}
   ], palette.amber));
+  markSelectableCards(container);
+}
+
+function chartKey(label) {
+  return label.trim().toLowerCase() === 'carts / pieces loaded'
+    ? 'loaded'
+    : label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function selectMetricChart(key, label) {
+  selectedChartKey = key;
+  selectedChartLabel = label;
+  document.querySelectorAll('.selectable-card').forEach(card => {
+    const selected = card.dataset.chartKey === selectedChartKey;
+    card.classList.toggle('selected-card', selected);
+    card.setAttribute('aria-pressed', String(selected));
+  });
+  if (activeSnapshot) renderMetricCharts(activeSnapshot);
+}
+
+function markSelectableCards(container) {
+  [...container.children].forEach(card => {
+    const label = card.firstElementChild?.textContent?.trim() || 'Metric';
+    const key = chartKey(label);
+    card.classList.add('selectable-card');
+    card.dataset.chartKey = key;
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('aria-controls', 'metric-chart-panel');
+    card.setAttribute('aria-label', `Show ${label} charts`);
+    card.addEventListener('click', () => selectMetricChart(key, label));
+    card.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      selectMetricChart(key, label);
+    });
+  });
+  selectMetricChart(selectedChartKey, selectedChartLabel);
+}
+
+function chartLegend(items) {
+  const legend = document.createElement('div'); legend.className = 'chart-legend';
+  items.forEach(item => {
+    const key = document.createElement('span'); key.className = 'legend-key';
+    const swatch = document.createElement('span'); swatch.className = `legend-swatch${item.line ? ' line' : ''}`;
+    swatch.style.background = item.color;
+    swatch.style.color = item.color;
+    key.append(swatch, text(item.label)); legend.append(key);
+  });
+  return legend;
+}
+
+function hourBucketLabel(bucket) {
+  const hour = Number(String(bucket).slice(11, 13));
+  if (!Number.isFinite(hour)) return '';
+  if (hour === 0) return '12a';
+  if (hour < 12) return `${hour}a`;
+  if (hour === 12) return '12p';
+  return `${hour - 12}p`;
+}
+
+function renderLoadedSeriesChart(container, rows, options) {
+  container.replaceChildren();
+  if (!rows.length) {
+    const empty = document.createElement('div'); empty.className = 'empty-state';
+    empty.append(text('No aggregate chart data is available for this snapshot.'));
+    container.append(empty); return;
+  }
+  const width = 720, height = 250, left = 48, right = 14, top = 16, bottom = 34;
+  const plotWidth = width - left - right, plotHeight = height - top - bottom;
+  const totals = rows.map(row => options.stacks.reduce((sum, item) => sum + Number(row[item.field] || 0), 0));
+  const lineValues = options.line ? rows.map(row => Number(row[options.line.field] || 0)) : [];
+  const maximum = Math.max(...totals, ...lineValues, 1) * 1.08;
+  const y = value => top + (maximum - value) * plotHeight / maximum;
+  const band = plotWidth / rows.length;
+  const barWidth = Math.max(3, Math.min(band * .68, 24));
+  const centerX = index => left + band * index + band / 2;
+  const svg = svgNode('svg', {viewBox:`0 0 ${width} ${height}`, role:'img', 'aria-label':options.ariaLabel});
+
+  for (let index = 0; index <= 4; index += 1) {
+    const value = maximum * index / 4;
+    const yy = y(value);
+    svg.append(svgNode('line', {x1:left, x2:width - right, y1:yy, y2:yy, stroke:palette.grid, 'stroke-width':1}));
+    const label = svgNode('text', {x:left - 8, y:yy + 4, 'text-anchor':'end', fill:palette.muted, 'font-size':10});
+    label.append(text(integer(Math.round(value)))); svg.append(label);
+  }
+
+  rows.forEach((row, index) => {
+    const x = centerX(index) - barWidth / 2;
+    let cumulative = 0;
+    options.stacks.forEach(item => {
+      const value = Number(row[item.field] || 0);
+      if (value <= 0) return;
+      const next = cumulative + value;
+      const rect = svgNode('rect', {
+        x, y:y(next), width:barWidth, height:Math.max(y(cumulative) - y(next), 1),
+        fill:item.color, opacity:row.is_partial ? .68 : 1,
+        stroke:row.is_partial ? palette.amber : 'none', 'stroke-dasharray':row.is_partial ? '3 2' : 'none'
+      });
+      const title = svgNode('title'); title.append(text(`${options.bucketTitle(row)} · ${item.label}: ${integer(value)}`));
+      rect.append(title); svg.append(rect); cumulative = next;
+    });
+    if (!row.data_available) {
+      svg.append(svgNode('line', {x1:x, x2:x + barWidth, y1:y(0) - 2, y2:y(0) - 2, stroke:'#aebbc4', 'stroke-width':2}));
+    }
+    if (options.showTick(index, rows.length)) {
+      const label = svgNode('text', {x:centerX(index), y:height - 11, 'text-anchor':'middle', fill:palette.muted, 'font-size':10});
+      label.append(text(options.bucketLabel(row))); svg.append(label);
+    }
+  });
+
+  if (options.line) {
+    const usable = rows.map((row, index) => ({row, index, value:Number(row[options.line.field] || 0)}))
+      .filter(point => point.row.data_available);
+    const points = usable.map(point => `${centerX(point.index)},${y(point.value)}`).join(' ');
+    svg.append(svgNode('polyline', {points, fill:'none', stroke:options.line.color, 'stroke-width':2.5, 'stroke-linejoin':'round', 'stroke-linecap':'round'}));
+    usable.forEach(point => {
+      const circle = svgNode('circle', {cx:centerX(point.index), cy:y(point.value), r:2.8, fill:options.line.color, stroke:'#fff', 'stroke-width':1});
+      const title = svgNode('title'); title.append(text(`${options.bucketTitle(point.row)} · ${options.line.label}: ${integer(point.value)}`));
+      circle.append(title); svg.append(circle);
+    });
+  }
+  const legendItems = [...options.stacks, ...(options.line ? [{...options.line, line:true}] : [])];
+  container.append(svg, chartLegend(legendItems));
+}
+
+function loadedChartCard(title, note, rows, options) {
+  const figure = document.createElement('figure'); figure.className = 'loaded-chart-card';
+  const caption = document.createElement('figcaption');
+  const heading = document.createElement('span'); heading.append(text(title));
+  const detail = document.createElement('small'); detail.append(text(note));
+  caption.append(heading, detail);
+  const chart = document.createElement('div'); chart.className = 'loaded-chart';
+  renderLoadedSeriesChart(chart, rows, options);
+  figure.append(caption, chart); return figure;
+}
+
+function metricChartSection(title, note) {
+  const section = document.createElement('section'); section.className = 'metric-chart-section';
+  const heading = document.createElement('div'); heading.className = 'metric-chart-section-heading';
+  const titleNode = document.createElement('h3'); titleNode.append(text(title));
+  const noteNode = document.createElement('p'); noteNode.append(text(note));
+  heading.append(titleNode, noteNode);
+  const grid = document.createElement('div'); grid.className = 'loaded-chart-grid';
+  section.append(heading, grid); return {section, grid};
+}
+
+function renderLoadedCharts(snapshot) {
+  const content = $('#metric-chart-content'); content.replaceChildren();
+  const loaded = snapshot.chart_series?.loaded;
+  if (!loaded || !Array.isArray(loaded.hourly) || !Array.isArray(loaded.daily_30)) {
+    const empty = document.createElement('div'); empty.className = 'chart-placeholder';
+    empty.append(text('This saved snapshot predates the Loaded chart contract. Load or refresh this date to build its aggregate chart series.'));
+    content.append(empty); return;
+  }
+  const hourly = loaded.hourly, daily = loaded.daily_30;
+  const reportDay = fullDateLabel(snapshot.report_date);
+  const hourlySection = metricChartSection('Hourly · selected report day', `24 clock-hour buckets · ${reportDay}`);
+  hourlySection.grid.append(
+    loadedChartCard('Carts loaded by hour', 'Cart assigned to first load event', hourly, {
+      stacks:[{field:'carts_loaded', label:'Total carts', color:palette.teal}],
+      line:null, ariaLabel:`Hourly carts loaded for ${reportDay}`,
+      bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
+      showTick:index => index % 3 === 0 || index === 23
+    }),
+    loadedChartCard('Pieces loaded by hour', 'Events with distinct-piece comparison', hourly, {
+      stacks:[{field:'parts_loaded', label:'Total events', color:palette.blue}],
+      line:{field:'unique_pieces_loaded', label:'Unique pieces', color:palette.navy},
+      ariaLabel:`Hourly pieces loaded for ${reportDay}`,
+      bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
+      showTick:index => index % 3 === 0 || index === 23
+    })
+  );
+
+  const partial = daily.some(row => row.is_partial);
+  const rollingSection = metricChartSection('Rolling 30 calendar days', 'Prd / BV / Svc stacks · zero-activity dates retained');
+  const dayOptions = {
+    bucketLabel:row => dateLabel(row.bucket), bucketTitle:row => fullDateLabel(row.bucket),
+    showTick:(index, length) => index % 5 === 0 || index === length - 1
+  };
+  rollingSection.grid.append(
+    loadedChartCard('Carts loaded · 30 days', 'Exclusive cart class', daily, {
+      stacks:[
+        {field:'production_carts_loaded', label:'Prd', color:palette.teal},
+        {field:'bv_carts_loaded', label:'BV', color:palette.purple},
+        {field:'service_carts_loaded', label:'Svc', color:palette.amber}
+      ], line:null, ariaLabel:'Rolling 30-day carts loaded by category', ...dayOptions
+    }),
+    loadedChartCard('Pieces loaded · 30 days', 'Load events with distinct-piece comparison', daily, {
+      stacks:[
+        {field:'production_parts_loaded', label:'Prd', color:palette.blue},
+        {field:'bv_parts_loaded', label:'BV', color:palette.purple},
+        {field:'service_parts_loaded', label:'Svc', color:palette.amber}
+      ], line:{field:'unique_pieces_loaded', label:'Unique pieces', color:palette.navy},
+      ariaLabel:'Rolling 30-day pieces loaded by category', ...dayOptions
+    })
+  );
+  content.append(hourlySection.section, rollingSection.section);
+  if (partial) {
+    const note = document.createElement('span'); note.className = 'chart-partial-note';
+    note.append(text('Current day is partial and updates with the normal cached refresh.'));
+    rollingSection.section.append(note);
+  }
+}
+
+function renderMetricCharts(snapshot) {
+  $('#metric-chart-title').textContent = selectedChartLabel;
+  const summary = $('#metric-chart-summary');
+  if (selectedChartKey === 'loaded') {
+    summary.textContent = 'Hourly report-day totals first, followed by the rolling 30-day category mix.';
+    renderLoadedCharts(snapshot); return;
+  }
+  summary.textContent = 'This tile is selectable; its chart contract will be added after the Loaded pilot layout is finalized.';
+  const placeholder = document.createElement('div'); placeholder.className = 'chart-placeholder';
+  placeholder.append(text(`${selectedChartLabel} charts are not enabled in this first layout pilot.`));
+  $('#metric-chart-content').replaceChildren(placeholder);
 }
 
 function renderTable(table, headers, rows, rowClass = () => '') {
@@ -525,6 +744,7 @@ function renderNotes(snapshot) {
 }
 
 function render(snapshot) {
+  activeSnapshot = snapshot;
   displayedReportDate = snapshot.report_date;
   $('#report-date').textContent = `Report date ${fullDateLabel(snapshot.report_date)}`;
   $('#report-range').textContent = rangeLabel(snapshot.daily);
@@ -532,6 +752,7 @@ function render(snapshot) {
   $('#date-input').value = snapshot.report_date;
   updateNavigationState();
   renderCards(snapshot);
+  renderMetricCharts(snapshot);
 }
 
 async function api(path, options = {}) {

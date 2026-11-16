@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from operations_kpi_rollup.live import snapshot_from_rollup
@@ -133,6 +133,39 @@ def metric_row(period_type, start, end, available=1, days=1):
 
 
 def result_sets():
+    report_date = date(2026, 11, 11)
+    zero = {
+        "parts_loaded": "0",
+        "production_parts_loaded": "0",
+        "bv_parts_loaded": "0",
+        "service_parts_loaded": "0",
+        "unique_pieces_loaded": "0",
+        "carts_loaded": "0",
+        "production_carts_loaded": "0",
+        "bv_carts_loaded": "0",
+        "service_carts_loaded": "0",
+    }
+    loaded = {field: metric_row("DAY", report_date.isoformat(), report_date.isoformat())[field] for field in zero}
+    hourly = [
+        {
+            "grain": "HOUR",
+            "bucket_start": f"{report_date.isoformat()} {hour:02d}:00:00",
+            "is_partial": "0",
+            "data_available": "1",
+            **(loaded if hour == 8 else zero),
+        }
+        for hour in range(24)
+    ]
+    daily_30 = [
+        {
+            "grain": "DAY",
+            "bucket_start": (report_date - timedelta(days=29 - offset)).isoformat(),
+            "is_partial": "0",
+            "data_available": "1",
+            **(loaded if offset == 29 else zero),
+        }
+        for offset in range(30)
+    ]
     return [
         {"index": 0, "rows": [{"history_start": "2026-09-08", "report_date": "2026-11-11"}]},
         {"index": 2, "rows": [metric_row("DAY", "2026-11-10", "2026-11-10"), metric_row("DAY", "2026-11-11", "2026-11-11")]},
@@ -146,6 +179,7 @@ def result_sets():
             {"report_date": "2026-11-11", "line_set": "N71-6164", "pieces_shipped": "5"},
             {"report_date": "2026-11-11", "line_set": "Fairings", "pieces_shipped": "10"},
         ]},
+        {"index": 14, "rows": hourly + daily_30},
     ]
 
 
@@ -157,7 +191,7 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
 
 
 def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
-    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "0b45a0737682b316113771e61a64f183ec04698fcee48af7f8b4cc94dabb7dc3")
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "3293844115f1580dbec0e39d0083125eb2f4517c31022e30ca54630a6f546e0a")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -211,9 +245,13 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert snapshot["top_defects"] == [{"step": "End of Line", "description": "Dirt", "count": 7}]
     assert [row["pieces"] for row in snapshot["shipping"]] == [55, 20, 5, 10]
     assert snapshot["painters"] == []
+    assert len(snapshot["chart_series"]["loaded"]["hourly"]) == 24
+    assert len(snapshot["chart_series"]["loaded"]["daily_30"]) == 30
+    assert snapshot["chart_series"]["loaded"]["hourly"][8]["parts_loaded"] == 100
+    assert snapshot["chart_series"]["loaded"]["daily_30"][-1]["unique_pieces_loaded"] == 91
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
-    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "0B45A0737682B316113771E61A64F183EC04698FCEE48AF7F8B4CC94DABB7DC3"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v18-gp-local-repaint-lineage"
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "3293844115F1580DBEC0E39D0083125EB2F4517C31022E30CA54630A6F546E0A"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v19-loaded-chart-series"
 
 
 def test_repaint_line_set_split_must_equal_total():
@@ -687,6 +725,7 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "0B45A0737682B316113771E61A64F183EC04698FCEE48AF7F8B4CC94DABB7DC3" in captured["query"]
+    assert "3293844115F1580DBEC0E39D0083125EB2F4517C31022E30CA54630A6F546E0A" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]
+    assert 14 in captured["wanted"]

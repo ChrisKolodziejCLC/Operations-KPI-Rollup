@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List
 
 from .metrics import enrich_metric_row, format_decimal, format_int, format_percent, safe_ratio
@@ -15,6 +15,22 @@ REQUIRED_TOP_LEVEL = {
     "shipping",
     "top_defects",
 }
+
+GP_LOCAL_REPAINT_METHODS = {
+    "operations-kpi-live-v18-gp-local-repaint-lineage",
+    "operations-kpi-live-v19-loaded-chart-series",
+}
+LOADED_CHART_FIELDS = (
+    "parts_loaded",
+    "production_parts_loaded",
+    "bv_parts_loaded",
+    "service_parts_loaded",
+    "unique_pieces_loaded",
+    "carts_loaded",
+    "production_carts_loaded",
+    "bv_carts_loaded",
+    "service_carts_loaded",
+)
 
 
 def _validate_split(
@@ -58,6 +74,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v16-receiving-finesse",
         "operations-kpi-live-v17-combined-finesse-two-row",
         "operations-kpi-live-v18-gp-local-repaint-lineage",
+        "operations-kpi-live-v19-loaded-chart-series",
     }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
@@ -74,6 +91,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v16-receiving-finesse",
                 "operations-kpi-live-v17-combined-finesse-two-row",
                 "operations-kpi-live-v18-gp-local-repaint-lineage",
+                "operations-kpi-live-v19-loaded-chart-series",
             }:
                 for unique_field, total_field, label in (
                     ("unique_pieces_loaded", "parts_loaded", "loaded unique-piece"),
@@ -96,6 +114,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v16-receiving-finesse",
                 "operations-kpi-live-v17-combined-finesse-two-row",
                 "operations-kpi-live-v18-gp-local-repaint-lineage",
+                "operations-kpi-live-v19-loaded-chart-series",
             }:
                 for quantity_field in ("receiving_quantity", "final_quantity"):
                     if quantity_field not in row:
@@ -114,6 +133,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v16-receiving-finesse",
                 "operations-kpi-live-v17-combined-finesse-two-row",
                 "operations-kpi-live-v18-gp-local-repaint-lineage",
+                "operations-kpi-live-v19-loaded-chart-series",
             }:
                 required_yield_fields = (
                     "reject_ppy_total", "reject_ppy_approved", "reject_ppy_rejected_count",
@@ -130,9 +150,10 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v16-receiving-finesse",
                     "operations-kpi-live-v17-combined-finesse-two-row",
                     "operations-kpi-live-v18-gp-local-repaint-lineage",
+                    "operations-kpi-live-v19-loaded-chart-series",
                 }:
                     required_yield_fields += ("ppy_repaint_count",)
-                if method_version == "operations-kpi-live-v18-gp-local-repaint-lineage":
+                if method_version in GP_LOCAL_REPAINT_METHODS:
                     required_yield_fields += (
                         "repaint_ppy_pending_count",
                         "repaint_fty_pending_count",
@@ -147,7 +168,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 if int(row["reject_ppy_total"]) != int(row.get("paint_decision_pieces", 0)):
                     raise ValueError(f"{collection} reject PPY total does not equal physical paint passes")
                 if (
-                    method_version != "operations-kpi-live-v18-gp-local-repaint-lineage"
+                    method_version not in GP_LOCAL_REPAINT_METHODS
                     and int(row["reject_fty_total"]) != int(row.get("paint_fty_total", 0))
                 ):
                     raise ValueError(f"{collection} reject FTY total does not equal initial paint passes")
@@ -161,6 +182,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v16-receiving-finesse",
                     "operations-kpi-live-v17-combined-finesse-two-row",
                     "operations-kpi-live-v18-gp-local-repaint-lineage",
+                    "operations-kpi-live-v19-loaded-chart-series",
                 }:
                     if int(row["reject_ppy_approved"]) + int(row["reject_ppy_rejected_count"]) + int(row["reject_ppy_pending_count"]) != int(row["reject_ppy_total"]):
                         raise ValueError(f"{collection} reject PPY outcomes do not equal its total")
@@ -168,12 +190,12 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                         raise ValueError(f"{collection} reject FTY outcomes do not equal its total")
                     repaint_ppy_pending_field = (
                         "repaint_ppy_pending_count"
-                        if method_version == "operations-kpi-live-v18-gp-local-repaint-lineage"
+                        if method_version in GP_LOCAL_REPAINT_METHODS
                         else "reject_ppy_pending_count"
                     )
                     repaint_fty_pending_field = (
                         "repaint_fty_pending_count"
-                        if method_version == "operations-kpi-live-v18-gp-local-repaint-lineage"
+                        if method_version in GP_LOCAL_REPAINT_METHODS
                         else "reject_fty_pending_count"
                     )
                     if int(row.get("ppy_approved", 0)) + int(row.get("ppy_repaint_count", 0)) + int(row[repaint_ppy_pending_field]) != int(row.get("paint_decision_pieces", 0)):
@@ -189,6 +211,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                         "operations-kpi-live-v16-receiving-finesse",
                         "operations-kpi-live-v17-combined-finesse-two-row",
                         "operations-kpi-live-v18-gp-local-repaint-lineage",
+                        "operations-kpi-live-v19-loaded-chart-series",
                     }:
                         repaint_split_fields = (
                             "fuka_paint_fty_repaint_count",
@@ -214,7 +237,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     raise ValueError(f"{collection} reject PPY pending count exceeds its total")
                 if int(row["reject_fty_pending_count"]) > int(row["reject_fty_total"]):
                     raise ValueError(f"{collection} reject FTY pending count exceeds its total")
-                if method_version == "operations-kpi-live-v18-gp-local-repaint-lineage":
+                if method_version in GP_LOCAL_REPAINT_METHODS:
                     if int(row["repaint_ppy_pending_count"]) > int(row.get("paint_decision_pieces", 0)):
                         raise ValueError(f"{collection} repaint PPY pending count exceeds its total")
                     if int(row["repaint_fty_pending_count"]) > int(row.get("paint_fty_total", 0)):
@@ -288,6 +311,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v16-receiving-finesse",
                     "operations-kpi-live-v17-combined-finesse-two-row",
                     "operations-kpi-live-v18-gp-local-repaint-lineage",
+                    "operations-kpi-live-v19-loaded-chart-series",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -332,6 +356,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v16-receiving-finesse",
                 "operations-kpi-live-v17-combined-finesse-two-row",
                 "operations-kpi-live-v18-gp-local-repaint-lineage",
+                "operations-kpi-live-v19-loaded-chart-series",
             }:
                 inspection_fields = (
                     "trailers_shipped",
@@ -395,6 +420,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v16-receiving-finesse",
                 "operations-kpi-live-v17-combined-finesse-two-row",
                 "operations-kpi-live-v18-gp-local-repaint-lineage",
+                "operations-kpi-live-v19-loaded-chart-series",
             }:
                 finesse_fields = (
                     "finesse_rejected_count",
@@ -447,6 +473,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v16-receiving-finesse",
                     "operations-kpi-live-v17-combined-finesse-two-row",
                     "operations-kpi-live-v18-gp-local-repaint-lineage",
+                    "operations-kpi-live-v19-loaded-chart-series",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -469,8 +496,61 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v16-receiving-finesse",
                     "operations-kpi-live-v17-combined-finesse-two-row",
                     "operations-kpi-live-v18-gp-local-repaint-lineage",
+                    "operations-kpi-live-v19-loaded-chart-series",
                 },
             )
+
+    if snapshot.get("scope", {}).get("method_version") == "operations-kpi-live-v19-loaded-chart-series":
+        loaded = snapshot.get("chart_series", {}).get("loaded", {})
+        hourly = loaded.get("hourly")
+        daily_30 = loaded.get("daily_30")
+        if not isinstance(hourly, list) or len(hourly) != 24:
+            raise ValueError("loaded chart must contain exactly 24 hourly buckets")
+        if not isinstance(daily_30, list) or len(daily_30) != 30:
+            raise ValueError("loaded chart must contain exactly 30 daily buckets")
+
+        report_date = date.fromisoformat(snapshot["report_date"])
+        hourly_buckets = [datetime.fromisoformat(str(row.get("bucket"))) for row in hourly]
+        expected_hours = [
+            datetime.combine(report_date, datetime.min.time()) + timedelta(hours=hour)
+            for hour in range(24)
+        ]
+        if hourly_buckets != expected_hours:
+            raise ValueError("loaded chart hourly buckets are not the report day's 24 ordered hours")
+        if any(row.get("data_available") is not True for row in hourly):
+            raise ValueError("loaded chart hourly buckets must be marked available")
+
+        daily_buckets = [date.fromisoformat(str(row.get("bucket"))) for row in daily_30]
+        expected_days = [report_date - timedelta(days=29 - offset) for offset in range(30)]
+        if daily_buckets != expected_days:
+            raise ValueError("loaded chart daily buckets are not the ordered rolling 30 days")
+
+        for label, rows in (("hourly", hourly), ("daily", daily_30)):
+            for row in rows:
+                if not isinstance(row.get("is_partial"), bool) or not isinstance(row.get("data_available"), bool):
+                    raise ValueError(f"loaded chart {label} availability flags must be booleans")
+                missing_fields = [field for field in LOADED_CHART_FIELDS if field not in row]
+                if missing_fields:
+                    raise ValueError(f"loaded chart {label} fields are missing: " + ", ".join(missing_fields))
+                if any(int(row[field]) < 0 for field in LOADED_CHART_FIELDS):
+                    raise ValueError(f"loaded chart {label} count is negative")
+                if int(row["unique_pieces_loaded"]) > int(row["parts_loaded"]):
+                    raise ValueError(f"loaded chart {label} unique pieces exceed event total")
+                if sum(int(row[field]) for field in (
+                    "production_parts_loaded", "bv_parts_loaded", "service_parts_loaded"
+                )) != int(row["parts_loaded"]):
+                    raise ValueError(f"loaded chart {label} piece split does not equal total")
+                if sum(int(row[field]) for field in (
+                    "production_carts_loaded", "bv_carts_loaded", "service_carts_loaded"
+                )) != int(row["carts_loaded"]):
+                    raise ValueError(f"loaded chart {label} cart split does not equal total")
+
+        report_daily = next(row for row in snapshot["daily"] if row.get("date") == snapshot["report_date"])
+        for field in LOADED_CHART_FIELDS:
+            if sum(int(row[field]) for row in hourly) != int(report_daily.get(field, 0)):
+                raise ValueError(f"loaded chart hourly {field} does not reconcile to the report day")
+            if int(daily_30[-1][field]) != int(report_daily.get(field, 0)):
+                raise ValueError(f"loaded chart final daily {field} does not reconcile to the report day")
 
     if snapshot.get("scope", {}).get("method_version") in {
         "operations-kpi-live-v13-mic-n71-breakdowns",
@@ -479,6 +559,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v16-receiving-finesse",
         "operations-kpi-live-v17-combined-finesse-two-row",
         "operations-kpi-live-v18-gp-local-repaint-lineage",
+        "operations-kpi-live-v19-loaded-chart-series",
     }:
         allowed_line_sets = {"FUKA", "Bumpers", "N71-6164", "Fairings", "Other"}
         report_shipping = [row for row in snapshot.get("shipping", []) if row.get("date") == snapshot["report_date"]]

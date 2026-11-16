@@ -15,6 +15,7 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `painters` | array | Painter/booth throughput rows; the committed fixture uses aliases. |
 | `shipping` | array | Date and exclusive FUKA, Fairings, Bumpers, N71-6164, and optional Other piece counts. N71-6164 takes precedence over its underlying Bumper description in this display split. |
 | `top_defects` | array | Aggregate step, defect description, and count. |
+| `chart_series` | object | Aggregate-only, refresh-owned chart series. Method v19 adds the Loaded pilot described below. |
 | `attention` | object | Reviewed exceptions suitable for the report. |
 | `data_quality_notes` | array | Method limitations shown to the reader. |
 
@@ -70,6 +71,18 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `pieces_scheduled` / `hours_scheduled` / `paint_hours` | Inputs to the provisional paint-plan composite. |
 
 Every ratio is calculated by the renderer from a saved numerator and denominator. A zero denominator renders as `No Data`, not `0.0%`.
+
+## Loaded chart series (method v19)
+
+`chart_series.loaded.hourly` contains exactly 24 ordered clock-hour buckets for the selected `report_date`. `chart_series.loaded.daily_30` contains exactly 30 ordered calendar-date buckets ending on that date. Each row contains:
+
+- `bucket`, `is_partial`, and `data_available`;
+- `parts_loaded`, its exclusive `production_` / `bv_` / `service_` split, and `unique_pieces_loaded`;
+- `carts_loaded` and its exclusive `production_` / `bv_` / `service_` split.
+
+Piece event totals remain in their actual load-event hour. A distinct piece is attributed to its first load-event hour that day, and a cart is attributed to its first load-event hour that day after the existing Service → BV → Prd cart-class precedence. This prevents a repeated load from making the sum of hourly unique pieces or carts exceed the existing daily distinct count. The daily series reuses `#DailyMetrics`; dates with no activity remain explicit zero buckets, and dates before the retained history boundary are marked `data_available = false`.
+
+The snapshot validator requires all category splits to reconcile per bucket, requires unique pieces not to exceed event totals, requires the 24 hourly sums to equal the existing report-date card row, and requires the final 30-day row to equal that same card row. No part IDs, cart IDs, employees, or other detail rows are present in the JSON contract.
 
 ## Derived values
 

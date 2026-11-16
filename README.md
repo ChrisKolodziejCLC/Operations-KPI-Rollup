@@ -75,6 +75,8 @@ Version 0.21.0 makes repaint lineage plant-local for BV-origin parts. Their firs
 
 Version 0.21.1 relabels the unchanged metrics as `Finesse Effectiveness`, `Preliminary OEE`, and trailer `Loaded / Departed`. The trailer rack details remain distinct EDI racks on non-service `SHIPPED` rows dated by `ship_date`; they are not matched to DriverLog trailer identifiers. Only Departed uses completed `DriverLog.TimeOut` records. A normal browser reload now opens today's saved immutable snapshot before falling back to the latest available snapshot, so viewing a historical day does not make that day persist across page reloads. No SQL, formula, source row, permission, or automatic-refresh change is involved.
 
+Version 0.22.0 introduces the first shared, tile-selectable chart area for `Carts / Pieces Loaded`. The first row contains aligned 24-hour Carts and Pieces charts for the selected report date; the second row contains aligned rolling 30-calendar-day charts with exclusive `Prd / BV / Svc` stacks. Pieces retain a Unique Pieces comparison line. Load-event totals stay in their actual event hour, while each distinct piece and cart is assigned to its first load-event hour so all 24 buckets reconcile exactly to the unchanged daily card. The chart series is aggregate-only, is built once by the existing service-owned refresh, and is saved in the immutable snapshot; selecting a tile never queries SQL. Other tiles are selectable but intentionally show a not-yet-enabled state until this pilot layout is approved.
+
 Run the safe local fixture mode:
 
 ```bash

@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Operations KPI Rollup</title>
-  <link rel="stylesheet" href="/styles.css?v=0.21.1-label-refresh">
-  <script src="/app.js?v=0.21.1-label-refresh" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=0.22.0-loaded-chart">
+  <script src="/app.js?v=0.22.0-loaded-chart" defer></script>
 </head>
 <body>
   <header class="masthead">
@@ -40,6 +40,17 @@
     </section>
 
     <section id="cards" class="cards" aria-label="Headline metrics"></section>
+
+    <section id="metric-chart-panel" class="panel metric-chart-panel" aria-live="polite">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Selected metric</p>
+          <h2 id="metric-chart-title">Carts / Pieces Loaded</h2>
+        </div>
+        <p id="metric-chart-summary">Hourly report-day totals first, followed by the rolling 30-day category mix.</p>
+      </div>
+      <div id="metric-chart-content"></div>
+    </section>
   </main>
 
   <footer>
