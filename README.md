@@ -79,6 +79,8 @@ Version 0.22.0 introduces the first shared, tile-selectable chart area for `Cart
 
 Version 0.24.0 keeps the two selected-day hourly Carts and Pieces plots as total-only line charts and adds Day Total, Peak Hour, and Active Hours summaries above each. The 13-week represented-day-average plots use vertical bars with the existing completed-week least-squares trendlines, weekly summaries, null-week omission, partial-week treatment, and vertical labels. The selected-day detail table remains beneath the hourly charts. This is an application-only presentation release; the v20 aggregate snapshot contract, KPI formulas, QPTS procedure and permissions, and cache-only wallboard polling are unchanged.
 
+Version 0.25.0 adds visible whole-number values above every hourly point and 13-week column. Loaded-chart point and column labels, tooltips, and y-axis scales are rounded to the nearest whole cart or piece; the summary tiles and completed-week least-squares trend calculation retain decimal precision. The aggregate snapshot contract, KPI formulas, QPTS procedure and permissions, and cache-only wallboard polling remain unchanged.
+
 Run the safe local fixture mode:
 
 ```bash

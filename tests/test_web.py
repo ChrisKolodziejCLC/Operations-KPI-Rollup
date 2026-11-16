@@ -129,7 +129,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.24.0-loaded-weekly-bars" in html
+            assert "0.25.0-loaded-value-labels" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html
@@ -264,6 +264,13 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "renderLoadedLineChart" in javascript
             assert "options.chartType === 'bar'" in javascript
             assert "class:'loaded-bar'" in javascript
+            assert "class:'loaded-value-label'" in javascript
+            assert "class:'loaded-scale-label'" in javascript
+            assert "loadedWholeNumberScaleMaximum" in javascript
+            assert "formatValue:wholeNumber" in javascript
+            assert "valueLabel.append(text(wholeNumber(value)))" in javascript
+            assert "value:periodAverage === null ? 'No Data' : decimal(periodAverage)" in javascript
+            assert "value:latest ? decimal(latest[options.averageField]) : 'No Data'" in javascript
             assert javascript.count("chartType:'bar'") == 1
             assert "line:!barChart" in javascript
             assert "loadedLinearTrend" in javascript
@@ -321,7 +328,8 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert ".loaded-chart-grid{display:grid;grid-template-columns:1fr 1fr" in styles
             assert ".loaded-chart-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))" in styles
             assert ".loaded-summary-table-wrap" in styles
-            assert ".loaded-axis-label{font-variant-numeric:tabular-nums}" in styles
+            assert ".loaded-axis-label,.loaded-scale-label{font-variant-numeric:tabular-nums}" in styles
+            assert ".loaded-value-label{" in styles
             assert ".chart-placeholder" in styles
     finally:
         server.shutdown()

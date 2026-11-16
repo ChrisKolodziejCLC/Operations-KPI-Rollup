@@ -103,7 +103,8 @@ button.secondary{border-color:#b6c7d0;background:#eef4f6;color:var(--navy)}
 .loaded-chart-summary-item small{display:block;color:var(--muted);font-size:.58rem;line-height:1.25}
 .loaded-chart{min-height:260px}
 .loaded-chart .chart-legend{margin:.35rem 0 0}
-.loaded-axis-label{font-variant-numeric:tabular-nums}
+.loaded-axis-label,.loaded-scale-label{font-variant-numeric:tabular-nums}
+.loaded-value-label{fill:var(--navy);font-size:10px;font-weight:800;font-variant-numeric:tabular-nums;paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
 .legend-swatch.line{height:0;border-top:2px solid currentColor;background:transparent!important}
 .chart-partial-note{display:inline-flex;align-items:center;gap:.35rem;color:var(--muted);font-size:.68rem;font-weight:700}
 .chart-partial-note::before{content:"";width:.7rem;height:.7rem;border:1px dashed var(--amber);background:#fff3df}

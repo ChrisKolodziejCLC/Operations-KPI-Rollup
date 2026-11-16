@@ -27,6 +27,7 @@ const svgNode = (name, attributes = {}) => {
 };
 const text = (value) => document.createTextNode(String(value ?? ''));
 const integer = (value) => Number(value || 0).toLocaleString();
+const wholeNumber = (value) => Math.round(Number(value || 0)).toLocaleString(undefined, {maximumFractionDigits:0});
 const decimal = (value) => Number(value || 0).toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1});
 const optionalInteger = (value) => value === undefined || value === null ? 'No Data' : integer(value);
 const compactOptionalInteger = (value) => value === undefined || value === null ? '—' : integer(value);
@@ -453,6 +454,12 @@ function loadedLinearTrend(rows, field) {
   };
 }
 
+function loadedWholeNumberScaleMaximum(values) {
+  const largest = Math.max(...values.map(value => Math.max(0, Number(value))).filter(Number.isFinite), 1);
+  const tickStep = Math.max(1, Math.ceil(largest * 1.18 / 4));
+  return tickStep * 4;
+}
+
 function renderLoadedLineChart(container, rows, options) {
   container.replaceChildren();
   if (!rows.length) {
@@ -468,18 +475,18 @@ function renderLoadedLineChart(container, rows, options) {
   const trend = options.trend ? loadedLinearTrend(rows, options.field) : null;
   const finiteValues = values.filter(value => value !== null && Number.isFinite(value));
   if (trend) finiteValues.push(Math.max(0, trend.startValue), Math.max(0, trend.endValue));
-  const maximum = Math.max(...finiteValues, 1) * 1.08;
+  const maximum = loadedWholeNumberScaleMaximum(finiteValues);
   const y = value => top + (maximum - Math.max(0, value)) * plotHeight / maximum;
   const band = plotWidth / rows.length;
   const centerX = index => left + band * index + band / 2;
-  const formatValue = options.formatValue || integer;
+  const formatValue = options.formatValue || wholeNumber;
   const svg = svgNode('svg', {viewBox:'0 0 ' + width + ' ' + height, role:'img', 'aria-label':options.ariaLabel});
 
   for (let index = 0; index <= 4; index += 1) {
     const value = maximum * index / 4;
     const yy = y(value);
     svg.append(svgNode('line', {x1:left, x2:width - right, y1:yy, y2:yy, stroke:palette.grid, 'stroke-width':1}));
-    const label = svgNode('text', {x:left - 8, y:yy + 4, 'text-anchor':'end', fill:palette.muted, 'font-size':10});
+    const label = svgNode('text', {x:left - 8, y:yy + 4, 'text-anchor':'end', fill:palette.muted, 'font-size':10, class:'loaded-scale-label'});
     label.append(text(formatValue(value))); svg.append(label);
   }
 
@@ -527,6 +534,11 @@ function renderLoadedLineChart(container, rows, options) {
         });
         circle.append(title); svg.append(circle);
       }
+      const valueLabel = svgNode('text', {
+        x:centerX(index), y:Math.max(top + 10, y(value) - 7),
+        'text-anchor':'middle', class:'loaded-value-label'
+      });
+      valueLabel.append(text(wholeNumber(value))); svg.append(valueLabel);
     }
     if (options.showTick(index, rows.length)) {
       const labelY = height - 8;
@@ -689,14 +701,14 @@ function renderLoadedCharts(snapshot) {
   const hourlySection = metricChartSection('Hourly · selected report day', '24 clock-hour buckets · ' + reportDay);
   hourlySection.grid.append(
     loadedChartCard('Carts loaded by hour', 'Total carts · first load event', hourly, {
-      field:'carts_loaded', label:'Total carts', color:palette.teal, trend:false,
+      field:'carts_loaded', label:'Total carts', color:palette.teal, trend:false, formatValue:wholeNumber,
       ariaLabel:'Hourly total carts loaded for ' + reportDay,
       bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
       verticalLabels:true, showTick:() => true,
       hourlySummary:{label:'Carts', field:'carts_loaded'}
     }),
     loadedChartCard('Pieces loaded by hour', 'Total load events', hourly, {
-      field:'parts_loaded', label:'Total pieces', color:palette.blue, trend:false,
+      field:'parts_loaded', label:'Total pieces', color:palette.blue, trend:false, formatValue:wholeNumber,
       ariaLabel:'Hourly total pieces loaded for ' + reportDay,
       bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
       verticalLabels:true, showTick:() => true,
@@ -710,7 +722,7 @@ function renderLoadedCharts(snapshot) {
     'Sunday–Saturday · represented production days · partial selected week excluded from trend'
   );
   const weeklyOptions = {
-    formatValue:decimal, trend:true, omitNull:true, verticalLabels:true, chartType:'bar',
+    formatValue:wholeNumber, trend:true, omitNull:true, verticalLabels:true, chartType:'bar',
     bucketLabel:row => dateLabel(row.bucket),
     bucketTitle:row => fullDateLabel(row.bucket) + ' through ' + fullDateLabel(row.bucket_end),
     tooltipSuffix:row => ' · ' + integer(row.represented_days) + ' represented days',
