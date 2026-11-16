@@ -483,6 +483,8 @@ function renderLoadedLineChart(container, rows, options) {
     label.append(text(formatValue(value))); svg.append(label);
   }
 
+  const barChart = options.chartType === 'bar';
+  const barWidth = Math.min(38, band * .62);
   let segment = [];
   const flushSegment = () => {
     if (segment.length > 1) {
@@ -497,21 +499,34 @@ function renderLoadedLineChart(container, rows, options) {
     const value = values[index];
     if (value === null || !Number.isFinite(value)) {
       flushSegment();
-      svg.append(svgNode('line', {
-        x1:centerX(index) - 7, x2:centerX(index) + 7, y1:y(0) - 2, y2:y(0) - 2,
-        stroke:'#aebbc4', 'stroke-width':2
-      }));
+      if (!barChart) {
+        svg.append(svgNode('line', {
+          x1:centerX(index) - 7, x2:centerX(index) + 7, y1:y(0) - 2, y2:y(0) - 2,
+          stroke:'#aebbc4', 'stroke-width':2
+        }));
+      }
     } else {
-      segment.push(centerX(index) + ',' + y(value));
-      const circle = svgNode('circle', {
-        cx:centerX(index), cy:y(value), r:3.2, fill:row.is_partial ? '#fff3df' : options.color,
-        stroke:row.is_partial ? palette.amber : '#fff', 'stroke-width':row.is_partial ? 2 : 1,
-        'stroke-dasharray':row.is_partial ? '2 1' : 'none'
-      });
       const suffix = options.tooltipSuffix ? options.tooltipSuffix(row) : '';
       const title = svgNode('title');
       title.append(text(options.bucketTitle(row) + ' · ' + options.label + ': ' + formatValue(value) + suffix));
-      circle.append(title); svg.append(circle);
+      if (barChart) {
+        const bar = svgNode('rect', {
+          x:centerX(index) - barWidth / 2, y:y(value), width:barWidth,
+          height:Math.max(1, y(0) - y(value)), class:'loaded-bar',
+          fill:row.is_partial ? '#fff3df' : options.color,
+          stroke:row.is_partial ? palette.amber : options.color,
+          'stroke-width':row.is_partial ? 2 : 1, opacity:row.is_partial ? .94 : .86
+        });
+        bar.append(title); svg.append(bar);
+      } else {
+        segment.push(centerX(index) + ',' + y(value));
+        const circle = svgNode('circle', {
+          cx:centerX(index), cy:y(value), r:3.2, fill:row.is_partial ? '#fff3df' : options.color,
+          stroke:row.is_partial ? palette.amber : '#fff', 'stroke-width':row.is_partial ? 2 : 1,
+          'stroke-dasharray':row.is_partial ? '2 1' : 'none'
+        });
+        circle.append(title); svg.append(circle);
+      }
     }
     if (options.showTick(index, rows.length)) {
       const labelY = height - 8;
@@ -536,9 +551,36 @@ function renderLoadedLineChart(container, rows, options) {
     title.append(text('Linear trend: ' + (trend.slope >= 0 ? '+' : '') + decimal(trend.slope) + ' per week'));
     trendLine.append(title); svg.append(trendLine);
   }
-  const legend = [{label:options.label, color:options.color, line:true}];
+  const legend = [{label:options.label, color:options.color, line:!barChart}];
   if (trend) legend.push({label:'Linear trend', color:palette.navy, line:true});
   container.append(svg, chartLegend(legend));
+}
+
+function loadedHourlySummary(rows, options) {
+  const values = rows.map(row => Number(row[options.field])).filter(Number.isFinite);
+  const total = values.reduce((sum, value) => sum + value, 0);
+  const activeHours = values.filter(value => value > 0).length;
+  const peak = rows.reduce((best, row) => {
+    const value = Number(row[options.field]);
+    return Number.isFinite(value) && (!best || value > best.value) ? {row, value} : best;
+  }, null);
+  const summary = document.createElement('div');
+  summary.className = 'loaded-chart-summary';
+  summary.setAttribute('role', 'group');
+  summary.setAttribute('aria-label', options.label + ' selected-day hourly summary');
+  const items = [
+    {label:'Day total', value:integer(total), detail:rows.length + ' clock-hour buckets'},
+    {label:'Peak hour', value:peak ? integer(peak.value) : 'No Data', detail:peak ? hourBucketLabel(peak.row.bucket) + ' bucket' : 'No hourly data'},
+    {label:'Active hours', value:integer(activeHours), detail:'hours above zero'}
+  ];
+  items.forEach(item => {
+    const metric = document.createElement('div'); metric.className = 'loaded-chart-summary-item';
+    const label = document.createElement('span'); label.append(text(item.label));
+    const value = document.createElement('strong'); value.append(text(item.value));
+    const detail = document.createElement('small'); detail.append(text(item.detail));
+    metric.append(label, value, detail); summary.append(metric);
+  });
+  return summary;
 }
 
 function loadedWeeklySummary(rows, options) {
@@ -619,6 +661,7 @@ function loadedChartCard(title, note, rows, options) {
   const chart = document.createElement('div'); chart.className = 'loaded-chart';
   renderLoadedLineChart(chart, displayRows, options);
   figure.append(caption);
+  if (options.hourlySummary) figure.append(loadedHourlySummary(displayRows, options.hourlySummary));
   if (options.summary) figure.append(loadedWeeklySummary(displayRows, options.summary));
   figure.append(chart); return figure;
 }
@@ -649,13 +692,15 @@ function renderLoadedCharts(snapshot) {
       field:'carts_loaded', label:'Total carts', color:palette.teal, trend:false,
       ariaLabel:'Hourly total carts loaded for ' + reportDay,
       bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
-      verticalLabels:true, showTick:() => true
+      verticalLabels:true, showTick:() => true,
+      hourlySummary:{label:'Carts', field:'carts_loaded'}
     }),
     loadedChartCard('Pieces loaded by hour', 'Total load events', hourly, {
       field:'parts_loaded', label:'Total pieces', color:palette.blue, trend:false,
       ariaLabel:'Hourly total pieces loaded for ' + reportDay,
       bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
-      verticalLabels:true, showTick:() => true
+      verticalLabels:true, showTick:() => true,
+      hourlySummary:{label:'Pieces', field:'parts_loaded'}
     })
   );
   hourlySection.section.append(loadedTileSummaryTable(snapshot));
@@ -665,7 +710,7 @@ function renderLoadedCharts(snapshot) {
     'Sunday–Saturday · represented production days · partial selected week excluded from trend'
   );
   const weeklyOptions = {
-    formatValue:decimal, trend:true, omitNull:true, verticalLabels:true,
+    formatValue:decimal, trend:true, omitNull:true, verticalLabels:true, chartType:'bar',
     bucketLabel:row => dateLabel(row.bucket),
     bucketTitle:row => fullDateLabel(row.bucket) + ' through ' + fullDateLabel(row.bucket_end),
     tooltipSuffix:row => ' · ' + integer(row.represented_days) + ' represented days',
@@ -700,7 +745,7 @@ function renderMetricCharts(snapshot) {
   $('#metric-chart-title').textContent = selectedChartLabel;
   const summary = $('#metric-chart-summary');
   if (selectedChartKey === 'loaded') {
-    summary.textContent = 'Hourly total lines and selected-day summary, followed by 13-week represented-day averages and trends.';
+    summary.textContent = 'Hourly total lines and selected-day summary, followed by 13-week average bars and trendlines.';
     renderLoadedCharts(snapshot); return;
   }
   summary.textContent = 'This tile is selectable; its chart contract will be added after the Loaded pilot layout is finalized.';

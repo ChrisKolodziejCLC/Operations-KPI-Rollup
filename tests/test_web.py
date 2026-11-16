@@ -129,7 +129,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.23.0-loaded-13-week" in html
+            assert "0.24.0-loaded-weekly-bars" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html
@@ -262,12 +262,21 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "sessionStorage" not in javascript
             assert "renderLoadedCharts(snapshot)" in javascript
             assert "renderLoadedLineChart" in javascript
+            assert "options.chartType === 'bar'" in javascript
+            assert "class:'loaded-bar'" in javascript
+            assert javascript.count("chartType:'bar'") == 1
+            assert "line:!barChart" in javascript
             assert "loadedLinearTrend" in javascript
             assert "13-week daily averages" in javascript
             assert "loadedTileSummaryTable" in javascript
+            assert "loadedHourlySummary" in javascript
+            assert javascript.count("hourlySummary:{label:") == 2
+            assert "Day total" in javascript
+            assert "Peak hour" in javascript
+            assert "Active hours" in javascript
             assert "loadedWeeklySummary" in javascript
             assert "options.omitNull" in javascript
-            assert "omitNull:true, verticalLabels:true" in javascript
+            assert "omitNull:true, verticalLabels:true, chartType:'bar'" in javascript
             assert javascript.count("verticalLabels:true, showTick:() => true") == 2
             assert "Unavailable weeks before the September 8 history boundary are omitted, not zero." in javascript
             assert "field:'unique_pieces_loaded'" not in javascript

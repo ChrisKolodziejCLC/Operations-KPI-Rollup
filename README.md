@@ -77,6 +77,8 @@ Version 0.21.1 relabels the unchanged metrics as `Finesse Effectiveness`, `Preli
 
 Version 0.22.0 introduces the first shared, tile-selectable chart area for `Carts / Pieces Loaded`. The first row contains aligned 24-hour Carts and Pieces charts for the selected report date; the second row contains aligned rolling 30-calendar-day charts with exclusive `Prd / BV / Svc` stacks. Pieces retain a Unique Pieces comparison line. Load-event totals stay in their actual event hour, while each distinct piece and cart is assigned to its first load-event hour so all 24 buckets reconcile exactly to the unchanged daily card. The chart series is aggregate-only, is built once by the existing service-owned refresh, and is saved in the immutable snapshot; selecting a tile never queries SQL. Other tiles are selectable but intentionally show a not-yet-enabled state until this pilot layout is approved.
 
+Version 0.24.0 keeps the two selected-day hourly Carts and Pieces plots as total-only line charts and adds Day Total, Peak Hour, and Active Hours summaries above each. The 13-week represented-day-average plots use vertical bars with the existing completed-week least-squares trendlines, weekly summaries, null-week omission, partial-week treatment, and vertical labels. The selected-day detail table remains beneath the hourly charts. This is an application-only presentation release; the v20 aggregate snapshot contract, KPI formulas, QPTS procedure and permissions, and cache-only wallboard polling are unchanged.
+
 Run the safe local fixture mode:
 
 ```bash
