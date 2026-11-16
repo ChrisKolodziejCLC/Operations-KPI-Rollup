@@ -457,6 +457,27 @@ function loadedLinearTrend(rows, field) {
   };
 }
 
+function loadedWeeklyReferenceModel(rows, model) {
+  const completed = rows.filter(row => row.data_available && !row.is_partial
+    && Number(row.performance_days || 0) > 0
+    && Number(row.net_loading_minutes || 0) > 0);
+  const performanceDays = completed.reduce((sum, row) => sum + Number(row.performance_days || 0), 0);
+  const netLoadingMinutes = completed.reduce((sum, row) => sum + Number(row.net_loading_minutes || 0), 0);
+  const averageNetHours = performanceDays > 0 ? netLoadingMinutes / 60 / performanceDays : null;
+  const dailyValue = rateField => {
+    const rate = Number(model?.[rateField]);
+    return averageNetHours !== null && Number.isFinite(rate)
+      ? Number((rate * averageNetHours).toFixed(1)) : null;
+  };
+  return {
+    performanceDays, averageNetHours,
+    targetCarts:dailyValue('target_carts_per_hour'),
+    goalCarts:dailyValue('goal_carts_per_hour'),
+    targetPieces:dailyValue('target_pieces_per_hour'),
+    goalPieces:dailyValue('goal_pieces_per_hour')
+  };
+}
+
 function loadedWholeNumberScaleMaximum(values) {
   const largest = Math.max(...values.map(value => Math.max(0, Number(value))).filter(Number.isFinite), 1);
   const tickStep = Math.max(1, Math.ceil(largest * 1.18 / 4));
@@ -598,7 +619,7 @@ function renderLoadedLineChart(container, rows, options) {
           class:'loaded-reference-line loaded-reference-line-full-width'
         });
         const title = svgNode('title');
-        title.append(text(reference.label + ' · full historical span from fully comparable weeks'));
+        title.append(text(reference.label + ' · horizontal 13-week average-day reference'));
         line.append(title); svg.append(line);
       }
       return;
@@ -767,35 +788,6 @@ function loadedPerformanceContract(loaded) {
   wrap.append(heading, table, policy); return wrap;
 }
 
-function loadedTileSummaryTable(snapshot) {
-  const current = snapshot.daily.find(row => row.date === snapshot.report_date);
-  const wrap = document.createElement('div'); wrap.className = 'loaded-summary-table-wrap';
-  if (!current) return wrap;
-  const heading = document.createElement('h4'); heading.append(text('Loaded tile summary · selected report day'));
-  const table = document.createElement('table'); table.className = 'loaded-summary-table';
-  table.setAttribute('aria-label', 'Selected report day Loaded tile summary');
-  const head = document.createElement('thead');
-  const headingRow = document.createElement('tr');
-  ['Metric', 'Total', 'Unique', 'Prd', 'BV', 'Svc'].forEach(value => {
-    const th = document.createElement('th'); th.scope = 'col'; th.append(text(value)); headingRow.append(th);
-  });
-  head.append(headingRow);
-  const body = document.createElement('tbody');
-  [
-    ['Carts', current.carts_loaded, null, current.production_carts_loaded, current.bv_carts_loaded, current.service_carts_loaded],
-    ['Pieces', current.parts_loaded, current.unique_pieces_loaded, current.production_parts_loaded, current.bv_parts_loaded, current.service_parts_loaded]
-  ].forEach(values => {
-    const row = document.createElement('tr');
-    values.forEach((value, index) => {
-      const cell = document.createElement(index === 0 ? 'th' : 'td');
-      if (index === 0) cell.scope = 'row';
-      cell.append(text(value === null ? '—' : index === 0 ? value : integer(value))); row.append(cell);
-    });
-    body.append(row);
-  });
-  table.append(head, body); wrap.append(heading, table); return wrap;
-}
-
 function loadedChartCard(title, note, rows, options) {
   const figure = document.createElement('figure'); figure.className = 'loaded-chart-card';
   const caption = document.createElement('figcaption');
@@ -833,6 +825,7 @@ function renderLoadedCharts(snapshot) {
   }
   const hourly = loaded.hourly, weekly = loaded.weekly_13;
   const performance = {model:loaded.performance_model || {}, day:loaded.selected_day || {}};
+  const weeklyReference = loadedWeeklyReferenceModel(weekly, performance.model);
   const reportDay = fullDateLabel(snapshot.report_date);
   const hourlySection = metricChartSection('Hourly · selected report day', '24 clock-hour buckets · ' + reportDay);
   hourlySection.grid.append(
@@ -859,8 +852,6 @@ function renderLoadedCharts(snapshot) {
       hourlySummary:{label:'Pieces', field:'parts_loaded'}
     })
   );
-  hourlySection.section.append(loadedTileSummaryTable(snapshot));
-
   const weeklySection = metricChartSection(
     '13-week daily averages',
     'Sunday–Saturday · represented production days · partial selected week excluded from trend and target scoring'
@@ -878,8 +869,8 @@ function renderLoadedCharts(snapshot) {
       ...weeklyOptions, field:'average_carts_loaded', label:'Daily average carts', color:palette.teal,
       ariaLabel:'Thirteen-week daily average carts loaded with linear trend, interim target, and long-term goal',
       references:[
-        {field:'average_target_carts', label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
-        {field:'average_goal_carts', label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
+        {value:weeklyReference.targetCarts, label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
+        {value:weeklyReference.goalCarts, label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
       ],
       summary:{label:'Carts', averageField:'average_carts_loaded', totalField:'carts_loaded_total'}
     }),
@@ -887,8 +878,8 @@ function renderLoadedCharts(snapshot) {
       ...weeklyOptions, field:'average_parts_loaded', label:'Daily average pieces', color:palette.blue,
       ariaLabel:'Thirteen-week daily average pieces loaded with linear trend, interim target, and long-term goal',
       references:[
-        {field:'average_target_pieces', label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
-        {field:'average_goal_pieces', label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
+        {value:weeklyReference.targetPieces, label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
+        {value:weeklyReference.goalPieces, label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
       ],
       summary:{label:'Pieces', averageField:'average_parts_loaded', totalField:'parts_loaded_total'}
     })
@@ -899,10 +890,13 @@ function renderLoadedCharts(snapshot) {
     note.append(text('The selected week is partial and is displayed but excluded from both trendlines.'));
     weeklySection.section.append(note);
   }
-  if (weekly.some(row => row.data_available && !row.is_partial
-    && Number(row.represented_days || 0) > 0 && !row.performance_comparable)) {
+  if (weeklyReference.averageNetHours !== null) {
     const comparison = document.createElement('span'); comparison.className = 'chart-unavailable-note';
-    comparison.append(text('Target and goal lines span the historical plot using values from fully comparable weeks; unscored weeks do not create new reference values.'));
+    comparison.append(text(
+      'Horizontal target and goal lines use one ' + decimal(weeklyReference.averageNetHours)
+      + '-hour average net-loading day from ' + integer(weeklyReference.performanceDays)
+      + ' completed loading days in completed weeks. The reference updates only when the 13-week window rolls.'
+    ));
     weeklySection.section.append(comparison);
   }
   if (weekly.some(row => !row.data_available)) {
@@ -916,7 +910,7 @@ function renderMetricCharts(snapshot) {
   $('#metric-chart-title').textContent = selectedChartLabel;
   const summary = $('#metric-chart-summary');
   if (selectedChartKey === 'loaded') {
-    summary.textContent = 'Hourly totals with interim-target and long-term-goal lines, followed by net-time-adjusted 13-week averages and trend.';
+    summary.textContent = 'Hourly totals with interim-target and long-term-goal lines, followed by 13-week daily averages with horizontal average-day references and trend.';
     renderLoadedCharts(snapshot); return;
   }
   summary.textContent = 'This tile is selectable; its chart contract will be added after the Loaded pilot layout is finalized.';

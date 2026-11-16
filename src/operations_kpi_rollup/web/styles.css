@@ -109,13 +109,11 @@ button.secondary{border-color:#b6c7d0;background:#eef4f6;color:var(--navy)}
 .chart-partial-note{display:inline-flex;align-items:center;gap:.35rem;color:var(--muted);font-size:.68rem;font-weight:700}
 .chart-partial-note::before{content:"";width:.7rem;height:.7rem;border:1px dashed var(--amber);background:#fff3df}
 .chart-unavailable-note{display:inline-flex;margin-left:1rem;color:var(--muted);font-size:.68rem;font-weight:700}
-.loaded-summary-table-wrap{margin-top:.8rem;padding:.7rem .8rem;border:1px solid #e1e9ed;background:#fbfcfd}
 .loaded-performance-contract{margin:0 0 .8rem;padding:.7rem .8rem;border:1px solid #d9e4e8;background:#f7fafb}
 .loaded-performance-contract-heading{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;margin-bottom:.45rem}
 .loaded-performance-contract h4{margin:0;color:var(--navy);font-size:.82rem}
 .loaded-performance-contract p{margin:0;color:var(--muted);font-size:.65rem;text-align:right}
 .loaded-performance-contract>small{display:block;margin-top:.45rem;color:var(--muted);font-size:.62rem;line-height:1.35}
-.loaded-summary-table-wrap h4{margin:0 0 .45rem;color:var(--navy);font-size:.82rem}
 .loaded-summary-table{font-size:.72rem}
 .loaded-summary-table th,.loaded-summary-table td{padding:.42rem .55rem}
 .loaded-summary-table tbody th{text-align:left;color:var(--navy);background:#f4f7f8}

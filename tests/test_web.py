@@ -171,7 +171,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.29.0-weekly-full-width-references" in html
+            assert "0.30.0-horizontal-weekly-references" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html
@@ -317,7 +317,8 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "line:!barChart" in javascript
             assert "loadedLinearTrend" in javascript
             assert "13-week daily averages" in javascript
-            assert "loadedTileSummaryTable" in javascript
+            assert "loadedTileSummaryTable" not in javascript
+            assert "Loaded tile summary · selected report day" not in javascript
             assert "loadedHourlySummary" in javascript
             assert javascript.count("hourlySummary:{label:") == 2
             assert "Day total" in javascript
@@ -328,8 +329,12 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Interim target" in javascript
             assert "Long-term goal" in javascript
             assert "loadedPerformanceContract" in javascript
-            assert "average_target_carts" in javascript
-            assert "average_goal_pieces" in javascript
+            assert "loadedWeeklyReferenceModel" in javascript
+            assert "netLoadingMinutes / 60 / performanceDays" in javascript
+            assert "value:weeklyReference.targetCarts" in javascript
+            assert "value:weeklyReference.goalPieces" in javascript
+            assert "field:'average_target_carts'" not in javascript
+            assert "field:'average_goal_pieces'" not in javascript
             assert "Net-time interim target" in javascript
             assert "Net-time long-term goal" in javascript
             assert javascript.count("value:performance.model.target_") == 2
@@ -339,7 +344,10 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "loaded-reference-line-full-width" in javascript
             assert "points = [left + ',' + y(referencePoints[0].value)]" in javascript
             assert "points.push((width - right) + ',' + y(referencePoints[referencePoints.length - 1].value))" in javascript
-            assert "Target and goal lines span the historical plot using values from fully comparable weeks" in javascript
+            assert "horizontal 13-week average-day reference" in javascript
+            assert "Horizontal target and goal lines use one " in javascript
+            assert "The reference updates only when the 13-week window rolls." in javascript
+            assert "Target and goal lines span the historical plot using values from fully comparable weeks" not in javascript
             assert "Target and goal segments appear only on fully comparable weeks" not in javascript
             assert "loadedWeeklySummary" in javascript
             assert "options.omitNull" in javascript
@@ -387,7 +395,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert ".metric-card.selectable-card" in styles
             assert ".loaded-chart-grid{display:grid;grid-template-columns:1fr 1fr" in styles
             assert ".loaded-chart-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))" in styles
-            assert ".loaded-summary-table-wrap" in styles
+            assert ".loaded-summary-table-wrap" not in styles
             assert ".loaded-performance-contract" in styles
             assert ".loaded-axis-label,.loaded-scale-label{font-variant-numeric:tabular-nums}" in styles
             assert ".loaded-value-label{" in styles
