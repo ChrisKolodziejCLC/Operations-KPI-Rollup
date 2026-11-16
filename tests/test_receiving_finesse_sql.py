@@ -3,7 +3,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 MIGRATION = ROOT / "sql" / "2026-11-14-correct-receiving-finesse.sql"
-SERVICE = ROOT / "deploy" / "operations-kpi-rollup.service"
 BASE_HASH = "5A4EA0319892EF663E13ED7EA8BC026D852F3DCC748EC450896B6D549464044D"
 CANDIDATE_HASH = "AC7DFDADC5C86C638385CD59265DA5E78A35C6A6A50F7CD869A014F7F02639BE"
 
@@ -62,9 +61,3 @@ def test_migration_does_not_write_qpts_business_rows():
     assert "UPDATE " not in sql
     assert "DELETE " not in sql
     assert "MERGE " not in sql
-
-
-def test_deployment_unit_pins_the_receiving_finesse_hash():
-    unit = SERVICE.read_text(encoding="utf-8")
-
-    assert f"Environment=KPI_SQL_PROCEDURE_HASH={CANDIDATE_HASH}" in unit

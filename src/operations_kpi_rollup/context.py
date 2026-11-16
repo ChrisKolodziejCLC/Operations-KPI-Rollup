@@ -57,6 +57,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v15-description-family-mapping",
         "operations-kpi-live-v16-receiving-finesse",
         "operations-kpi-live-v17-combined-finesse-two-row",
+        "operations-kpi-live-v18-gp-local-repaint-lineage",
     }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
@@ -72,6 +73,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v15-description-family-mapping",
                 "operations-kpi-live-v16-receiving-finesse",
                 "operations-kpi-live-v17-combined-finesse-two-row",
+                "operations-kpi-live-v18-gp-local-repaint-lineage",
             }:
                 for unique_field, total_field, label in (
                     ("unique_pieces_loaded", "parts_loaded", "loaded unique-piece"),
@@ -93,6 +95,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v15-description-family-mapping",
                 "operations-kpi-live-v16-receiving-finesse",
                 "operations-kpi-live-v17-combined-finesse-two-row",
+                "operations-kpi-live-v18-gp-local-repaint-lineage",
             }:
                 for quantity_field in ("receiving_quantity", "final_quantity"):
                     if quantity_field not in row:
@@ -110,6 +113,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v15-description-family-mapping",
                 "operations-kpi-live-v16-receiving-finesse",
                 "operations-kpi-live-v17-combined-finesse-two-row",
+                "operations-kpi-live-v18-gp-local-repaint-lineage",
             }:
                 required_yield_fields = (
                     "reject_ppy_total", "reject_ppy_approved", "reject_ppy_rejected_count",
@@ -125,8 +129,14 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v15-description-family-mapping",
                     "operations-kpi-live-v16-receiving-finesse",
                     "operations-kpi-live-v17-combined-finesse-two-row",
+                    "operations-kpi-live-v18-gp-local-repaint-lineage",
                 }:
                     required_yield_fields += ("ppy_repaint_count",)
+                if method_version == "operations-kpi-live-v18-gp-local-repaint-lineage":
+                    required_yield_fields += (
+                        "repaint_ppy_pending_count",
+                        "repaint_fty_pending_count",
+                    )
                 missing_yield_fields = [field for field in required_yield_fields if field not in row]
                 if missing_yield_fields:
                     raise ValueError(
@@ -147,14 +157,25 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v15-description-family-mapping",
                     "operations-kpi-live-v16-receiving-finesse",
                     "operations-kpi-live-v17-combined-finesse-two-row",
+                    "operations-kpi-live-v18-gp-local-repaint-lineage",
                 }:
                     if int(row["reject_ppy_approved"]) + int(row["reject_ppy_rejected_count"]) + int(row["reject_ppy_pending_count"]) != int(row["reject_ppy_total"]):
                         raise ValueError(f"{collection} reject PPY outcomes do not equal its total")
                     if int(row["reject_fty_approved"]) + int(row["reject_fty_rejected_count"]) + int(row["reject_fty_pending_count"]) != int(row["reject_fty_total"]):
                         raise ValueError(f"{collection} reject FTY outcomes do not equal its total")
-                    if int(row.get("ppy_approved", 0)) + int(row.get("ppy_repaint_count", 0)) + int(row["reject_ppy_pending_count"]) != int(row.get("paint_decision_pieces", 0)):
+                    repaint_ppy_pending_field = (
+                        "repaint_ppy_pending_count"
+                        if method_version == "operations-kpi-live-v18-gp-local-repaint-lineage"
+                        else "reject_ppy_pending_count"
+                    )
+                    repaint_fty_pending_field = (
+                        "repaint_fty_pending_count"
+                        if method_version == "operations-kpi-live-v18-gp-local-repaint-lineage"
+                        else "reject_fty_pending_count"
+                    )
+                    if int(row.get("ppy_approved", 0)) + int(row.get("ppy_repaint_count", 0)) + int(row[repaint_ppy_pending_field]) != int(row.get("paint_decision_pieces", 0)):
                         raise ValueError(f"{collection} repaint PPY outcomes do not equal physical paint passes")
-                    if int(row.get("paint_fty_approved", 0)) + int(row.get("paint_fty_repaint_count", 0)) + int(row["reject_fty_pending_count"]) != int(row.get("paint_fty_total", 0)):
+                    if int(row.get("paint_fty_approved", 0)) + int(row.get("paint_fty_repaint_count", 0)) + int(row[repaint_fty_pending_field]) != int(row.get("paint_fty_total", 0)):
                         raise ValueError(f"{collection} repaint FTY outcomes do not equal initial paint passes")
                     if method_version in {
                         "operations-kpi-live-v11-repaint-line-set-counts",
@@ -164,6 +185,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                         "operations-kpi-live-v15-description-family-mapping",
                         "operations-kpi-live-v16-receiving-finesse",
                         "operations-kpi-live-v17-combined-finesse-two-row",
+                        "operations-kpi-live-v18-gp-local-repaint-lineage",
                     }:
                         repaint_split_fields = (
                             "fuka_paint_fty_repaint_count",
@@ -189,6 +211,11 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     raise ValueError(f"{collection} reject PPY pending count exceeds its total")
                 if int(row["reject_fty_pending_count"]) > int(row["reject_fty_total"]):
                     raise ValueError(f"{collection} reject FTY pending count exceeds its total")
+                if method_version == "operations-kpi-live-v18-gp-local-repaint-lineage":
+                    if int(row["repaint_ppy_pending_count"]) > int(row.get("paint_decision_pieces", 0)):
+                        raise ValueError(f"{collection} repaint PPY pending count exceeds its total")
+                    if int(row["repaint_fty_pending_count"]) > int(row.get("paint_fty_total", 0)):
+                        raise ValueError(f"{collection} repaint FTY pending count exceeds its total")
                 if method_version == "operations-kpi-live-v9-repaint-reject-yields" and int(row.get("paint_fty_approved", 0)) != int(row.get("paint_fty_total", 0)) - int(row.get("paint_fty_repaint_count", 0)):
                     raise ValueError(f"{collection} repaint FTY counts do not match the exit-day formula")
             _validate_split(
@@ -257,6 +284,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v15-description-family-mapping",
                     "operations-kpi-live-v16-receiving-finesse",
                     "operations-kpi-live-v17-combined-finesse-two-row",
+                    "operations-kpi-live-v18-gp-local-repaint-lineage",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -300,6 +328,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v15-description-family-mapping",
                 "operations-kpi-live-v16-receiving-finesse",
                 "operations-kpi-live-v17-combined-finesse-two-row",
+                "operations-kpi-live-v18-gp-local-repaint-lineage",
             }:
                 inspection_fields = (
                     "trailers_shipped",
@@ -362,6 +391,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
             if method_version in {
                 "operations-kpi-live-v16-receiving-finesse",
                 "operations-kpi-live-v17-combined-finesse-two-row",
+                "operations-kpi-live-v18-gp-local-repaint-lineage",
             }:
                 finesse_fields = (
                     "finesse_rejected_count",
@@ -413,6 +443,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v15-description-family-mapping",
                     "operations-kpi-live-v16-receiving-finesse",
                     "operations-kpi-live-v17-combined-finesse-two-row",
+                    "operations-kpi-live-v18-gp-local-repaint-lineage",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -434,6 +465,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v15-description-family-mapping",
                     "operations-kpi-live-v16-receiving-finesse",
                     "operations-kpi-live-v17-combined-finesse-two-row",
+                    "operations-kpi-live-v18-gp-local-repaint-lineage",
                 },
             )
 
@@ -443,6 +475,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v15-description-family-mapping",
         "operations-kpi-live-v16-receiving-finesse",
         "operations-kpi-live-v17-combined-finesse-two-row",
+        "operations-kpi-live-v18-gp-local-repaint-lineage",
     }:
         allowed_line_sets = {"FUKA", "Bumpers", "N71-6164", "Fairings", "Other"}
         report_shipping = [row for row in snapshot.get("shipping", []) if row.get("date") == snapshot["report_date"]]

@@ -15,7 +15,7 @@ from .odbc import execute_operations_rollup
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
 PERIOD_TYPE_ORDER = {"WEEK": 1, "MONTH": 2, "QUARTER": 3}
-CURRENT_METHOD_VERSION = "operations-kpi-live-v17-combined-finesse-two-row"
+CURRENT_METHOD_VERSION = "operations-kpi-live-v18-gp-local-repaint-lineage"
 
 
 def _integer(value: Any) -> int:
@@ -88,6 +88,7 @@ def _metric_fields(row: Mapping[str, Any]) -> Dict[str, int]:
         "bv_ppy_approved": "bv_ppy_approved",
         "service_ppy_approved": "service_ppy_approved",
         "ppy_repaint_count": "ppy_repaint_count",
+        "repaint_ppy_pending_count": "repaint_ppy_pending_count",
         "paint_fty_total": "paint_fty_total",
         "production_paint_fty_total": "production_paint_fty_total",
         "bv_paint_fty_total": "bv_paint_fty_total",
@@ -97,6 +98,7 @@ def _metric_fields(row: Mapping[str, Any]) -> Dict[str, int]:
         "bv_paint_fty_approved": "bv_paint_fty_approved",
         "service_paint_fty_approved": "service_paint_fty_approved",
         "paint_fty_repaint_count": "paint_fty_repaint_count",
+        "repaint_fty_pending_count": "repaint_fty_pending_count",
         "fuka_paint_fty_repaint_count": "fuka_paint_fty_repaint_count",
         "bumper_paint_fty_repaint_count": "bumper_paint_fty_repaint_count",
         "fairing_paint_fty_repaint_count": "fairing_paint_fty_repaint_count",
@@ -275,8 +277,8 @@ def snapshot_from_rollup(
             "Period averages use represented production days rather than every calendar date.",
             "Every displayed quality rate is recalculated from its saved numerator and denominator.",
             "Every paint pass is dated by its authoritative oven-out timestamp. Item history links parts to carts; it does not supply the preserved first-pass outcome.",
-            "Master Data Table supplies the preserved first EOL disposition. RepaintCount and load_line_repaint identify completed repaint passes; the current EDI EOL disposition supplies the latest completed repaint outcome.",
-            "Repaint PPY counts non-repaint outcomes across every completed pass. Repaint FTY counts non-repaint outcomes only on initial passes. Repaint % is initial-pass repaint outcomes divided by initial passes.",
+            "For non-BV parts, Master Data Table supplies the preserved first EOL disposition and RepaintCount/load_line_repaint retain the reviewed repaint lineage. For BV-origin parts, the first physical Grand Prairie oven exit is the GP initial pass and only a later GP pass or a GP-local repaint disposition makes that pass a GP repaint failure.",
+            "Repaint PPY counts non-repaint outcomes across every GP-completed pass. Repaint FTY counts non-repaint outcomes only on GP initial passes. Repaint % is GP initial-pass repaint outcomes divided by GP initial passes; Brownsville paint history alone cannot create a GP repaint.",
             "Reject PPY counts Approved outcomes across every completed pass. Reject FTY counts Approved outcomes only on initial passes. Repair, Repaint, Direct Repaint, and Reject are rejected outcomes; unresolved outcomes remain pending.",
             "Finesse % combines GP-paint first-pass rejects with first Receiving rejects. The numerator combines first-pass paint Repair outcomes with completed Receiving/Finesse repairs; the denominator includes every reject in those two governed cohorts, including unresolved Receiving rejects. Product-family repair detail uses Description and preserves Brownsville parts even after a later Origin change.",
             "Product-family detail uses normalized EDI Description: Fender is FUKA, Bumper is Bumpers, and Chassis Fairing is Fairings. EDI Origin remains only where it defines paint-process scope rather than product family.",
@@ -291,7 +293,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "AC7DFDADC5C86C638385CD59265DA5E78A35C6A6A50F7CD869A014F7F02639BE",
+                "0B45A0737682B316113771E61A64F183EC04698FCEE48AF7F8B4CC94DABB7DC3",
             ).upper(),
             "detail_result_sets_requested": False,
         },

@@ -55,6 +55,7 @@ def metric_row(period_type, start, end, available=1, days=1):
         "bv_ppy_approved": "5",
         "service_ppy_approved": "10",
         "ppy_repaint_count": "4",
+        "repaint_ppy_pending_count": "1",
         "paint_fty_total": "90",
         "production_paint_fty_total": "75",
         "bv_paint_fty_total": "5",
@@ -64,6 +65,7 @@ def metric_row(period_type, start, end, available=1, days=1):
         "bv_paint_fty_approved": "5",
         "service_paint_fty_approved": "10",
         "paint_fty_repaint_count": "3",
+        "repaint_fty_pending_count": "1",
         "fuka_paint_fty_repaint_count": "1",
         "bumper_paint_fty_repaint_count": "1",
         "fairing_paint_fty_repaint_count": "1",
@@ -155,7 +157,7 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
 
 
 def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
-    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "ac7dfdadc5c86c638385cd59265da5e78a35c6a6a50f7cd869a014f7f02639be")
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "0b45a0737682b316113771e61a64f183ec04698fcee48af7f8b4cc94dabb7dc3")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -210,8 +212,8 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert [row["pieces"] for row in snapshot["shipping"]] == [55, 20, 5, 10]
     assert snapshot["painters"] == []
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
-    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "AC7DFDADC5C86C638385CD59265DA5E78A35C6A6A50F7CD869A014F7F02639BE"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v17-combined-finesse-two-row"
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "0B45A0737682B316113771E61A64F183EC04698FCEE48AF7F8B4CC94DABB7DC3"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v18-gp-local-repaint-lineage"
 
 
 def test_repaint_line_set_split_must_equal_total():
@@ -225,6 +227,31 @@ def test_repaint_line_set_split_must_equal_total():
         assert str(error) == "daily repaint line-set split does not equal paint_fty_repaint_count"
     else:
         raise AssertionError("invalid repaint line-set split was accepted")
+
+
+def test_v18_repaint_pending_counts_are_independent_from_reject_pending_counts():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    for collection in ("daily", "periods"):
+        for row in snapshot[collection]:
+            row["reject_ppy_approved"] -= 1
+            row["reject_ppy_pending_count"] += 1
+            row["reject_fty_approved"] -= 1
+            row["reject_fty_pending_count"] += 1
+
+    validate_snapshot(snapshot)
+
+
+def test_v17_snapshot_can_load_without_gp_local_repaint_pending_counts():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["scope"]["method_version"] = "operations-kpi-live-v17-combined-finesse-two-row"
+    for collection in ("daily", "periods"):
+        for row in snapshot[collection]:
+            row.pop("repaint_ppy_pending_count")
+            row.pop("repaint_fty_pending_count")
+
+    validate_snapshot(snapshot)
 
 
 def test_shipped_rack_split_must_equal_total():
@@ -630,6 +657,6 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "AC7DFDADC5C86C638385CD59265DA5E78A35C6A6A50F7CD869A014F7F02639BE" in captured["query"]
+    assert "0B45A0737682B316113771E61A64F183EC04698FCEE48AF7F8B4CC94DABB7DC3" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]
