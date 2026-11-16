@@ -79,6 +79,9 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "0.20.1-cart-piece-labels" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
+            assert "Decision-use boundary" not in html
+            assert 'class="method-banner"' not in html
+            assert 'id="scope-label"' not in html
             assert 'id="throughput-chart"' not in html
             assert 'id="quality-chart"' not in html
             assert 'id="daily-table"' not in html
@@ -117,7 +120,9 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "metric-split-total" in javascript
             assert "values.push(`${integer(row.n71)} N71-6164`)" not in javascript
             assert "stagedMetricCard(current.staged_carts, current.staged_pieces" in javascript
-            assert "`${optionalInteger(carts)} Carts / ${optionalInteger(pieces)} Pieces`" in javascript
+            assert "`${compactOptionalInteger(carts)} Carts / ${compactOptionalInteger(pieces)} Pieces`" in javascript
+            assert "compactOptionalInteger(row.production)" in javascript
+            assert "scope-label" not in javascript
             assert "Finesse detail unavailable" in javascript
             assert "dualYieldCard('PPY (Paint Process Yield)'" in javascript
             assert "dualYieldCard('FTY (First Time Yield)'" in javascript
@@ -211,6 +216,10 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             styles = response.read().decode("utf-8")
             assert response.status == 200
             assert ".split-count-card{container-type:inline-size}" in styles
+            assert ".method-banner" not in styles
+            assert ".metric-split-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.2rem" in styles
+            assert ".metric-card .metric-split-value{margin:0;font-size:min(6cqw,.7rem)" in styles
+            assert "letter-spacing:-.025em;white-space:nowrap" in styles
             assert ".metric-detail-list{display:grid" in styles
             assert "font-size:min(7.5cqw,1.75rem)" in styles
             assert "font-size:min(7.5cqw,2.2rem)" in styles

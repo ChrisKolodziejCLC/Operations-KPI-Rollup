@@ -25,6 +25,7 @@ const svgNode = (name, attributes = {}) => {
 const text = (value) => document.createTextNode(String(value ?? ''));
 const integer = (value) => Number(value || 0).toLocaleString();
 const optionalInteger = (value) => value === undefined || value === null ? 'No Data' : integer(value);
+const compactOptionalInteger = (value) => value === undefined || value === null ? '—' : integer(value);
 const ratio = (numerator, denominator) => Number(denominator) > 0 ? Number(numerator || 0) / Number(denominator) : null;
 const yieldRatio = (numerator, denominator) => {
   const top = Number(numerator || 0), bottom = Number(denominator || 0);
@@ -183,13 +184,13 @@ function stagedMetricCard(carts, pieces, rows, color) {
   card.style.setProperty('--accent', color);
   const labelNode = document.createElement('span'); labelNode.append(text('Carts / Pieces staged'));
   const totalNode = document.createElement('strong'); totalNode.className = 'metric-split-total';
-  totalNode.append(text(`${optionalInteger(carts)} Carts / ${optionalInteger(pieces)} Pieces`));
+  totalNode.append(text(`${compactOptionalInteger(carts)} Carts / ${compactOptionalInteger(pieces)} Pieces`));
   const list = document.createElement('div'); list.className = 'metric-split-list';
   rows.forEach(row => {
     const line = document.createElement('div'); line.className = 'metric-split-row';
     const rowLabel = document.createElement('span'); rowLabel.className = 'metric-split-label'; rowLabel.append(text(row.label));
     const value = document.createElement('small'); value.className = 'metric-split-value';
-    value.append(text(`${optionalInteger(row.production)} Prd / ${optionalInteger(row.bv)} BV / ${optionalInteger(row.service)} Svc`));
+    value.append(text(`${compactOptionalInteger(row.production)} Prd / ${compactOptionalInteger(row.bv)} BV / ${compactOptionalInteger(row.service)} Svc`));
     line.append(rowLabel, value); list.append(line);
   });
   card.append(labelNode, totalNode, list);
@@ -528,7 +529,6 @@ function render(snapshot) {
   $('#report-date').textContent = `Report date ${fullDateLabel(snapshot.report_date)}`;
   $('#report-range').textContent = rangeLabel(snapshot.daily);
   $('#generated-at').textContent = `Snapshot ${new Date(snapshot.generated_at).toLocaleString()}`;
-  $('#scope-label').textContent = `${snapshot.scope.label}. Method: ${snapshot.scope.method_version}.`;
   $('#date-input').value = snapshot.report_date;
   updateNavigationState();
   renderCards(snapshot);
