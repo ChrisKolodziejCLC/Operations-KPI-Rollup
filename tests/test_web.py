@@ -76,7 +76,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.20.0-combined-finesse-two-row" in html
+            assert "0.20.1-cart-piece-labels" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="throughput-chart"' not in html
@@ -110,8 +110,9 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "n71_6164_paint_pieces_processed" not in javascript
             assert "unique_pieces_loaded" in javascript
             assert "unique_pieces_processed" in javascript
-            assert "splitMetricCard('Pieces loaded', current.parts_loaded" in javascript
-            assert "splitMetricCard('Pieces painted', current.paint_pieces_processed" in javascript
+            assert "splitMetricCard('Carts / Pieces loaded', current.parts_loaded" in javascript
+            assert "labelNode.append(text('Carts / Pieces staged'))" in javascript
+            assert "splitMetricCard('Carts / Pieces painted', current.paint_pieces_processed" in javascript
             assert "unique === undefined ? '—' : integer(unique)" in javascript
             assert "metric-split-total" in javascript
             assert "values.push(`${integer(row.n71)} N71-6164`)" not in javascript
@@ -188,9 +189,9 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "serverClockOffsetMs" in javascript
             assert "Auto refresh in ${minutes}:${seconds}" in javascript
             assert javascript.index("['Pieces shipped'") > javascript.index("['Assembled bumpers'")
-            assert javascript.index("splitMetricCard('Pieces loaded'") < javascript.index("container.append(stagedMetricCard(")
-            assert javascript.index("container.append(stagedMetricCard(") < javascript.index("splitMetricCard('Pieces painted'")
-            assert javascript.index("splitMetricCard('Pieces painted'") < javascript.index("'Repaint %'")
+            assert javascript.index("splitMetricCard('Carts / Pieces loaded'") < javascript.index("container.append(stagedMetricCard(")
+            assert javascript.index("container.append(stagedMetricCard(") < javascript.index("splitMetricCard('Carts / Pieces painted'")
+            assert javascript.index("splitMetricCard('Carts / Pieces painted'") < javascript.index("'Repaint %'")
             assert javascript.index("'Repaint %'") < javascript.index("'Finesse %'")
             assert javascript.index("['Pieces shipped'") < javascript.index("container.append(trailerCountCard(")
             assert "loadCachedReport(localDateISO(), true)" in javascript

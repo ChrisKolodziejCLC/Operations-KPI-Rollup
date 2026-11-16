@@ -179,15 +179,15 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert snapshot["daily"][-1]["service_carts_loaded"] == 10
     cards = prepare_context(snapshot)["cards"]
     assert [card["label"] for card in cards[:5]] == [
-        "Pieces loaded", "Pieces staged", "Pieces painted", "Repaint %", "Finesse %"
+        "Carts / Pieces loaded", "Carts / Pieces staged", "Carts / Pieces painted", "Repaint %", "Finesse %"
     ]
     cards_by_label = {card["label"]: card for card in cards}
-    assert cards_by_label["Pieces loaded"]["value"] == "100 Total / 91 Unique"
-    assert cards_by_label["Pieces loaded"]["detail"] == "Carts 25 Prd / 5 BV / 10 Svc · Pieces 70 Prd / 5 BV / 25 Svc"
-    assert cards_by_label["Pieces staged"]["value"] == "11 Carts / 40 Pieces"
-    assert cards_by_label["Pieces staged"]["detail"] == "Carts 11 Prd / 0 BV / 0 Svc · Pieces 40 Prd / 0 BV / 0 Svc"
-    assert cards_by_label["Pieces painted"]["value"] == "96 Total / 84 Unique"
-    assert cards_by_label["Pieces painted"]["detail"] == "Carts 20 Prd / 5 BV / 10 Svc · Pieces 65 Prd / 5 BV / 26 Svc"
+    assert cards_by_label["Carts / Pieces loaded"]["value"] == "100 Total / 91 Unique"
+    assert cards_by_label["Carts / Pieces loaded"]["detail"] == "Carts 25 Prd / 5 BV / 10 Svc · Pieces 70 Prd / 5 BV / 25 Svc"
+    assert cards_by_label["Carts / Pieces staged"]["value"] == "11 Carts / 40 Pieces"
+    assert cards_by_label["Carts / Pieces staged"]["detail"] == "Carts 11 Prd / 0 BV / 0 Svc · Pieces 40 Prd / 0 BV / 0 Svc"
+    assert cards_by_label["Carts / Pieces painted"]["value"] == "96 Total / 84 Unique"
+    assert cards_by_label["Carts / Pieces painted"]["detail"] == "Carts 20 Prd / 5 BV / 10 Svc · Pieces 65 Prd / 5 BV / 26 Svc"
     assert cards_by_label["Repaint %"]["value"] == "3.3%"
     assert cards_by_label["Repaint %"]["detail"] == "3 / 90 initial passes"
     assert cards_by_label["Repaint %"]["secondary_detail"] == "1 FUKA / 1 Bumpers / 1 Fairings"
@@ -542,7 +542,7 @@ def test_v6_saved_snapshot_can_load_before_first_v7_refresh():
     cards = prepare_context(snapshot)["cards"]
     assert cards[0]["value"] == "100 Total / — Unique"
     cards_by_label = {card["label"]: card for card in cards}
-    assert cards_by_label["Pieces painted"]["value"] == "96 Total / — Unique"
+    assert cards_by_label["Carts / Pieces painted"]["value"] == "96 Total / — Unique"
 
 
 def test_v7_saved_snapshot_can_load_before_first_v8_refresh():

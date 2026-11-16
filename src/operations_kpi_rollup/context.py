@@ -637,19 +637,19 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
 
     cards = [
         _card(
-            "Pieces loaded",
+            "Carts / Pieces loaded",
             f"{format_int(current.get('parts_loaded'))} Total / {format_int(current['unique_pieces_loaded']) if 'unique_pieces_loaded' in current else '—'} Unique",
             f"Carts {format_int(production_carts)} Prd / {format_int(bv_carts)} BV / {format_int(service_carts)} Svc · Pieces {format_int(production_loaded)} Prd / {format_int(bv_loaded)} BV / {format_int(service_loaded)} Svc",
             "#147d86",
         ),
         _card(
-            "Pieces staged",
+            "Carts / Pieces staged",
             f"{format_int(current.get('staged_carts'))} Carts / {format_int(current.get('staged_pieces'))} Pieces",
             f"Carts {format_int(current.get('production_staged_carts'))} Prd / {format_int(current.get('bv_staged_carts'))} BV / {format_int(current.get('service_staged_carts'))} Svc · Pieces {format_int(current.get('production_staged_pieces'))} Prd / {format_int(current.get('bv_staged_pieces'))} BV / {format_int(current.get('service_staged_pieces'))} Svc",
             "#38856d",
         ),
         _card(
-            "Pieces painted",
+            "Carts / Pieces painted",
             f"{format_int(current.get('paint_pieces_processed'))} Total / {format_int(current['unique_pieces_processed']) if 'unique_pieces_processed' in current else '—'} Unique",
             f"Carts {format_int(production_paint_carts)} Prd / {format_int(bv_paint_carts)} BV / {format_int(service_paint_carts)} Svc · Pieces {format_int(production_paint_pieces)} Prd / {format_int(bv_paint_pieces)} BV / {format_int(service_paint_pieces)} Svc",
             "#2f6f9f",

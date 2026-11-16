@@ -181,7 +181,7 @@ function stagedMetricCard(carts, pieces, rows, color) {
   const card = document.createElement('article');
   card.className = 'metric-card split-count-card staged-count-card';
   card.style.setProperty('--accent', color);
-  const labelNode = document.createElement('span'); labelNode.append(text('Pieces staged'));
+  const labelNode = document.createElement('span'); labelNode.append(text('Carts / Pieces staged'));
   const totalNode = document.createElement('strong'); totalNode.className = 'metric-split-total';
   totalNode.append(text(`${optionalInteger(carts)} Carts / ${optionalInteger(pieces)} Pieces`));
   const list = document.createElement('div'); list.className = 'metric-split-list';
@@ -289,7 +289,7 @@ function renderCards(snapshot) {
     ['Pieces shipped', integer(current.parts_shipped), shippedDetail, palette.red]
   ];
   const container = $('#cards'); container.replaceChildren();
-  container.append(splitMetricCard('Pieces loaded', current.parts_loaded, current.unique_pieces_loaded, [
+  container.append(splitMetricCard('Carts / Pieces loaded', current.parts_loaded, current.unique_pieces_loaded, [
     {label:'Carts', production:carts.production, bv:carts.bv, service:carts.service},
     {label:'Pieces', production:loaded.production, bv:loaded.bv, service:loaded.service}
   ], palette.teal));
@@ -297,7 +297,7 @@ function renderCards(snapshot) {
     {label:'Carts', production:current.production_staged_carts, bv:current.bv_staged_carts, service:current.service_staged_carts},
     {label:'Pieces', production:current.production_staged_pieces, bv:current.bv_staged_pieces, service:current.service_staged_pieces}
   ], palette.green));
-  container.append(splitMetricCard('Pieces painted', current.paint_pieces_processed, current.unique_pieces_processed, [
+  container.append(splitMetricCard('Carts / Pieces painted', current.paint_pieces_processed, current.unique_pieces_processed, [
     {label:'Carts', production:paintCarts.production, bv:paintCarts.bv, service:paintCarts.service},
     {label:'Pieces', production:paintPieces.production, bv:paintPieces.bv, service:paintPieces.service}
   ], palette.blue));
