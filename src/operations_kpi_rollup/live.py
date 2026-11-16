@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import os
 import re
@@ -15,7 +15,7 @@ from .odbc import execute_operations_rollup
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
 PERIOD_TYPE_ORDER = {"WEEK": 1, "MONTH": 2, "QUARTER": 3}
-CURRENT_METHOD_VERSION = "operations-kpi-live-v19-loaded-chart-series"
+CURRENT_METHOD_VERSION = "operations-kpi-live-v20-loaded-13-week-trend"
 LOADED_CHART_FIELDS = (
     "parts_loaded",
     "production_parts_loaded",
@@ -216,8 +216,53 @@ def _loaded_chart_row(row: Mapping[str, Any]) -> Dict[str, Any]:
         "bucket": _bucket_text(row.get("bucket_start"), grain),
         "is_partial": bool(_integer(row.get("is_partial"))),
         "data_available": bool(_integer(row.get("data_available"))),
+        "represented_day": bool(_integer(row.get("represented_day"))),
         **{field: _integer(row.get(field)) for field in LOADED_CHART_FIELDS},
     }
+
+
+def _sunday_start(value: date) -> date:
+    return value - timedelta(days=(value.weekday() + 1) % 7)
+
+
+def _loaded_weekly_rows(report_date: date, daily_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Collapse the bounded daily chart rows into 13 Sunday-start weeks.
+
+    Only represented production days participate in an average. A represented
+    day with no loaded carts or pieces contributes an honest zero; dates before
+    the authoritative history boundary remain unavailable.
+    """
+    report_week = _sunday_start(report_date)
+    by_date = {date.fromisoformat(row["bucket"]): row for row in daily_rows}
+    weeks: List[Dict[str, Any]] = []
+    for offset in range(12, -1, -1):
+        week_start = report_week - timedelta(weeks=offset)
+        full_week_end = week_start + timedelta(days=6)
+        observed_end = min(full_week_end, report_date)
+        rows = [
+            by_date[week_start + timedelta(days=day_offset)]
+            for day_offset in range((observed_end - week_start).days + 1)
+            if week_start + timedelta(days=day_offset) in by_date
+        ]
+        represented = [
+            row for row in rows
+            if row["data_available"] and row["represented_day"]
+        ]
+        represented_days = len(represented)
+        parts_total = sum(int(row["parts_loaded"]) for row in represented)
+        carts_total = sum(int(row["carts_loaded"]) for row in represented)
+        weeks.append({
+            "bucket": week_start.isoformat(),
+            "bucket_end": observed_end.isoformat(),
+            "is_partial": observed_end < full_week_end,
+            "data_available": any(row["data_available"] for row in rows),
+            "represented_days": represented_days,
+            "parts_loaded_total": parts_total,
+            "carts_loaded_total": carts_total,
+            "average_parts_loaded": round(parts_total / represented_days, 1) if represented_days else None,
+            "average_carts_loaded": round(carts_total / represented_days, 1) if represented_days else None,
+        })
+    return weeks
 
 
 def snapshot_from_rollup(
@@ -275,10 +320,29 @@ def snapshot_from_rollup(
         (row for grain, row in loaded_chart_rows if grain == "HOUR"),
         key=lambda row: row["bucket"],
     )
-    loaded_daily_30 = sorted(
+    loaded_daily_window = sorted(
         (row for grain, row in loaded_chart_rows if grain == "DAY"),
         key=lambda row: row["bucket"],
     )
+    chart_start = _sunday_start(report_date) - timedelta(weeks=12)
+    expected_daily_buckets = [
+        (chart_start + timedelta(days=offset)).isoformat()
+        for offset in range((report_date - chart_start).days + 1)
+    ]
+    if [row["bucket"] for row in loaded_daily_window] != expected_daily_buckets:
+        raise ValueError("The loaded-chart daily window is not the ordered 13-week source range.")
+    loaded_weekly_13 = _loaded_weekly_rows(report_date, loaded_daily_window)
+
+    report_chart_day = next(
+        (row for row in loaded_daily_window if row["bucket"] == report_date.isoformat()),
+        None,
+    )
+    report_daily = next(row for row in daily if row["date"] == report_date.isoformat())
+    if report_chart_day is None:
+        raise ValueError("The loaded-chart daily window does not contain the report date.")
+    for field in LOADED_CHART_FIELDS:
+        if int(report_chart_day[field]) != int(report_daily.get(field, 0)):
+            raise ValueError(f"The loaded-chart report-day {field} does not reconcile to the daily result.")
 
     timezone_name = os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis")
     observed_at = generated_at or datetime.now(ZoneInfo(timezone_name))
@@ -306,7 +370,7 @@ def snapshot_from_rollup(
         "chart_series": {
             "loaded": {
                 "hourly": loaded_hourly,
-                "daily_30": loaded_daily_30,
+                "weekly_13": loaded_weekly_13,
             }
         },
         "attention": {
@@ -338,7 +402,7 @@ def snapshot_from_rollup(
             "The inspection-time hourly report is a reconciliation source, not the wallboard date grain; daily values can differ and should reconcile over longer periods.",
             "Receiving and final quantities use insp_receive_stamp and insp_final_stamp; their FTY rates continue to use first inspection decisions and expose only reconciled aggregate product-family detail.",
             "Trailers Departed counts completed DriverLog departures dated by TimeOut; it is intentionally separate from EDI trailer-loading state.",
-            "The Loaded chart is aggregate-only. Load events stay in their actual hour; a distinct piece or cart is assigned to its first load-event hour so all 24 buckets reconcile exactly to the daily card. The rolling view contains 30 calendar dates, including zero-activity days.",
+            "The Loaded chart is aggregate-only. Load events stay in their actual hour; a distinct piece or cart is assigned to its first load-event hour so all 24 buckets reconcile exactly to the daily card. The 13-week view averages total carts and pieces over represented production days; unavailable history and the partial selected week are excluded from trend calculations.",
             "Preliminary OEE is the unchanged legacy paint-plan composite and remains excluded from this yield correction and its acceptance criteria.",
             painter_note,
         ],
@@ -346,7 +410,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "3293844115F1580DBEC0E39D0083125EB2F4517C31022E30CA54630A6F546E0A",
+                "C099469E8FC2F0C27A5B34B2A7D1AFEB27223CEA17148E0F05766D86698A57EB",
             ).upper(),
             "detail_result_sets_requested": False,
         },

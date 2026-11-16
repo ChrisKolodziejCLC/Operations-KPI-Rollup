@@ -7,6 +7,7 @@ ROLLBACK = ROOT / "sql" / "2026-11-16-rollback-loaded-chart-series.sql"
 SERVICE = ROOT / "deploy" / "operations-kpi-rollup.service"
 OLD_HASH = "0B45A0737682B316113771E61A64F183EC04698FCEE48AF7F8B4CC94DABB7DC3"
 NEW_HASH = "3293844115F1580DBEC0E39D0083125EB2F4517C31022E30CA54630A6F546E0A"
+CURRENT_HASH = "C099469E8FC2F0C27A5B34B2A7D1AFEB27223CEA17148E0F05766D86698A57EB"
 
 
 def test_forward_migration_is_hash_gated_and_apply_ready():
@@ -63,7 +64,7 @@ def test_loaded_chart_migration_does_not_write_qpts_business_rows():
     assert "MERGE " not in sql
 
 
-def test_service_pins_the_loaded_chart_definition_hash():
+def test_service_pins_the_current_definition_hash():
     unit = SERVICE.read_text(encoding="utf-8")
 
-    assert f"Environment=KPI_SQL_PROCEDURE_HASH={NEW_HASH}" in unit
+    assert f"Environment=KPI_SQL_PROCEDURE_HASH={CURRENT_HASH}" in unit

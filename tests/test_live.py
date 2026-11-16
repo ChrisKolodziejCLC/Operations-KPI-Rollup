@@ -152,20 +152,26 @@ def result_sets():
             "bucket_start": f"{report_date.isoformat()} {hour:02d}:00:00",
             "is_partial": "0",
             "data_available": "1",
+            "represented_day": "1",
             **(loaded if hour == 8 else zero),
         }
         for hour in range(24)
     ]
-    daily_30 = [
-        {
+    report_week = report_date - timedelta(days=(report_date.weekday() + 1) % 7)
+    chart_start = report_week - timedelta(weeks=12)
+    daily_window = []
+    for offset in range((report_date - chart_start).days + 1):
+        bucket = chart_start + timedelta(days=offset)
+        available = bucket >= date(2026, 9, 8)
+        represented = available and bucket.weekday() < 5
+        daily_window.append({
             "grain": "DAY",
-            "bucket_start": (report_date - timedelta(days=29 - offset)).isoformat(),
+            "bucket_start": bucket.isoformat(),
             "is_partial": "0",
-            "data_available": "1",
-            **(loaded if offset == 29 else zero),
-        }
-        for offset in range(30)
-    ]
+            "data_available": str(int(available)),
+            "represented_day": str(int(represented)),
+            **(loaded if bucket == report_date else zero),
+        })
     return [
         {"index": 0, "rows": [{"history_start": "2026-09-08", "report_date": "2026-11-11"}]},
         {"index": 2, "rows": [metric_row("DAY", "2026-11-10", "2026-11-10"), metric_row("DAY", "2026-11-11", "2026-11-11")]},
@@ -179,7 +185,7 @@ def result_sets():
             {"report_date": "2026-11-11", "line_set": "N71-6164", "pieces_shipped": "5"},
             {"report_date": "2026-11-11", "line_set": "Fairings", "pieces_shipped": "10"},
         ]},
-        {"index": 14, "rows": hourly + daily_30},
+        {"index": 14, "rows": hourly + daily_window},
     ]
 
 
@@ -191,7 +197,7 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
 
 
 def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
-    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "3293844115f1580dbec0e39d0083125eb2f4517c31022e30ca54630a6f546e0a")
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "c099469e8fc2f0c27a5b34b2a7d1afeb27223cea17148e0f05766d86698a57eb")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -246,12 +252,16 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert [row["pieces"] for row in snapshot["shipping"]] == [55, 20, 5, 10]
     assert snapshot["painters"] == []
     assert len(snapshot["chart_series"]["loaded"]["hourly"]) == 24
-    assert len(snapshot["chart_series"]["loaded"]["daily_30"]) == 30
+    assert len(snapshot["chart_series"]["loaded"]["weekly_13"]) == 13
     assert snapshot["chart_series"]["loaded"]["hourly"][8]["parts_loaded"] == 100
-    assert snapshot["chart_series"]["loaded"]["daily_30"][-1]["unique_pieces_loaded"] == 91
+    assert snapshot["chart_series"]["loaded"]["weekly_13"][-1]["represented_days"] == 3
+    assert snapshot["chart_series"]["loaded"]["weekly_13"][-1]["average_parts_loaded"] == 33.3
+    assert snapshot["chart_series"]["loaded"]["weekly_13"][-1]["average_carts_loaded"] == 13.3
+    assert snapshot["chart_series"]["loaded"]["weekly_13"][-1]["is_partial"] is True
+    assert snapshot["chart_series"]["loaded"]["weekly_13"][0]["data_available"] is False
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
-    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "3293844115F1580DBEC0E39D0083125EB2F4517C31022E30CA54630A6F546E0A"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v19-loaded-chart-series"
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "C099469E8FC2F0C27A5B34B2A7D1AFEB27223CEA17148E0F05766D86698A57EB"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v20-loaded-13-week-trend"
 
 
 def test_repaint_line_set_split_must_equal_total():
@@ -725,7 +735,7 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "3293844115F1580DBEC0E39D0083125EB2F4517C31022E30CA54630A6F546E0A" in captured["query"]
+    assert "C099469E8FC2F0C27A5B34B2A7D1AFEB27223CEA17148E0F05766D86698A57EB" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]
     assert 14 in captured["wanted"]

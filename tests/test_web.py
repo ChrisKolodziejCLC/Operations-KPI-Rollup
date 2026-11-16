@@ -27,6 +27,7 @@ def request_json(url, method="GET", payload=None, headers=None):
 
 def with_loaded_chart(snapshot):
     report_date = datetime.fromisoformat(snapshot["report_date"]).date()
+    history_start = datetime.fromisoformat(snapshot.get("scope", {}).get("history_start", "2026-09-08")).date()
     current = next(row for row in snapshot["daily"] if row["date"] == snapshot["report_date"])
     zero = {field: 0 for field in LOADED_CHART_FIELDS}
     values = {field: int(current.get(field, 0)) for field in LOADED_CHART_FIELDS}
@@ -36,20 +37,39 @@ def with_loaded_chart(snapshot):
                 "bucket": f"{report_date.isoformat()}T{hour:02d}:00:00",
                 "is_partial": False,
                 "data_available": True,
+                "represented_day": True,
                 **(values if hour == 8 else zero),
             }
             for hour in range(24)
         ],
-        "daily_30": [
-            {
-                "bucket": (report_date - timedelta(days=29 - offset)).isoformat(),
-                "is_partial": False,
-                "data_available": True,
-                **(values if offset == 29 else zero),
-            }
-            for offset in range(30)
-        ],
+        "weekly_13": [],
     }}
+    report_week = report_date - timedelta(days=(report_date.weekday() + 1) % 7)
+    for offset in range(12, -1, -1):
+        week_start = report_week - timedelta(weeks=offset)
+        full_end = week_start + timedelta(days=6)
+        observed_end = min(full_end, report_date)
+        observed_days = [week_start + timedelta(days=day) for day in range((observed_end - week_start).days + 1)]
+        available_days = [day for day in observed_days if day >= history_start]
+        represented_days = [day for day in available_days if day.weekday() < 5 or day == report_date]
+        partial = observed_end < full_end
+        if partial:
+            parts_total = int(current.get("parts_loaded", 0))
+            carts_total = int(current.get("carts_loaded", 0))
+        else:
+            parts_total = len(represented_days) * 100
+            carts_total = len(represented_days) * 40
+        snapshot["chart_series"]["loaded"]["weekly_13"].append({
+            "bucket": week_start.isoformat(),
+            "bucket_end": observed_end.isoformat(),
+            "is_partial": partial,
+            "data_available": bool(available_days),
+            "represented_days": len(represented_days),
+            "parts_loaded_total": parts_total,
+            "carts_loaded_total": carts_total,
+            "average_parts_loaded": round(parts_total / len(represented_days), 1) if represented_days else None,
+            "average_carts_loaded": round(carts_total / len(represented_days), 1) if represented_days else None,
+        })
     return snapshot
 
 
@@ -109,7 +129,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.22.0-loaded-chart" in html
+            assert "0.23.0-loaded-13-week" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html
@@ -241,8 +261,16 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "X-Operations-KPI-Refresh-Key" not in javascript
             assert "sessionStorage" not in javascript
             assert "renderLoadedCharts(snapshot)" in javascript
-            assert "renderLoadedSeriesChart" in javascript
-            assert "Rolling 30 calendar days" in javascript
+            assert "renderLoadedLineChart" in javascript
+            assert "loadedLinearTrend" in javascript
+            assert "13-week daily averages" in javascript
+            assert "loadedTileSummaryTable" in javascript
+            assert "loadedWeeklySummary" in javascript
+            assert "options.omitNull" in javascript
+            assert "omitNull:true, verticalLabels:true" in javascript
+            assert javascript.count("verticalLabels:true, showTick:() => true") == 2
+            assert "Unavailable weeks before the September 8 history boundary are omitted, not zero." in javascript
+            assert "field:'unique_pieces_loaded'" not in javascript
             assert "Hourly · selected report day" in javascript
             assert "selectMetricChart" in javascript
             render_body = javascript.split("function render(snapshot) {", 1)[1].split("\n}", 1)[0]
@@ -282,6 +310,9 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert ".trailer-rack-list{display:grid" in styles
             assert ".metric-card.selectable-card" in styles
             assert ".loaded-chart-grid{display:grid;grid-template-columns:1fr 1fr" in styles
+            assert ".loaded-chart-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))" in styles
+            assert ".loaded-summary-table-wrap" in styles
+            assert ".loaded-axis-label{font-variant-numeric:tabular-nums}" in styles
             assert ".chart-placeholder" in styles
     finally:
         server.shutdown()

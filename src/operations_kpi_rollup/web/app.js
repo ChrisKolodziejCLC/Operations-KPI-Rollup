@@ -27,6 +27,7 @@ const svgNode = (name, attributes = {}) => {
 };
 const text = (value) => document.createTextNode(String(value ?? ''));
 const integer = (value) => Number(value || 0).toLocaleString();
+const decimal = (value) => Number(value || 0).toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1});
 const optionalInteger = (value) => value === undefined || value === null ? 'No Data' : integer(value);
 const compactOptionalInteger = (value) => value === undefined || value === null ? '—' : integer(value);
 const ratio = (numerator, denominator) => Number(denominator) > 0 ? Number(numerator || 0) / Number(denominator) : null;
@@ -429,69 +430,181 @@ function hourBucketLabel(bucket) {
   return `${hour - 12}p`;
 }
 
-function renderLoadedSeriesChart(container, rows, options) {
+function loadedLinearTrend(rows, field) {
+  const firstWeek = rows.length ? Date.parse(rows[0].bucket + 'T00:00:00') : NaN;
+  const points = rows.map((row, rowIndex) => ({
+    rowIndex,
+    weekIndex:(Date.parse(row.bucket + 'T00:00:00') - firstWeek) / (7 * 24 * 60 * 60 * 1000),
+    value:Number(row[field])
+  })).filter((point, index) => rows[index].data_available && !rows[index].is_partial
+      && Number(rows[index].represented_days || 0) > 0
+      && Number.isFinite(point.weekIndex) && Number.isFinite(point.value));
+  if (points.length < 2) return null;
+  const meanX = points.reduce((sum, point) => sum + point.weekIndex, 0) / points.length;
+  const meanY = points.reduce((sum, point) => sum + point.value, 0) / points.length;
+  const denominator = points.reduce((sum, point) => sum + Math.pow(point.weekIndex - meanX, 2), 0);
+  if (!denominator) return null;
+  const slope = points.reduce((sum, point) => sum + (point.weekIndex - meanX) * (point.value - meanY), 0) / denominator;
+  const intercept = meanY - slope * meanX;
+  return {
+    slope, startIndex:points[0].rowIndex, endIndex:points[points.length - 1].rowIndex,
+    startValue:intercept + slope * points[0].weekIndex,
+    endValue:intercept + slope * points[points.length - 1].weekIndex
+  };
+}
+
+function renderLoadedLineChart(container, rows, options) {
   container.replaceChildren();
   if (!rows.length) {
     const empty = document.createElement('div'); empty.className = 'empty-state';
     empty.append(text('No aggregate chart data is available for this snapshot.'));
     container.append(empty); return;
   }
-  const width = 720, height = 250, left = 48, right = 14, top = 16, bottom = 34;
+  const width = 720, height = 250, left = 48, right = 14, top = 16;
+  const bottom = options.verticalLabels ? 52 : 34;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
-  const totals = rows.map(row => options.stacks.reduce((sum, item) => sum + Number(row[item.field] || 0), 0));
-  const lineValues = options.line ? rows.map(row => Number(row[options.line.field] || 0)) : [];
-  const maximum = Math.max(...totals, ...lineValues, 1) * 1.08;
-  const y = value => top + (maximum - value) * plotHeight / maximum;
+  const values = rows.map(row => row.data_available && row[options.field] !== null
+    ? Number(row[options.field]) : null);
+  const trend = options.trend ? loadedLinearTrend(rows, options.field) : null;
+  const finiteValues = values.filter(value => value !== null && Number.isFinite(value));
+  if (trend) finiteValues.push(Math.max(0, trend.startValue), Math.max(0, trend.endValue));
+  const maximum = Math.max(...finiteValues, 1) * 1.08;
+  const y = value => top + (maximum - Math.max(0, value)) * plotHeight / maximum;
   const band = plotWidth / rows.length;
-  const barWidth = Math.max(3, Math.min(band * .68, 24));
   const centerX = index => left + band * index + band / 2;
-  const svg = svgNode('svg', {viewBox:`0 0 ${width} ${height}`, role:'img', 'aria-label':options.ariaLabel});
+  const formatValue = options.formatValue || integer;
+  const svg = svgNode('svg', {viewBox:'0 0 ' + width + ' ' + height, role:'img', 'aria-label':options.ariaLabel});
 
   for (let index = 0; index <= 4; index += 1) {
     const value = maximum * index / 4;
     const yy = y(value);
     svg.append(svgNode('line', {x1:left, x2:width - right, y1:yy, y2:yy, stroke:palette.grid, 'stroke-width':1}));
     const label = svgNode('text', {x:left - 8, y:yy + 4, 'text-anchor':'end', fill:palette.muted, 'font-size':10});
-    label.append(text(integer(Math.round(value)))); svg.append(label);
+    label.append(text(formatValue(value))); svg.append(label);
   }
 
+  let segment = [];
+  const flushSegment = () => {
+    if (segment.length > 1) {
+      svg.append(svgNode('polyline', {
+        points:segment.join(' '), fill:'none', stroke:options.color, 'stroke-width':2.7,
+        'stroke-linejoin':'round', 'stroke-linecap':'round'
+      }));
+    }
+    segment = [];
+  };
   rows.forEach((row, index) => {
-    const x = centerX(index) - barWidth / 2;
-    let cumulative = 0;
-    options.stacks.forEach(item => {
-      const value = Number(row[item.field] || 0);
-      if (value <= 0) return;
-      const next = cumulative + value;
-      const rect = svgNode('rect', {
-        x, y:y(next), width:barWidth, height:Math.max(y(cumulative) - y(next), 1),
-        fill:item.color, opacity:row.is_partial ? .68 : 1,
-        stroke:row.is_partial ? palette.amber : 'none', 'stroke-dasharray':row.is_partial ? '3 2' : 'none'
+    const value = values[index];
+    if (value === null || !Number.isFinite(value)) {
+      flushSegment();
+      svg.append(svgNode('line', {
+        x1:centerX(index) - 7, x2:centerX(index) + 7, y1:y(0) - 2, y2:y(0) - 2,
+        stroke:'#aebbc4', 'stroke-width':2
+      }));
+    } else {
+      segment.push(centerX(index) + ',' + y(value));
+      const circle = svgNode('circle', {
+        cx:centerX(index), cy:y(value), r:3.2, fill:row.is_partial ? '#fff3df' : options.color,
+        stroke:row.is_partial ? palette.amber : '#fff', 'stroke-width':row.is_partial ? 2 : 1,
+        'stroke-dasharray':row.is_partial ? '2 1' : 'none'
       });
-      const title = svgNode('title'); title.append(text(`${options.bucketTitle(row)} · ${item.label}: ${integer(value)}`));
-      rect.append(title); svg.append(rect); cumulative = next;
-    });
-    if (!row.data_available) {
-      svg.append(svgNode('line', {x1:x, x2:x + barWidth, y1:y(0) - 2, y2:y(0) - 2, stroke:'#aebbc4', 'stroke-width':2}));
+      const suffix = options.tooltipSuffix ? options.tooltipSuffix(row) : '';
+      const title = svgNode('title');
+      title.append(text(options.bucketTitle(row) + ' · ' + options.label + ': ' + formatValue(value) + suffix));
+      circle.append(title); svg.append(circle);
     }
     if (options.showTick(index, rows.length)) {
-      const label = svgNode('text', {x:centerX(index), y:height - 11, 'text-anchor':'middle', fill:palette.muted, 'font-size':10});
+      const labelY = height - 8;
+      const attributes = {
+        x:centerX(index), y:labelY, fill:palette.muted, 'font-size':10, class:'loaded-axis-label',
+        'text-anchor':options.verticalLabels ? 'start' : 'middle'
+      };
+      if (options.verticalLabels) attributes.transform = 'rotate(-90 ' + centerX(index) + ' ' + labelY + ')';
+      const label = svgNode('text', attributes);
       label.append(text(options.bucketLabel(row))); svg.append(label);
     }
   });
+  flushSegment();
 
-  if (options.line) {
-    const usable = rows.map((row, index) => ({row, index, value:Number(row[options.line.field] || 0)}))
-      .filter(point => point.row.data_available);
-    const points = usable.map(point => `${centerX(point.index)},${y(point.value)}`).join(' ');
-    svg.append(svgNode('polyline', {points, fill:'none', stroke:options.line.color, 'stroke-width':2.5, 'stroke-linejoin':'round', 'stroke-linecap':'round'}));
-    usable.forEach(point => {
-      const circle = svgNode('circle', {cx:centerX(point.index), cy:y(point.value), r:2.8, fill:options.line.color, stroke:'#fff', 'stroke-width':1});
-      const title = svgNode('title'); title.append(text(`${options.bucketTitle(point.row)} · ${options.line.label}: ${integer(point.value)}`));
-      circle.append(title); svg.append(circle);
+  if (trend) {
+    const trendLine = svgNode('line', {
+      x1:centerX(trend.startIndex), y1:y(trend.startValue),
+      x2:centerX(trend.endIndex), y2:y(trend.endValue),
+      stroke:palette.navy, 'stroke-width':2, 'stroke-dasharray':'7 5', opacity:.78
     });
+    const title = svgNode('title');
+    title.append(text('Linear trend: ' + (trend.slope >= 0 ? '+' : '') + decimal(trend.slope) + ' per week'));
+    trendLine.append(title); svg.append(trendLine);
   }
-  const legendItems = [...options.stacks, ...(options.line ? [{...options.line, line:true}] : [])];
-  container.append(svg, chartLegend(legendItems));
+  const legend = [{label:options.label, color:options.color, line:true}];
+  if (trend) legend.push({label:'Linear trend', color:palette.navy, line:true});
+  container.append(svg, chartLegend(legend));
+}
+
+function loadedWeeklySummary(rows, options) {
+  const completed = rows.filter(row => row.data_available && !row.is_partial
+    && Number(row.represented_days || 0) > 0 && row[options.averageField] !== null);
+  const representedDays = completed.reduce((sum, row) => sum + Number(row.represented_days || 0), 0);
+  const total = completed.reduce((sum, row) => sum + Number(row[options.totalField] || 0), 0);
+  const periodAverage = representedDays ? total / representedDays : null;
+  const latest = completed.length ? completed[completed.length - 1] : null;
+  const trend = loadedLinearTrend(rows, options.averageField);
+  const summary = document.createElement('div');
+  summary.className = 'loaded-chart-summary';
+  summary.setAttribute('role', 'group');
+  summary.setAttribute('aria-label', options.label + ' 13-week summary');
+  const items = [
+    {
+      label:'Period average', value:periodAverage === null ? 'No Data' : decimal(periodAverage),
+      detail:representedDays ? representedDays + ' represented days' : 'No completed production days'
+    },
+    {
+      label:'Latest full week', value:latest ? decimal(latest[options.averageField]) : 'No Data',
+      detail:latest ? dateLabel(latest.bucket) + ' · ' + latest.represented_days + ' days' : 'No completed week'
+    },
+    {
+      label:'Trend',
+      value:trend ? (Math.abs(trend.slope) < .05 ? 'Flat' : (trend.slope > 0 ? 'Up' : 'Down')) : 'No Data',
+      detail:trend ? (trend.slope >= 0 ? '+' : '') + decimal(trend.slope) + ' per week' : 'Need two completed weeks'
+    }
+  ];
+  items.forEach(item => {
+    const metric = document.createElement('div'); metric.className = 'loaded-chart-summary-item';
+    const label = document.createElement('span'); label.append(text(item.label));
+    const value = document.createElement('strong'); value.append(text(item.value));
+    const detail = document.createElement('small'); detail.append(text(item.detail));
+    metric.append(label, value, detail); summary.append(metric);
+  });
+  return summary;
+}
+
+function loadedTileSummaryTable(snapshot) {
+  const current = snapshot.daily.find(row => row.date === snapshot.report_date);
+  const wrap = document.createElement('div'); wrap.className = 'loaded-summary-table-wrap';
+  if (!current) return wrap;
+  const heading = document.createElement('h4'); heading.append(text('Loaded tile summary · selected report day'));
+  const table = document.createElement('table'); table.className = 'loaded-summary-table';
+  table.setAttribute('aria-label', 'Selected report day Loaded tile summary');
+  const head = document.createElement('thead');
+  const headingRow = document.createElement('tr');
+  ['Metric', 'Total', 'Unique', 'Prd', 'BV', 'Svc'].forEach(value => {
+    const th = document.createElement('th'); th.scope = 'col'; th.append(text(value)); headingRow.append(th);
+  });
+  head.append(headingRow);
+  const body = document.createElement('tbody');
+  [
+    ['Carts', current.carts_loaded, null, current.production_carts_loaded, current.bv_carts_loaded, current.service_carts_loaded],
+    ['Pieces', current.parts_loaded, current.unique_pieces_loaded, current.production_parts_loaded, current.bv_parts_loaded, current.service_parts_loaded]
+  ].forEach(values => {
+    const row = document.createElement('tr');
+    values.forEach((value, index) => {
+      const cell = document.createElement(index === 0 ? 'th' : 'td');
+      if (index === 0) cell.scope = 'row';
+      cell.append(text(value === null ? '—' : index === 0 ? value : integer(value))); row.append(cell);
+    });
+    body.append(row);
+  });
+  table.append(head, body); wrap.append(heading, table); return wrap;
 }
 
 function loadedChartCard(title, note, rows, options) {
@@ -500,9 +613,14 @@ function loadedChartCard(title, note, rows, options) {
   const heading = document.createElement('span'); heading.append(text(title));
   const detail = document.createElement('small'); detail.append(text(note));
   caption.append(heading, detail);
+  const displayRows = options.omitNull
+    ? rows.filter(row => row.data_available && Number(row.represented_days || 0) > 0 && row[options.field] !== null)
+    : rows;
   const chart = document.createElement('div'); chart.className = 'loaded-chart';
-  renderLoadedSeriesChart(chart, rows, options);
-  figure.append(caption, chart); return figure;
+  renderLoadedLineChart(chart, displayRows, options);
+  figure.append(caption);
+  if (options.summary) figure.append(loadedWeeklySummary(displayRows, options.summary));
+  figure.append(chart); return figure;
 }
 
 function metricChartSection(title, note) {
@@ -518,58 +636,63 @@ function metricChartSection(title, note) {
 function renderLoadedCharts(snapshot) {
   const content = $('#metric-chart-content'); content.replaceChildren();
   const loaded = snapshot.chart_series?.loaded;
-  if (!loaded || !Array.isArray(loaded.hourly) || !Array.isArray(loaded.daily_30)) {
+  if (!loaded || !Array.isArray(loaded.hourly) || !Array.isArray(loaded.weekly_13)) {
     const empty = document.createElement('div'); empty.className = 'chart-placeholder';
-    empty.append(text('This saved snapshot predates the Loaded chart contract. Load or refresh this date to build its aggregate chart series.'));
+    empty.append(text('This saved snapshot predates the 13-week Loaded chart contract. Load or refresh this date to build its aggregate chart series.'));
     content.append(empty); return;
   }
-  const hourly = loaded.hourly, daily = loaded.daily_30;
+  const hourly = loaded.hourly, weekly = loaded.weekly_13;
   const reportDay = fullDateLabel(snapshot.report_date);
-  const hourlySection = metricChartSection('Hourly · selected report day', `24 clock-hour buckets · ${reportDay}`);
+  const hourlySection = metricChartSection('Hourly · selected report day', '24 clock-hour buckets · ' + reportDay);
   hourlySection.grid.append(
-    loadedChartCard('Carts loaded by hour', 'Cart assigned to first load event', hourly, {
-      stacks:[{field:'carts_loaded', label:'Total carts', color:palette.teal}],
-      line:null, ariaLabel:`Hourly carts loaded for ${reportDay}`,
+    loadedChartCard('Carts loaded by hour', 'Total carts · first load event', hourly, {
+      field:'carts_loaded', label:'Total carts', color:palette.teal, trend:false,
+      ariaLabel:'Hourly total carts loaded for ' + reportDay,
       bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
-      showTick:index => index % 3 === 0 || index === 23
+      verticalLabels:true, showTick:() => true
     }),
-    loadedChartCard('Pieces loaded by hour', 'Events with distinct-piece comparison', hourly, {
-      stacks:[{field:'parts_loaded', label:'Total events', color:palette.blue}],
-      line:{field:'unique_pieces_loaded', label:'Unique pieces', color:palette.navy},
-      ariaLabel:`Hourly pieces loaded for ${reportDay}`,
+    loadedChartCard('Pieces loaded by hour', 'Total load events', hourly, {
+      field:'parts_loaded', label:'Total pieces', color:palette.blue, trend:false,
+      ariaLabel:'Hourly total pieces loaded for ' + reportDay,
       bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
-      showTick:index => index % 3 === 0 || index === 23
+      verticalLabels:true, showTick:() => true
     })
   );
+  hourlySection.section.append(loadedTileSummaryTable(snapshot));
 
-  const partial = daily.some(row => row.is_partial);
-  const rollingSection = metricChartSection('Rolling 30 calendar days', 'Prd / BV / Svc stacks · zero-activity dates retained');
-  const dayOptions = {
-    bucketLabel:row => dateLabel(row.bucket), bucketTitle:row => fullDateLabel(row.bucket),
-    showTick:(index, length) => index % 5 === 0 || index === length - 1
+  const weeklySection = metricChartSection(
+    '13-week daily averages',
+    'Sunday–Saturday · represented production days · partial selected week excluded from trend'
+  );
+  const weeklyOptions = {
+    formatValue:decimal, trend:true, omitNull:true, verticalLabels:true,
+    bucketLabel:row => dateLabel(row.bucket),
+    bucketTitle:row => fullDateLabel(row.bucket) + ' through ' + fullDateLabel(row.bucket_end),
+    tooltipSuffix:row => ' · ' + integer(row.represented_days) + ' represented days',
+    showTick:() => true
   };
-  rollingSection.grid.append(
-    loadedChartCard('Carts loaded · 30 days', 'Exclusive cart class', daily, {
-      stacks:[
-        {field:'production_carts_loaded', label:'Prd', color:palette.teal},
-        {field:'bv_carts_loaded', label:'BV', color:palette.purple},
-        {field:'service_carts_loaded', label:'Svc', color:palette.amber}
-      ], line:null, ariaLabel:'Rolling 30-day carts loaded by category', ...dayOptions
+  weeklySection.grid.append(
+    loadedChartCard('Carts loaded · 13 weeks', 'Average total carts per represented day', weekly, {
+      ...weeklyOptions, field:'average_carts_loaded', label:'Daily average carts', color:palette.teal,
+      ariaLabel:'Thirteen-week daily average carts loaded with linear trend',
+      summary:{label:'Carts', averageField:'average_carts_loaded', totalField:'carts_loaded_total'}
     }),
-    loadedChartCard('Pieces loaded · 30 days', 'Load events with distinct-piece comparison', daily, {
-      stacks:[
-        {field:'production_parts_loaded', label:'Prd', color:palette.blue},
-        {field:'bv_parts_loaded', label:'BV', color:palette.purple},
-        {field:'service_parts_loaded', label:'Svc', color:palette.amber}
-      ], line:{field:'unique_pieces_loaded', label:'Unique pieces', color:palette.navy},
-      ariaLabel:'Rolling 30-day pieces loaded by category', ...dayOptions
+    loadedChartCard('Pieces loaded · 13 weeks', 'Average total pieces per represented day', weekly, {
+      ...weeklyOptions, field:'average_parts_loaded', label:'Daily average pieces', color:palette.blue,
+      ariaLabel:'Thirteen-week daily average pieces loaded with linear trend',
+      summary:{label:'Pieces', averageField:'average_parts_loaded', totalField:'parts_loaded_total'}
     })
   );
-  content.append(hourlySection.section, rollingSection.section);
-  if (partial) {
+  content.append(hourlySection.section, weeklySection.section);
+  if (weekly.some(row => row.is_partial)) {
     const note = document.createElement('span'); note.className = 'chart-partial-note';
-    note.append(text('Current day is partial and updates with the normal cached refresh.'));
-    rollingSection.section.append(note);
+    note.append(text('The selected week is partial and is displayed but excluded from both trendlines.'));
+    weeklySection.section.append(note);
+  }
+  if (weekly.some(row => !row.data_available)) {
+    const unavailable = document.createElement('span'); unavailable.className = 'chart-unavailable-note';
+    unavailable.append(text('Unavailable weeks before the September 8 history boundary are omitted, not zero.'));
+    weeklySection.section.append(unavailable);
   }
 }
 
@@ -577,7 +700,7 @@ function renderMetricCharts(snapshot) {
   $('#metric-chart-title').textContent = selectedChartLabel;
   const summary = $('#metric-chart-summary');
   if (selectedChartKey === 'loaded') {
-    summary.textContent = 'Hourly report-day totals first, followed by the rolling 30-day category mix.';
+    summary.textContent = 'Hourly total lines and selected-day summary, followed by 13-week represented-day averages and trends.';
     renderLoadedCharts(snapshot); return;
   }
   summary.textContent = 'This tile is selectable; its chart contract will be added after the Loaded pilot layout is finalized.';
