@@ -71,6 +71,12 @@ def with_loaded_chart(snapshot):
                 "is_partial": False,
                 "data_available": True,
                 "represented_day": True,
+                "first_cart_loaded_at": None,
+                "last_cart_loaded_at": None,
+                "load_span_minutes": 0.0,
+                "lunch_allowance_minutes": 0.0,
+                "net_loading_minutes": 0.0,
+                "performance_scored": False,
                 **(values if hour == 8 else zero),
             }
             for hour in range(24)
@@ -112,6 +118,162 @@ def with_loaded_chart(snapshot):
             "average_target_pieces": None,
             "average_goal_pieces": None,
         })
+    loaded_weeks = snapshot["chart_series"]["loaded"]["weekly_13"]
+    staged_carts = int(current.get("staged_carts", 0))
+    staged_pieces = int(current.get("staged_pieces", 0))
+    paint_carts = int(current.get("paint_carts", 0))
+    paint_pieces = int(current.get("paint_pieces_processed", 0))
+    repaint_numerator = int(current.get("paint_fty_repaint_count", 0))
+    repaint_denominator = int(current.get("paint_fty_total", 0))
+    finesse_numerator = int(current.get("finesse_repair_count", 0)) + int(current.get("paint_fty_repair_count", 0))
+    finesse_denominator = int(current.get("finesse_rejected_count", 0)) + int(current.get("reject_fty_rejected_count", 0))
+
+    def hourly_counts(metric, fields, values, value_hour=8):
+        return [
+            {
+                "bucket": f"{report_date.isoformat()}T{hour:02d}:00:00",
+                "is_partial": False,
+                "data_available": True,
+                "represented_day": True,
+                **{field: value if hour == value_hour else 0 for field, value in zip(fields, values)},
+            }
+            for hour in range(24)
+        ]
+
+    def count_weeks(cart_value, piece_value, painted=False):
+        rows = []
+        for loaded_week in loaded_weeks:
+            represented = int(loaded_week["represented_days"])
+            row = {
+                "bucket": loaded_week["bucket"],
+                "bucket_end": loaded_week["bucket_end"],
+                "is_partial": loaded_week["is_partial"],
+                "data_available": loaded_week["data_available"],
+                "represented_days": represented,
+                "carts_total": cart_value * represented,
+                "pieces_total": piece_value * represented,
+                "average_carts": float(cart_value) if represented else None,
+                "average_pieces": float(piece_value) if represented else None,
+            }
+            if painted:
+                comparable = bool(represented and not loaded_week["is_partial"])
+                row.update({
+                    "performance_days": represented,
+                    "performance_comparable": comparable,
+                    "net_activity_minutes": 600.0 * represented,
+                    "carts_per_net_hour": round(cart_value / 10.0, 1) if represented else None,
+                    "pieces_per_net_hour": round(piece_value / 10.0, 1) if represented else None,
+                    "average_target_carts": 89.7 if comparable else None,
+                    "average_goal_carts": 100.0 if comparable else None,
+                    "average_target_pieces": 268.8 if comparable else None,
+                    "average_goal_pieces": 300.0 if comparable else None,
+                })
+            rows.append(row)
+        return rows
+
+    def quality_weeks(numerator, denominator):
+        rows = []
+        for loaded_week in loaded_weeks:
+            represented = int(loaded_week["represented_days"])
+            total_numerator = numerator * represented
+            total_denominator = denominator * represented
+            rows.append({
+                "bucket": loaded_week["bucket"],
+                "bucket_end": loaded_week["bucket_end"],
+                "is_partial": loaded_week["is_partial"],
+                "data_available": loaded_week["data_available"],
+                "represented_days": represented,
+                "quality_numerator": total_numerator,
+                "quality_denominator": total_denominator,
+                "rate_percent": round(total_numerator * 100 / total_denominator, 4) if total_denominator else None,
+            })
+        return rows
+
+    snapshot["chart_series"].update({
+        "staged": {
+            "performance_model": {
+                "baseline_represented_days": 53,
+                "baseline_staged_carts": 7,
+                "baseline_staged_pieces": 7,
+                "baseline_carts_per_snapshot": 0.1321,
+                "baseline_pieces_per_snapshot": 0.1321,
+                "target_gap_fraction": 0.25,
+                "target_carts": 3.0991,
+                "target_pieces": 9.0991,
+                "goal_carts": 12.0,
+                "goal_pieces": 36.0,
+                "direction": "at_or_above",
+            },
+            "selected_day": {"staged_carts": staged_carts, "staged_pieces": staged_pieces},
+            "hourly": hourly_counts("staged", ("staged_carts", "staged_pieces"), (staged_carts, staged_pieces), 23),
+            "weekly_13": count_weeks(staged_carts, staged_pieces),
+        },
+        "painted": {
+            "performance_model": {
+                "baseline_completed_painting_days": 46,
+                "baseline_net_painting_minutes": 31482.434,
+                "baseline_carts_painted": 4529,
+                "baseline_pieces_painted": 13560,
+                "baseline_carts_per_hour": 8.6315,
+                "baseline_pieces_per_hour": 25.843,
+                "target_gap_fraction": 0.25,
+                "target_carts_per_hour": 8.9736,
+                "target_pieces_per_hour": 26.8822,
+                "goal_carts_per_hour": 10.0,
+                "goal_pieces_per_hour": 30.0,
+            },
+            "selected_day": {
+                "first_activity_at": f"{report_date.isoformat()}T08:00:00",
+                "last_activity_at": f"{report_date.isoformat()}T18:30:00",
+                "activity_span_minutes": 630.0,
+                "lunch_allowance_minutes": 30.0,
+                "net_activity_minutes": 600.0,
+                "performance_scored": True,
+                "carts_per_net_hour": round(paint_carts / 10.0, 1),
+                "pieces_per_net_hour": round(paint_pieces / 10.0, 1),
+                "target_carts": 89.7,
+                "goal_carts": 100.0,
+                "target_pieces": 268.8,
+                "goal_pieces": 300.0,
+            },
+            "hourly": hourly_counts("painted", ("paint_carts", "paint_pieces_processed"), (paint_carts, paint_pieces)),
+            "weekly_13": count_weeks(paint_carts, paint_pieces, painted=True),
+        },
+        "repaint": {
+            "performance_model": {
+                "baseline_numerator": 975,
+                "baseline_denominator": 12446,
+                "baseline_percent": 7.8338,
+                "target_gap_fraction": 0.25,
+                "target_percent": 6.8754,
+                "goal_percent": 4.0,
+                "direction": "at_or_below",
+                "weighted_rate": True,
+            },
+            "selected_day": {},
+            "hourly": hourly_counts("repaint", ("quality_numerator", "quality_denominator"), (repaint_numerator, repaint_denominator)),
+            "weekly_13": quality_weeks(repaint_numerator, repaint_denominator),
+        },
+        "finesse": {
+            "performance_model": {
+                "baseline_numerator": 1034,
+                "baseline_denominator": 2527,
+                "baseline_percent": 40.9181,
+                "target_gap_fraction": 0.25,
+                "target_percent": 53.1886,
+                "goal_percent": 90.0,
+                "direction": "at_or_above",
+                "weighted_rate": True,
+            },
+            "selected_day": {},
+            "hourly": hourly_counts("finesse", ("quality_numerator", "quality_denominator"), (finesse_numerator, finesse_denominator)),
+            "weekly_13": quality_weeks(finesse_numerator, finesse_denominator),
+        },
+    })
+    for metric in ("repaint", "finesse"):
+        for row in snapshot["chart_series"][metric]["hourly"]:
+            denominator = row["quality_denominator"]
+            row["rate_percent"] = round(row["quality_numerator"] * 100 / denominator, 4) if denominator else None
     return snapshot
 
 
@@ -171,7 +333,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.31.0-remove-performance-contract" in html
+            assert "0.32.0-staged-painted-quality-charts" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html
@@ -303,6 +465,15 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "X-Operations-KPI-Refresh-Key" not in javascript
             assert "sessionStorage" not in javascript
             assert "renderLoadedCharts(snapshot)" in javascript
+            assert "renderStagedCharts(snapshot)" in javascript
+            assert "renderPaintedCharts(snapshot)" in javascript
+            assert "renderQualityCharts(snapshot, 'repaint'" in javascript
+            assert "renderQualityCharts(snapshot, 'finesse'" in javascript
+            assert "12 carts and 36 pieces staged" in javascript
+            assert "10 carts and 30 pieces per net painting hour" in javascript
+            assert "against a 4% goal; lower is better" in javascript
+            assert "against a 90% goal; higher is better" in javascript
+            assert "not enabled in this first layout pilot" not in javascript
             assert "renderLoadedLineChart" in javascript
             assert "options.chartType === 'bar'" in javascript
             assert "class:'loaded-bar'" in javascript
@@ -313,7 +484,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "valueLabel.append(text(wholeNumber(value)))" in javascript
             assert "value:periodAverage === null ? 'No Data' : decimal(periodAverage)" in javascript
             assert "value:latest ? decimal(latest[options.averageField]) : 'No Data'" in javascript
-            assert javascript.count("chartType:'bar'") == 1
+            assert javascript.count("chartType:'bar'") == 4
             assert "line:!barChart" in javascript
             assert "loadedLinearTrend" in javascript
             assert "13-week daily averages" in javascript
@@ -339,10 +510,10 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "field:'average_goal_pieces'" not in javascript
             assert "Net-time interim target" in javascript
             assert "Net-time long-term goal" in javascript
-            assert javascript.count("value:performance.model.target_") == 2
-            assert javascript.count("value:performance.model.goal_") == 2
+            assert javascript.count("value:performance.model.target_") == 4
+            assert javascript.count("value:performance.model.goal_") == 4
             assert "class:'loaded-reference-line'" in javascript
-            assert javascript.count("spanFullWidth:true") == 4
+            assert javascript.count("spanFullWidth:true") == 14
             assert "loaded-reference-line-full-width" in javascript
             assert "points = [left + ',' + y(referencePoints[0].value)]" in javascript
             assert "points.push((width - right) + ',' + y(referencePoints[referencePoints.length - 1].value))" in javascript
@@ -354,7 +525,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "loadedWeeklySummary" in javascript
             assert "options.omitNull" in javascript
             assert "omitNull:true, verticalLabels:true, chartType:'bar'" in javascript
-            assert javascript.count("verticalLabels:true, showTick:() => true") == 2
+            assert javascript.count("verticalLabels:true, showTick:() => true") == 5
             assert "Unavailable weeks before the September 8 history boundary are omitted, not zero." in javascript
             assert "field:'unique_pieces_loaded'" not in javascript
             assert "Hourly · selected report day" in javascript
@@ -396,6 +567,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert ".trailer-rack-list{display:grid" in styles
             assert ".metric-card.selectable-card" in styles
             assert ".loaded-chart-grid{display:grid;grid-template-columns:1fr 1fr" in styles
+            assert ".loaded-chart-grid.single-chart-grid{grid-template-columns:minmax(0,1fr)}" in styles
             assert ".loaded-chart-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))" in styles
             assert ".loaded-summary-table-wrap" not in styles
             assert ".loaded-performance-contract" not in styles

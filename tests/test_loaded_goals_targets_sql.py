@@ -10,7 +10,7 @@ NEW_HASH = "A7365336FFFE5170A3D963D3C4599F158C97E29B2E01FFEBD3C59A4ED817285F"
 PENDING_HASH = "PENDING_V21_CANDIDATE_SHA256"
 
 
-def test_v21_forward_is_hash_gated_apply_ready_and_service_pinned():
+def test_v21_forward_is_hash_gated_apply_ready():
     sql = FORWARD.read_text(encoding="utf-8")
 
     assert "DECLARE @CommitChange bit = 1;" in sql
@@ -21,7 +21,7 @@ def test_v21_forward_is_hash_gated_apply_ready_and_service_pinned():
     assert "ASTER_OPERATIONS_KPI_LOADED_GOALS_TARGETS_V1" in sql
     assert "ROLLBACK TRANSACTION" in sql
     unit = SERVICE.read_text(encoding="utf-8")
-    assert f"Environment=KPI_SQL_PROCEDURE_HASH={NEW_HASH}" in unit
+    assert f"Environment=KPI_SQL_PROCEDURE_HASH={NEW_HASH}" not in unit
 
 
 def test_v21_adds_only_aggregate_loading_window_contract():

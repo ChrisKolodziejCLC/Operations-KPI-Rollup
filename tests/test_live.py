@@ -148,12 +148,65 @@ def result_sets():
     loaded = {field: metric_row("DAY", report_date.isoformat(), report_date.isoformat())[field] for field in zero}
     hourly = [
         {
+            "metric_key": "loaded",
             "grain": "HOUR",
             "bucket_start": f"{report_date.isoformat()} {hour:02d}:00:00",
             "is_partial": "0",
             "data_available": "1",
             "represented_day": "1",
             **(loaded if hour == 8 else zero),
+        }
+        for hour in range(24)
+    ]
+    staged_hourly = [
+        {
+            "metric_key": "staged",
+            "grain": "HOUR",
+            "bucket_start": f"{report_date.isoformat()} {hour:02d}:00:00",
+            "is_partial": "0",
+            "data_available": "1",
+            "represented_day": "1",
+            "staged_carts": "11" if hour == 23 else "0",
+            "staged_pieces": "40" if hour == 23 else "0",
+        }
+        for hour in range(24)
+    ]
+    painted_hourly = [
+        {
+            "metric_key": "painted",
+            "grain": "HOUR",
+            "bucket_start": f"{report_date.isoformat()} {hour:02d}:00:00",
+            "is_partial": "0",
+            "data_available": "1",
+            "represented_day": "1",
+            "paint_carts": "35" if hour == 8 else "0",
+            "paint_pieces_processed": "96" if hour == 8 else "0",
+        }
+        for hour in range(24)
+    ]
+    repaint_hourly = [
+        {
+            "metric_key": "repaint",
+            "grain": "HOUR",
+            "bucket_start": f"{report_date.isoformat()} {hour:02d}:00:00",
+            "is_partial": "0",
+            "data_available": "1",
+            "represented_day": "1",
+            "quality_numerator": "3" if hour == 8 else "0",
+            "quality_denominator": "90" if hour == 8 else "0",
+        }
+        for hour in range(24)
+    ]
+    finesse_hourly = [
+        {
+            "metric_key": "finesse",
+            "grain": "HOUR",
+            "bucket_start": f"{report_date.isoformat()} {hour:02d}:00:00",
+            "is_partial": "0",
+            "data_available": "1",
+            "represented_day": "1",
+            "quality_numerator": "3" if hour == 8 else "0",
+            "quality_denominator": "7" if hour == 8 else "0",
         }
         for hour in range(24)
     ]
@@ -174,15 +227,56 @@ def result_sets():
             "net_loading_minutes": "600.000",
             "performance_scored": "1",
         } if is_completed_loading_day or is_selected_loading_day else {}
+        loaded_day = loaded if is_completed_loading_day or is_selected_loading_day else zero
         daily_window.append({
+            "metric_key": "loaded",
             "grain": "DAY",
             "bucket_start": bucket.isoformat(),
             "is_partial": "0",
             "data_available": str(int(available)),
             "represented_day": str(int(represented)),
-            **(loaded if is_completed_loading_day or is_selected_loading_day else zero),
+            **loaded_day,
             **timing,
         })
+        daily_window.append({
+            "metric_key": "staged",
+            "grain": "DAY",
+            "bucket_start": bucket.isoformat(),
+            "is_partial": "0",
+            "data_available": str(int(available)),
+            "represented_day": str(int(represented)),
+            "staged_carts": "11" if represented else "0",
+            "staged_pieces": "40" if represented else "0",
+        })
+        daily_window.append({
+            "metric_key": "painted",
+            "grain": "DAY",
+            "bucket_start": bucket.isoformat(),
+            "is_partial": "0",
+            "data_available": str(int(available)),
+            "represented_day": str(int(represented)),
+            "paint_carts": "35" if represented else "0",
+            "paint_pieces_processed": "96" if represented else "0",
+            **({
+                "first_activity_at": f"{bucket.isoformat()} 08:00:00",
+                "last_activity_at": f"{bucket.isoformat()} 18:30:00",
+                "activity_span_minutes": "630.000",
+                "lunch_allowance_minutes": "30.000",
+                "net_activity_minutes": "600.000",
+                "performance_scored": "1",
+            } if is_completed_loading_day or is_selected_loading_day else {}),
+        })
+        for metric, numerator, denominator in (("repaint", 3, 90), ("finesse", 3, 7)):
+            daily_window.append({
+                "metric_key": metric,
+                "grain": "DAY",
+                "bucket_start": bucket.isoformat(),
+                "is_partial": "0",
+                "data_available": str(int(available)),
+                "represented_day": str(int(represented)),
+                "quality_numerator": str(numerator if represented else 0),
+                "quality_denominator": str(denominator if represented else 0),
+            })
     return [
         {"index": 0, "rows": [{"history_start": "2026-09-08", "report_date": "2026-11-11"}]},
         {"index": 2, "rows": [metric_row("DAY", "2026-11-10", "2026-11-10"), metric_row("DAY", "2026-11-11", "2026-11-11")]},
@@ -196,7 +290,9 @@ def result_sets():
             {"report_date": "2026-11-11", "line_set": "N71-6164", "pieces_shipped": "5"},
             {"report_date": "2026-11-11", "line_set": "Fairings", "pieces_shipped": "10"},
         ]},
-        {"index": 14, "rows": hourly + daily_window},
+        {"index": 14, "rows": (
+            hourly + staged_hourly + painted_hourly + repaint_hourly + finesse_hourly + daily_window
+        )},
     ]
 
 
@@ -208,7 +304,7 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
 
 
 def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
-    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "a7365336fffe5170a3d963d3c4599f158c97e29b2e01ffebd3c59a4ed817285f")
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "da67e4a283c8317cc69b750b2d6636b1f76f9b6f46ff990591e82f1ca88fdd33")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -297,9 +393,53 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert latest_full_week["average_goal_carts"] == 120.0
     assert latest_full_week["average_target_pieces"] == 274.9
     assert latest_full_week["average_goal_pieces"] == 360.0
+    staged = snapshot["chart_series"]["staged"]
+    assert len(staged["hourly"]) == 24
+    assert staged["hourly"][-1]["staged_carts"] == 11
+    assert staged["hourly"][-1]["staged_pieces"] == 40
+    assert staged["weekly_13"][-1]["average_carts"] == 11.0
+    assert staged["weekly_13"][-1]["average_pieces"] == 40.0
+    assert staged["performance_model"]["target_carts"] == 3.0991
+    assert staged["performance_model"]["target_pieces"] == 9.0991
+    assert staged["performance_model"]["goal_carts"] == 12.0
+    assert staged["performance_model"]["goal_pieces"] == 36.0
+
+    painted = snapshot["chart_series"]["painted"]
+    assert sum(row["paint_carts"] for row in painted["hourly"]) == 35
+    assert sum(row["paint_pieces_processed"] for row in painted["hourly"]) == 96
+    assert painted["weekly_13"][-1]["average_carts"] == 35.0
+    assert painted["weekly_13"][-1]["average_pieces"] == 96.0
+    assert painted["performance_model"]["baseline_carts_per_hour"] == 8.6315
+    assert painted["performance_model"]["target_carts_per_hour"] == 8.9736
+    assert painted["performance_model"]["goal_carts_per_hour"] == 10.0
+    assert painted["performance_model"]["baseline_pieces_per_hour"] == 25.843
+    assert painted["performance_model"]["target_pieces_per_hour"] == 26.8822
+    assert painted["performance_model"]["goal_pieces_per_hour"] == 30.0
+    assert painted["selected_day"]["net_activity_minutes"] == 600.0
+    assert painted["selected_day"]["carts_per_net_hour"] == 3.5
+    assert painted["selected_day"]["pieces_per_net_hour"] == 9.6
+
+    repaint = snapshot["chart_series"]["repaint"]
+    assert sum(row["quality_numerator"] for row in repaint["hourly"]) == 3
+    assert sum(row["quality_denominator"] for row in repaint["hourly"]) == 90
+    assert repaint["weekly_13"][-1]["rate_percent"] == 3.3333
+    assert repaint["performance_model"]["baseline_percent"] == 7.8338
+    assert repaint["performance_model"]["target_percent"] == 6.8754
+    assert repaint["performance_model"]["goal_percent"] == 4.0
+    assert repaint["performance_model"]["direction"] == "at_or_below"
+
+    finesse = snapshot["chart_series"]["finesse"]
+    assert sum(row["quality_numerator"] for row in finesse["hourly"]) == 3
+    assert sum(row["quality_denominator"] for row in finesse["hourly"]) == 7
+    assert finesse["weekly_13"][-1]["rate_percent"] == 42.8571
+    assert finesse["performance_model"]["baseline_percent"] == 40.9181
+    assert finesse["performance_model"]["target_percent"] == 53.1886
+    assert finesse["performance_model"]["goal_percent"] == 90.0
+    assert finesse["performance_model"]["direction"] == "at_or_above"
+
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
-    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "A7365336FFFE5170A3D963D3C4599F158C97E29B2E01FFEBD3C59A4ED817285F"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v22-loaded-goal-rates"
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "DA67E4A283C8317CC69B750B2D6636B1F76F9B6F46FF990591E82F1CA88FDD33"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v23-staged-painted-quality-charts"
 
 
 def test_v21_loaded_goal_snapshot_remains_valid_for_saved_cache():
@@ -808,7 +948,7 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "A7365336FFFE5170A3D963D3C4599F158C97E29B2E01FFEBD3C59A4ED817285F" in captured["query"]
+    assert "DA67E4A283C8317CC69B750B2D6636B1F76F9B6F46FF990591E82F1CA88FDD33" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]
     assert 14 in captured["wanted"]

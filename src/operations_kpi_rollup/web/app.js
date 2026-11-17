@@ -442,6 +442,7 @@ function loadedLinearTrend(rows, field) {
     value:Number(row[field])
   })).filter((point, index) => rows[index].data_available && !rows[index].is_partial
       && Number(rows[index].represented_days || 0) > 0
+      && rows[index][field] !== null && rows[index][field] !== undefined
       && Number.isFinite(point.weekIndex) && Number.isFinite(point.value));
   if (points.length < 2) return null;
   const meanX = points.reduce((sum, point) => sum + point.weekIndex, 0) / points.length;
@@ -457,12 +458,12 @@ function loadedLinearTrend(rows, field) {
   };
 }
 
-function loadedWeeklyReferenceModel(rows, model) {
+function loadedWeeklyReferenceModel(rows, model, minutesField = 'net_loading_minutes') {
   const completed = rows.filter(row => row.data_available && !row.is_partial
     && Number(row.performance_days || 0) > 0
-    && Number(row.net_loading_minutes || 0) > 0);
+    && Number(row[minutesField] || 0) > 0);
   const performanceDays = completed.reduce((sum, row) => sum + Number(row.performance_days || 0), 0);
-  const netLoadingMinutes = completed.reduce((sum, row) => sum + Number(row.net_loading_minutes || 0), 0);
+  const netLoadingMinutes = completed.reduce((sum, row) => sum + Number(row[minutesField] || 0), 0);
   const averageNetHours = performanceDays > 0 ? netLoadingMinutes / 60 / performanceDays : null;
   const dailyValue = rateField => {
     const rate = Number(model?.[rateField]);
@@ -754,23 +755,26 @@ function loadedChartCard(title, note, rows, options) {
   const detail = document.createElement('small'); detail.append(text(note));
   caption.append(heading, detail);
   const displayRows = options.omitNull
-    ? rows.filter(row => row.data_available && Number(row.represented_days || 0) > 0 && row[options.field] !== null)
+    ? rows.filter(row => row.data_available && row[options.field] !== null && row[options.field] !== undefined)
     : rows;
   const chart = document.createElement('div'); chart.className = 'loaded-chart';
   renderLoadedLineChart(chart, displayRows, options);
   figure.append(caption);
-  if (options.hourlySummary) figure.append(loadedHourlySummary(displayRows, options.hourlySummary, options.performance));
-  if (options.summary) figure.append(loadedWeeklySummary(displayRows, options.summary));
+  if (options.summaryBuilder) figure.append(options.summaryBuilder(displayRows));
+  else {
+    if (options.hourlySummary) figure.append(loadedHourlySummary(displayRows, options.hourlySummary, options.performance));
+    if (options.summary) figure.append(loadedWeeklySummary(displayRows, options.summary));
+  }
   figure.append(chart); return figure;
 }
 
-function metricChartSection(title, note) {
+function metricChartSection(title, note, single = false) {
   const section = document.createElement('section'); section.className = 'metric-chart-section';
   const heading = document.createElement('div'); heading.className = 'metric-chart-section-heading';
   const titleNode = document.createElement('h3'); titleNode.append(text(title));
   const noteNode = document.createElement('p'); noteNode.append(text(note));
   heading.append(titleNode, noteNode);
-  const grid = document.createElement('div'); grid.className = 'loaded-chart-grid';
+  const grid = document.createElement('div'); grid.className = 'loaded-chart-grid' + (single ? ' single-chart-grid' : '');
   section.append(heading, grid); return {section, grid};
 }
 
@@ -864,6 +868,306 @@ function renderLoadedCharts(snapshot) {
   }
 }
 
+
+function chartSummaryPanel(ariaLabel, items) {
+  const summary = document.createElement('div');
+  summary.className = 'loaded-chart-summary';
+  summary.setAttribute('role', 'group');
+  summary.setAttribute('aria-label', ariaLabel);
+  items.forEach(item => {
+    const metric = document.createElement('div'); metric.className = 'loaded-chart-summary-item';
+    const label = document.createElement('span'); label.append(text(item.label));
+    const value = document.createElement('strong'); value.append(text(item.value));
+    const detail = document.createElement('small'); detail.append(text(item.detail));
+    metric.append(label, value, detail); summary.append(metric);
+  });
+  return summary;
+}
+
+function throughputHourlySummary(rows, options, performance) {
+  const available = rows.filter(row => row.data_available);
+  const values = available.map(row => Number(row[options.field])).filter(Number.isFinite);
+  const total = values.reduce((sum, value) => sum + value, 0);
+  const peak = available.reduce((best, row) => {
+    const value = Number(row[options.field]);
+    return Number.isFinite(value) && (!best || value > best.value) ? {row, value} : best;
+  }, null);
+  const model = performance?.model || {}, day = performance?.day || {};
+  const type = options.type;
+  const rate = day[type === 'carts' ? 'carts_per_net_hour' : 'pieces_per_net_hour'];
+  const targetRate = model[type === 'carts' ? 'target_carts_per_hour' : 'target_pieces_per_hour'];
+  const goalRate = model[type === 'carts' ? 'goal_carts_per_hour' : 'goal_pieces_per_hour'];
+  const targetCount = day[type === 'carts' ? 'target_carts' : 'target_pieces'];
+  const goalCount = day[type === 'carts' ? 'goal_carts' : 'goal_pieces'];
+  const netHours = Number(day.net_activity_minutes || 0) / 60;
+  const hasWindow = Boolean(day.first_activity_at && day.last_activity_at && netHours > 0);
+  const windowDetail = hasWindow
+    ? clockTimeLabel(day.first_activity_at) + '–' + clockTimeLabel(day.last_activity_at)
+      + (Number(day.lunch_allowance_minutes || 0) > 0
+        ? ' · ' + integer(day.lunch_allowance_minutes) + ' min lunch'
+        : (day.performance_scored ? ' · no lunch allowance' : ' · live span'))
+    : 'Need at least two distinct-cart paint times';
+  const expectedDetail = (expected, label) => day.performance_scored && expected !== null && expected !== undefined
+    ? decimal(expected) + ' ' + label + ' expected for net time'
+    : 'Rate shown · partial or unscored day';
+  return chartSummaryPanel(options.label + ' selected-day hourly summary', [
+    {label:'Day total', value:integer(total), detail:available.length + ' available clock-hour buckets'},
+    {label:'Peak hour', value:peak ? integer(peak.value) : 'No Data', detail:peak ? hourBucketLabel(peak.row.bucket) + ' bucket' : 'No hourly data'},
+    {label:day.performance_scored ? 'Net painting time' : 'Net painting time · live', value:hasWindow ? decimal(netHours) + ' h' : 'No Data', detail:windowDetail},
+    {label:'Actual rate', value:rate === null || rate === undefined ? 'No Data' : decimal(rate) + '/hr', detail:hasWindow ? integer(total) + ' over ' + decimal(netHours) + ' net hours' : 'No painting window'},
+    {label:'Interim target', value:targetRate === null || targetRate === undefined ? 'No Data' : decimal(targetRate) + '/hr', detail:expectedDetail(targetCount, options.label.toLowerCase())},
+    {label:'Long-term goal', value:goalRate === null || goalRate === undefined ? 'No Data' : decimal(goalRate) + '/hr', detail:expectedDetail(goalCount, options.label.toLowerCase())}
+  ]);
+}
+
+function stagedHourlySummary(rows, options, model) {
+  const available = rows.filter(row => row.data_available);
+  const values = available.map(row => Number(row[options.field])).filter(Number.isFinite);
+  const latest = available.length ? available[available.length - 1] : null;
+  const averageValue = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  const minimum = values.length ? Math.min(...values) : null;
+  const peak = values.length ? Math.max(...values) : null;
+  const target = model[options.type === 'carts' ? 'target_carts' : 'target_pieces'];
+  const goal = model[options.type === 'carts' ? 'goal_carts' : 'goal_pieces'];
+  return chartSummaryPanel(options.label + ' staged snapshot summary', [
+    {label:'Latest snapshot', value:latest ? integer(latest[options.field]) : 'No Data', detail:latest ? hourBucketLabel(latest.bucket) + ' cutoff' : 'No available snapshot'},
+    {label:'Available-hour average', value:averageValue === null ? 'No Data' : decimal(averageValue), detail:available.length + ' available cutoffs'},
+    {label:'Lowest snapshot', value:minimum === null ? 'No Data' : integer(minimum), detail:'Minimum available queue'},
+    {label:'Peak snapshot', value:peak === null ? 'No Data' : integer(peak), detail:'Maximum available queue'},
+    {label:'Interim target', value:target === null || target === undefined ? 'No Data' : decimal(target), detail:'At or above'},
+    {label:'Minimum goal', value:goal === null || goal === undefined ? 'No Data' : integer(goal), detail:'At or above'}
+  ]);
+}
+
+function qualityHourlySummary(rows, options, model) {
+  const measured = rows.filter(row => row.data_available && Number(row.quality_denominator || 0) > 0);
+  const numerator = measured.reduce((sum, row) => sum + Number(row.quality_numerator || 0), 0);
+  const denominator = measured.reduce((sum, row) => sum + Number(row.quality_denominator || 0), 0);
+  const weighted = denominator > 0 ? numerator * 100 / denominator : null;
+  const ordered = measured.map(row => ({row, value:Number(row.rate_percent)})).filter(item => Number.isFinite(item.value));
+  const best = ordered.reduce((value, item) => (!value || (options.lowerIsBetter ? item.value < value.value : item.value > value.value)) ? item : value, null);
+  const worst = ordered.reduce((value, item) => (!value || (options.lowerIsBetter ? item.value > value.value : item.value < value.value)) ? item : value, null);
+  return chartSummaryPanel(options.label + ' selected-day hourly summary', [
+    {label:'Day weighted rate', value:weighted === null ? 'No Data' : decimal(weighted) + '%', detail:integer(numerator) + ' / ' + integer(denominator)},
+    {label:'Measured hours', value:integer(measured.length), detail:'Hours with a denominator'},
+    {label:'Best hour', value:best ? decimal(best.value) + '%' : 'No Data', detail:best ? hourBucketLabel(best.row.bucket) + ' bucket' : 'No measured hour'},
+    {label:'Worst hour', value:worst ? decimal(worst.value) + '%' : 'No Data', detail:worst ? hourBucketLabel(worst.row.bucket) + ' bucket' : 'No measured hour'},
+    {label:'Interim target', value:decimal(model.target_percent) + '%', detail:options.lowerIsBetter ? 'At or below' : 'At or above'},
+    {label:'Goal', value:decimal(model.goal_percent) + '%', detail:options.lowerIsBetter ? 'At or below' : 'At or above'}
+  ]);
+}
+
+function qualityWeeklySummary(rows, options, model) {
+  const completed = rows.filter(row => row.data_available && !row.is_partial && Number(row.quality_denominator || 0) > 0);
+  const numerator = completed.reduce((sum, row) => sum + Number(row.quality_numerator || 0), 0);
+  const denominator = completed.reduce((sum, row) => sum + Number(row.quality_denominator || 0), 0);
+  const weighted = denominator > 0 ? numerator * 100 / denominator : null;
+  const latest = completed.length ? completed[completed.length - 1] : null;
+  const trend = loadedLinearTrend(rows, 'rate_percent');
+  const improving = trend && (options.lowerIsBetter ? trend.slope < 0 : trend.slope > 0);
+  const trendValue = !trend ? 'No Data' : Math.abs(trend.slope) < .05 ? 'Flat' : improving ? 'Improving' : 'Moving away';
+  return chartSummaryPanel(options.label + ' 13-week summary', [
+    {label:'Period weighted rate', value:weighted === null ? 'No Data' : decimal(weighted) + '%', detail:integer(numerator) + ' / ' + integer(denominator)},
+    {label:'Latest full week', value:latest ? decimal(latest.rate_percent) + '%' : 'No Data', detail:latest ? dateLabel(latest.bucket) + ' · ' + latest.represented_days + ' days' : 'No completed week'},
+    {label:'Trend', value:trendValue, detail:trend ? (trend.slope >= 0 ? '+' : '') + decimal(trend.slope) + ' points/week' : 'Need two completed weeks'},
+    {label:'Frozen baseline', value:decimal(model.baseline_percent) + '%', detail:integer(model.baseline_numerator) + ' / ' + integer(model.baseline_denominator)},
+    {label:'Interim target', value:decimal(model.target_percent) + '%', detail:options.lowerIsBetter ? 'At or below' : 'At or above'},
+    {label:'Goal', value:decimal(model.goal_percent) + '%', detail:options.lowerIsBetter ? 'At or below' : 'At or above'}
+  ]);
+}
+
+function appendCommonChartNotes(content, weeklySection, weekly) {
+  if (weekly.some(row => row.is_partial)) {
+    const note = document.createElement('span'); note.className = 'chart-partial-note';
+    note.append(text('The selected week is partial and is displayed but excluded from the trendline.'));
+    weeklySection.section.append(note);
+  }
+  if (weekly.some(row => !row.data_available)) {
+    const unavailable = document.createElement('span'); unavailable.className = 'chart-unavailable-note';
+    unavailable.append(text('Unavailable weeks before the September 8 history boundary are omitted, not zero.'));
+    weeklySection.section.append(unavailable);
+  }
+  content.append(weeklySection.section);
+}
+
+function renderStagedCharts(snapshot) {
+  const content = $('#metric-chart-content'); content.replaceChildren();
+  const staged = snapshot.chart_series?.staged;
+  if (!staged || !Array.isArray(staged.hourly) || !Array.isArray(staged.weekly_13)) {
+    const empty = document.createElement('div'); empty.className = 'chart-placeholder';
+    empty.append(text('This saved snapshot predates the Staged chart contract. Refresh this date to build it.'));
+    content.append(empty); return;
+  }
+  const hourly = staged.hourly, weekly = staged.weekly_13, model = staged.performance_model || {};
+  const reportDay = fullDateLabel(snapshot.report_date);
+  const hourlySection = metricChartSection('Hourly queue snapshots · selected report day', 'Point-in-time Paint Prep queue at each available hour cutoff · ' + reportDay);
+  const hourlyBase = {
+    trend:false, formatValue:wholeNumber, verticalLabels:true, showTick:() => true,
+    bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket)
+  };
+  hourlySection.grid.append(
+    loadedChartCard('Carts staged by hour', 'Point-in-time queue · minimum goal', hourly, {
+      ...hourlyBase, field:'staged_carts', label:'Staged carts', color:palette.green,
+      ariaLabel:'Hourly staged-cart queue snapshots with interim target and minimum goal for ' + reportDay,
+      references:[
+        {value:model.target_carts, label:'Interim target', color:palette.amber, dash:'6 4'},
+        {value:model.goal_carts, label:'Minimum goal', color:palette.red, dash:'3 4'}
+      ],
+      summaryBuilder:rows => stagedHourlySummary(rows, {label:'Carts', field:'staged_carts', type:'carts'}, model)
+    }),
+    loadedChartCard('Pieces staged by hour', 'Point-in-time queue · minimum goal', hourly, {
+      ...hourlyBase, field:'staged_pieces', label:'Staged pieces', color:palette.teal,
+      ariaLabel:'Hourly staged-piece queue snapshots with interim target and minimum goal for ' + reportDay,
+      references:[
+        {value:model.target_pieces, label:'Interim target', color:palette.amber, dash:'6 4'},
+        {value:model.goal_pieces, label:'Minimum goal', color:palette.red, dash:'3 4'}
+      ],
+      summaryBuilder:rows => stagedHourlySummary(rows, {label:'Pieces', field:'staged_pieces', type:'pieces'}, model)
+    })
+  );
+  const weeklySection = metricChartSection('13-week close-of-day queue averages', 'Sunday–Saturday · represented production days · partial selected week excluded from trend');
+  const weeklyBase = {
+    formatValue:wholeNumber, trend:true, omitNull:true, verticalLabels:true, chartType:'bar',
+    bucketLabel:row => dateLabel(row.bucket), bucketTitle:row => fullDateLabel(row.bucket) + ' through ' + fullDateLabel(row.bucket_end),
+    tooltipSuffix:row => ' · ' + integer(row.represented_days) + ' represented days', showTick:() => true
+  };
+  weeklySection.grid.append(
+    loadedChartCard('Carts staged · 13 weeks', 'Average close-of-day staged carts', weekly, {
+      ...weeklyBase, field:'average_carts', label:'Daily average carts', color:palette.green,
+      ariaLabel:'Thirteen-week close-of-day average staged carts with trend, interim target, and minimum goal',
+      references:[
+        {value:model.target_carts, label:'Interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
+        {value:model.goal_carts, label:'Minimum goal', color:palette.red, dash:'3 4', spanFullWidth:true}
+      ],
+      summary:{label:'Carts', averageField:'average_carts', totalField:'carts_total'}
+    }),
+    loadedChartCard('Pieces staged · 13 weeks', 'Average close-of-day staged pieces', weekly, {
+      ...weeklyBase, field:'average_pieces', label:'Daily average pieces', color:palette.teal,
+      ariaLabel:'Thirteen-week close-of-day average staged pieces with trend, interim target, and minimum goal',
+      references:[
+        {value:model.target_pieces, label:'Interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
+        {value:model.goal_pieces, label:'Minimum goal', color:palette.red, dash:'3 4', spanFullWidth:true}
+      ],
+      summary:{label:'Pieces', averageField:'average_pieces', totalField:'pieces_total'}
+    })
+  );
+  content.append(hourlySection.section);
+  appendCommonChartNotes(content, weeklySection, weekly);
+}
+
+function renderPaintedCharts(snapshot) {
+  const content = $('#metric-chart-content'); content.replaceChildren();
+  const painted = snapshot.chart_series?.painted;
+  if (!painted || !Array.isArray(painted.hourly) || !Array.isArray(painted.weekly_13)) {
+    const empty = document.createElement('div'); empty.className = 'chart-placeholder';
+    empty.append(text('This saved snapshot predates the Painted chart contract. Refresh this date to build it.'));
+    content.append(empty); return;
+  }
+  const hourly = painted.hourly, weekly = painted.weekly_13;
+  const performance = {model:painted.performance_model || {}, day:painted.selected_day || {}};
+  const weeklyReference = loadedWeeklyReferenceModel(weekly, performance.model, 'net_activity_minutes');
+  const reportDay = fullDateLabel(snapshot.report_date);
+  const hourlySection = metricChartSection('Hourly · selected report day', '24 clock-hour buckets · ' + reportDay);
+  const hourlyBase = {
+    trend:false, formatValue:wholeNumber, verticalLabels:true, showTick:() => true,
+    bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket)
+  };
+  hourlySection.grid.append(
+    loadedChartCard('Carts painted by hour', 'Distinct carts · first paint exit', hourly, {
+      ...hourlyBase, field:'paint_carts', label:'Painted carts', color:palette.blue,
+      ariaLabel:'Hourly painted carts with interim target and long-term goal for ' + reportDay,
+      references:[
+        {value:performance.model.target_carts_per_hour, label:'Interim target', color:palette.amber, dash:'6 4'},
+        {value:performance.model.goal_carts_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'}
+      ],
+      summaryBuilder:rows => throughputHourlySummary(rows, {label:'Carts', field:'paint_carts', type:'carts'}, performance)
+    }),
+    loadedChartCard('Pieces painted by hour', 'Total paint exits', hourly, {
+      ...hourlyBase, field:'paint_pieces_processed', label:'Painted pieces', color:palette.purple,
+      ariaLabel:'Hourly painted pieces with interim target and long-term goal for ' + reportDay,
+      references:[
+        {value:performance.model.target_pieces_per_hour, label:'Interim target', color:palette.amber, dash:'6 4'},
+        {value:performance.model.goal_pieces_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'}
+      ],
+      summaryBuilder:rows => throughputHourlySummary(rows, {label:'Pieces', field:'paint_pieces_processed', type:'pieces'}, performance)
+    })
+  );
+  const weeklySection = metricChartSection('13-week daily averages', 'Sunday–Saturday · represented production days · partial selected week excluded from trend and target scoring');
+  const weeklyBase = {
+    formatValue:wholeNumber, trend:true, omitNull:true, verticalLabels:true, chartType:'bar',
+    bucketLabel:row => dateLabel(row.bucket), bucketTitle:row => fullDateLabel(row.bucket) + ' through ' + fullDateLabel(row.bucket_end),
+    tooltipSuffix:row => ' · ' + integer(row.represented_days) + ' represented days', showTick:() => true
+  };
+  weeklySection.grid.append(
+    loadedChartCard('Carts painted · 13 weeks', 'Average total carts per represented day', weekly, {
+      ...weeklyBase, field:'average_carts', label:'Daily average carts', color:palette.blue,
+      ariaLabel:'Thirteen-week daily average painted carts with trend, interim target, and long-term goal',
+      references:[
+        {value:weeklyReference.targetCarts, label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
+        {value:weeklyReference.goalCarts, label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
+      ],
+      summary:{label:'Carts', averageField:'average_carts', totalField:'carts_total'}
+    }),
+    loadedChartCard('Pieces painted · 13 weeks', 'Average total pieces per represented day', weekly, {
+      ...weeklyBase, field:'average_pieces', label:'Daily average pieces', color:palette.purple,
+      ariaLabel:'Thirteen-week daily average painted pieces with trend, interim target, and long-term goal',
+      references:[
+        {value:weeklyReference.targetPieces, label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
+        {value:weeklyReference.goalPieces, label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
+      ],
+      summary:{label:'Pieces', averageField:'average_pieces', totalField:'pieces_total'}
+    })
+  );
+  content.append(hourlySection.section);
+  if (weeklyReference.averageNetHours !== null) {
+    const comparison = document.createElement('span'); comparison.className = 'chart-unavailable-note';
+    comparison.append(text('Horizontal references use one ' + decimal(weeklyReference.averageNetHours) + '-hour average net-painting day from ' + integer(weeklyReference.performanceDays) + ' completed painting days.'));
+    weeklySection.section.append(comparison);
+  }
+  appendCommonChartNotes(content, weeklySection, weekly);
+}
+
+function renderQualityCharts(snapshot, metric, options) {
+  const content = $('#metric-chart-content'); content.replaceChildren();
+  const series = snapshot.chart_series?.[metric];
+  if (!series || !Array.isArray(series.hourly) || !Array.isArray(series.weekly_13)) {
+    const empty = document.createElement('div'); empty.className = 'chart-placeholder';
+    empty.append(text('This saved snapshot predates the ' + options.label + ' chart contract. Refresh this date to build it.'));
+    content.append(empty); return;
+  }
+  const hourly = series.hourly, weekly = series.weekly_13, model = series.performance_model || {};
+  const reportDay = fullDateLabel(snapshot.report_date);
+  const hourlySection = metricChartSection('Hourly · selected report day', 'Weighted within each clock hour · ' + reportDay, true);
+  hourlySection.grid.append(loadedChartCard(options.label + ' by hour', options.definition, hourly, {
+    field:'rate_percent', label:options.label, color:options.color, trend:false, formatValue:wholeNumber,
+    ariaLabel:'Hourly ' + options.label + ' with interim target and goal for ' + reportDay,
+    bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
+    verticalLabels:true, showTick:() => true,
+    tooltipSuffix:row => ' · ' + integer(row.quality_numerator) + ' / ' + integer(row.quality_denominator),
+    references:[
+      {value:model.target_percent, label:'Interim target', color:palette.amber, dash:'6 4'},
+      {value:model.goal_percent, label:'Goal', color:options.lowerIsBetter ? palette.green : palette.red, dash:'3 4'}
+    ],
+    summaryBuilder:rows => qualityHourlySummary(rows, options, model)
+  }));
+  const weeklySection = metricChartSection('13-week weighted rates', 'Sunday–Saturday · numerator divided by denominator · partial selected week excluded from trend', true);
+  weeklySection.grid.append(loadedChartCard(options.label + ' · 13 weeks', options.definition, weekly, {
+    field:'rate_percent', label:options.label, color:options.color, trend:true, omitNull:true,
+    verticalLabels:true, chartType:'bar', formatValue:wholeNumber,
+    ariaLabel:'Thirteen-week weighted ' + options.label + ' with trend, interim target, and goal',
+    bucketLabel:row => dateLabel(row.bucket), bucketTitle:row => fullDateLabel(row.bucket) + ' through ' + fullDateLabel(row.bucket_end),
+    tooltipSuffix:row => ' · ' + integer(row.quality_numerator) + ' / ' + integer(row.quality_denominator),
+    showTick:() => true,
+    references:[
+      {value:model.target_percent, label:'Interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
+      {value:model.goal_percent, label:'Goal', color:options.lowerIsBetter ? palette.green : palette.red, dash:'3 4', spanFullWidth:true}
+    ],
+    summaryBuilder:rows => qualityWeeklySummary(rows, options, model)
+  }));
+  content.append(hourlySection.section);
+  appendCommonChartNotes(content, weeklySection, weekly);
+}
+
 function renderMetricCharts(snapshot) {
   $('#metric-chart-title').textContent = selectedChartLabel;
   const summary = $('#metric-chart-summary');
@@ -871,9 +1175,35 @@ function renderMetricCharts(snapshot) {
     summary.textContent = 'Hourly totals with interim-target and long-term-goal lines, followed by 13-week daily averages with horizontal average-day references and trend.';
     renderLoadedCharts(snapshot); return;
   }
-  summary.textContent = 'This tile is selectable; its chart contract will be added after the Loaded pilot layout is finalized.';
+  if (selectedChartKey === 'carts-pieces-staged') {
+    summary.textContent = 'Hourly queue snapshots and 13-week close-of-day averages with minimum goals of 12 carts and 36 pieces staged.';
+    renderStagedCharts(snapshot); return;
+  }
+  if (selectedChartKey === 'carts-pieces-painted') {
+    summary.textContent = 'Hourly painted totals and 13-week daily averages with goals of 10 carts and 30 pieces per net painting hour.';
+    renderPaintedCharts(snapshot); return;
+  }
+  if (selectedChartKey === 'repaint') {
+    summary.textContent = 'Weighted hourly and 13-week repaint rates against a 4% goal; lower is better.';
+    renderQualityCharts(snapshot, 'repaint', {
+      label:'Repaint %',
+      definition:'GP initial-pass repaint outcomes divided by GP initial passes',
+      color:palette.amber,
+      lowerIsBetter:true
+    }); return;
+  }
+  if (selectedChartKey === 'finesse-effectiveness') {
+    summary.textContent = 'Weighted hourly and 13-week Finesse Effectiveness against a 90% goal; higher is better.';
+    renderQualityCharts(snapshot, 'finesse', {
+      label:'Finesse Effectiveness',
+      definition:'Completed GP-paint and Receiving/Finesse repairs divided by governed rejects',
+      color:palette.green,
+      lowerIsBetter:false
+    }); return;
+  }
+  summary.textContent = 'This tile is selectable; its chart contract is not enabled yet.';
   const placeholder = document.createElement('div'); placeholder.className = 'chart-placeholder';
-  placeholder.append(text(`${selectedChartLabel} charts are not enabled in this first layout pilot.`));
+  placeholder.append(text(`${selectedChartLabel} charts are not enabled yet.`));
   $('#metric-chart-content').replaceChildren(placeholder);
 }
 

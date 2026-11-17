@@ -22,11 +22,13 @@ GP_LOCAL_REPAINT_METHODS = {
     "operations-kpi-live-v20-loaded-13-week-trend",
     "operations-kpi-live-v21-loaded-goals-targets",
     "operations-kpi-live-v22-loaded-goal-rates",
+    "operations-kpi-live-v23-staged-painted-quality-charts",
 }
 
 LOADED_PERFORMANCE_METHODS = {
     "operations-kpi-live-v21-loaded-goals-targets",
     "operations-kpi-live-v22-loaded-goal-rates",
+    "operations-kpi-live-v23-staged-painted-quality-charts",
 }
 
 LOADED_CHART_FIELDS = (
@@ -87,6 +89,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v20-loaded-13-week-trend",
         "operations-kpi-live-v21-loaded-goals-targets",
         "operations-kpi-live-v22-loaded-goal-rates",
+        "operations-kpi-live-v23-staged-painted-quality-charts",
     }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
@@ -107,6 +110,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v20-loaded-13-week-trend",
                 "operations-kpi-live-v21-loaded-goals-targets",
                 "operations-kpi-live-v22-loaded-goal-rates",
+                "operations-kpi-live-v23-staged-painted-quality-charts",
             }:
                 for unique_field, total_field, label in (
                     ("unique_pieces_loaded", "parts_loaded", "loaded unique-piece"),
@@ -133,6 +137,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v20-loaded-13-week-trend",
                 "operations-kpi-live-v21-loaded-goals-targets",
                 "operations-kpi-live-v22-loaded-goal-rates",
+                "operations-kpi-live-v23-staged-painted-quality-charts",
             }:
                 for quantity_field in ("receiving_quantity", "final_quantity"):
                     if quantity_field not in row:
@@ -155,6 +160,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v20-loaded-13-week-trend",
                 "operations-kpi-live-v21-loaded-goals-targets",
                 "operations-kpi-live-v22-loaded-goal-rates",
+                "operations-kpi-live-v23-staged-painted-quality-charts",
             }:
                 required_yield_fields = (
                     "reject_ppy_total", "reject_ppy_approved", "reject_ppy_rejected_count",
@@ -175,6 +181,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v20-loaded-13-week-trend",
                     "operations-kpi-live-v21-loaded-goals-targets",
                     "operations-kpi-live-v22-loaded-goal-rates",
+                    "operations-kpi-live-v23-staged-painted-quality-charts",
                 }:
                     required_yield_fields += ("ppy_repaint_count",)
                 if method_version in GP_LOCAL_REPAINT_METHODS:
@@ -210,6 +217,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v20-loaded-13-week-trend",
                     "operations-kpi-live-v21-loaded-goals-targets",
                     "operations-kpi-live-v22-loaded-goal-rates",
+                    "operations-kpi-live-v23-staged-painted-quality-charts",
                 }:
                     if int(row["reject_ppy_approved"]) + int(row["reject_ppy_rejected_count"]) + int(row["reject_ppy_pending_count"]) != int(row["reject_ppy_total"]):
                         raise ValueError(f"{collection} reject PPY outcomes do not equal its total")
@@ -242,6 +250,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                         "operations-kpi-live-v20-loaded-13-week-trend",
                         "operations-kpi-live-v21-loaded-goals-targets",
                         "operations-kpi-live-v22-loaded-goal-rates",
+                        "operations-kpi-live-v23-staged-painted-quality-charts",
                     }:
                         repaint_split_fields = (
                             "fuka_paint_fty_repaint_count",
@@ -345,6 +354,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v20-loaded-13-week-trend",
                     "operations-kpi-live-v21-loaded-goals-targets",
                     "operations-kpi-live-v22-loaded-goal-rates",
+                    "operations-kpi-live-v23-staged-painted-quality-charts",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -393,6 +403,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v20-loaded-13-week-trend",
                 "operations-kpi-live-v21-loaded-goals-targets",
                 "operations-kpi-live-v22-loaded-goal-rates",
+                "operations-kpi-live-v23-staged-painted-quality-charts",
             }:
                 inspection_fields = (
                     "trailers_shipped",
@@ -460,6 +471,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v20-loaded-13-week-trend",
                 "operations-kpi-live-v21-loaded-goals-targets",
                 "operations-kpi-live-v22-loaded-goal-rates",
+                "operations-kpi-live-v23-staged-painted-quality-charts",
             }:
                 finesse_fields = (
                     "finesse_rejected_count",
@@ -516,6 +528,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v20-loaded-13-week-trend",
                     "operations-kpi-live-v21-loaded-goals-targets",
                     "operations-kpi-live-v22-loaded-goal-rates",
+                    "operations-kpi-live-v23-staged-painted-quality-charts",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -542,6 +555,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v20-loaded-13-week-trend",
                     "operations-kpi-live-v21-loaded-goals-targets",
                     "operations-kpi-live-v22-loaded-goal-rates",
+                    "operations-kpi-live-v23-staged-painted-quality-charts",
                 },
             )
 
@@ -602,6 +616,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v20-loaded-13-week-trend",
         "operations-kpi-live-v21-loaded-goals-targets",
         "operations-kpi-live-v22-loaded-goal-rates",
+        "operations-kpi-live-v23-staged-painted-quality-charts",
     }:
         loaded = snapshot.get("chart_series", {}).get("loaded", {})
         hourly = loaded.get("hourly")
@@ -738,6 +753,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
             expected_cart_goal, expected_piece_goal = {
                 "operations-kpi-live-v21-loaded-goals-targets": (10.0, 30.0),
                 "operations-kpi-live-v22-loaded-goal-rates": (12.0, 36.0),
+                "operations-kpi-live-v23-staged-painted-quality-charts": (12.0, 36.0),
             }[loaded_method]
             if (
                 abs(target_fraction - 0.25) > 0.0001
@@ -815,6 +831,138 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 elif value is None or abs(float(value) - round(rate * net_hours, 1)) > 0.0001:
                     raise ValueError("loaded selected-day target count does not match net loading time")
 
+
+    if loaded_method == "operations-kpi-live-v23-staged-painted-quality-charts":
+        chart_series = snapshot.get("chart_series", {})
+        report_daily = next(row for row in snapshot["daily"] if row.get("date") == snapshot["report_date"])
+        report_date_value = date.fromisoformat(snapshot["report_date"])
+        expected_hours = [
+            datetime.combine(report_date_value, datetime.min.time()) + timedelta(hours=hour)
+            for hour in range(24)
+        ]
+        report_week = report_date_value - timedelta(days=(report_date_value.weekday() + 1) % 7)
+        expected_weeks = [report_week - timedelta(weeks=offset) for offset in range(12, -1, -1)]
+        for metric in ("staged", "painted", "repaint", "finesse"):
+            series = chart_series.get(metric, {})
+            hourly = series.get("hourly")
+            weekly = series.get("weekly_13")
+            model = series.get("performance_model")
+            if not isinstance(hourly, list) or len(hourly) != 24:
+                raise ValueError(f"{metric} chart must contain exactly 24 hourly buckets")
+            if not isinstance(weekly, list) or len(weekly) != 13:
+                raise ValueError(f"{metric} chart must contain exactly 13 weekly buckets")
+            if not isinstance(model, dict):
+                raise ValueError(f"{metric} performance model is required")
+            if [datetime.fromisoformat(str(row.get("bucket"))) for row in hourly] != expected_hours:
+                raise ValueError(f"{metric} chart hourly buckets are not the report day's 24 ordered hours")
+            if [date.fromisoformat(str(row.get("bucket"))) for row in weekly] != expected_weeks:
+                raise ValueError(f"{metric} chart weekly buckets are not the ordered rolling 13 weeks")
+            for row in hourly:
+                if not isinstance(row.get("is_partial"), bool) or not isinstance(row.get("data_available"), bool):
+                    raise ValueError(f"{metric} chart hourly availability flags must be booleans")
+            for row in weekly:
+                if not isinstance(row.get("is_partial"), bool) or not isinstance(row.get("data_available"), bool):
+                    raise ValueError(f"{metric} chart weekly availability flags must be booleans")
+                represented_days = int(row.get("represented_days", -1))
+                if represented_days < 0 or represented_days > 7:
+                    raise ValueError(f"{metric} chart weekly represented-day count is invalid")
+
+        staged = chart_series["staged"]
+        staged_model = staged["performance_model"]
+        staged_expected = {
+            "baseline_represented_days": 53,
+            "baseline_staged_carts": 7,
+            "baseline_staged_pieces": 7,
+            "goal_carts": 12.0,
+            "goal_pieces": 36.0,
+            "direction": "at_or_above",
+        }
+        if any(staged_model.get(field) != value for field, value in staged_expected.items()):
+            raise ValueError("staged performance model does not retain the approved inputs")
+        if abs(float(staged_model.get("target_gap_fraction", -1)) - 0.25) > 0.0001:
+            raise ValueError("staged target gap fraction is not approved")
+        staged_available = [row for row in staged["hourly"] if row["data_available"]]
+        if not staged_available:
+            raise ValueError("staged chart has no available hourly snapshot")
+        for field in ("staged_carts", "staged_pieces"):
+            if int(staged_available[-1][field]) != int(report_daily.get(field, 0)):
+                raise ValueError(f"staged chart final available {field} does not reconcile to the report day")
+        for row in staged["weekly_13"]:
+            represented_days = int(row["represented_days"])
+            for total_field, average_field in (("carts_total", "average_carts"), ("pieces_total", "average_pieces")):
+                total = int(row.get(total_field, -1))
+                average = row.get(average_field)
+                if total < 0:
+                    raise ValueError("staged chart weekly total is negative")
+                if represented_days == 0:
+                    if total != 0 or average is not None:
+                        raise ValueError("staged chart empty week has a total or average")
+                elif average is None or abs(float(average) - round(total / represented_days, 1)) > 0.0001:
+                    raise ValueError("staged chart weekly average does not match its total and represented days")
+
+        painted = chart_series["painted"]
+        painted_model = painted["performance_model"]
+        painted_expected = {
+            "baseline_completed_painting_days": 46,
+            "baseline_carts_painted": 4529,
+            "baseline_pieces_painted": 13560,
+            "goal_carts_per_hour": 10.0,
+            "goal_pieces_per_hour": 30.0,
+        }
+        if any(painted_model.get(field) != value for field, value in painted_expected.items()):
+            raise ValueError("painted performance model does not retain the approved inputs")
+        if abs(float(painted_model.get("baseline_net_painting_minutes", 0)) - 31482.434) > 0.0001:
+            raise ValueError("painted performance baseline net minutes are not approved")
+        for chart_field, daily_field in (("paint_carts", "paint_carts"), ("paint_pieces_processed", "paint_pieces_processed")):
+            if sum(int(row.get(chart_field, 0)) for row in painted["hourly"]) != int(report_daily.get(daily_field, 0)):
+                raise ValueError(f"painted chart hourly {chart_field} does not reconcile to the report day")
+
+        quality_daily = {
+            "repaint": (
+                int(report_daily.get("paint_fty_repaint_count", 0)),
+                int(report_daily.get("paint_fty_total", 0)),
+                975,
+                12446,
+                4.0,
+                "at_or_below",
+            ),
+            "finesse": (
+                int(report_daily.get("finesse_repair_count", 0)) + int(report_daily.get("paint_fty_repair_count", 0)),
+                int(report_daily.get("finesse_rejected_count", 0)) + int(report_daily.get("reject_fty_rejected_count", 0)),
+                1034,
+                2527,
+                90.0,
+                "at_or_above",
+            ),
+        }
+        for metric, (expected_numerator, expected_denominator, baseline_numerator, baseline_denominator, goal, direction) in quality_daily.items():
+            series = chart_series[metric]
+            model = series["performance_model"]
+            if (
+                sum(int(row.get("quality_numerator", 0)) for row in series["hourly"]) != expected_numerator
+                or sum(int(row.get("quality_denominator", 0)) for row in series["hourly"]) != expected_denominator
+            ):
+                raise ValueError(f"{metric} chart hourly ratio does not reconcile to the report day")
+            if (
+                model.get("baseline_numerator") != baseline_numerator
+                or model.get("baseline_denominator") != baseline_denominator
+                or model.get("goal_percent") != goal
+                or model.get("direction") != direction
+                or model.get("weighted_rate") is not True
+            ):
+                raise ValueError(f"{metric} performance model does not retain the approved inputs")
+            for row in series["hourly"] + series["weekly_13"]:
+                numerator = int(row.get("quality_numerator", 0))
+                denominator = int(row.get("quality_denominator", 0))
+                rate = row.get("rate_percent")
+                expected_rate = round(numerator * 100.0 / denominator, 4) if denominator else None
+                if expected_rate is None:
+                    if rate is not None:
+                        raise ValueError(f"{metric} chart exposes a rate without a denominator")
+                elif rate is None or abs(float(rate) - expected_rate) > 0.0001:
+                    raise ValueError(f"{metric} chart rate does not match its numerator and denominator")
+
+
     if snapshot.get("scope", {}).get("method_version") in {
         "operations-kpi-live-v13-mic-n71-breakdowns",
         "operations-kpi-live-v14-trailer-inspection-details",
@@ -826,6 +974,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v20-loaded-13-week-trend",
         "operations-kpi-live-v21-loaded-goals-targets",
         "operations-kpi-live-v22-loaded-goal-rates",
+        "operations-kpi-live-v23-staged-painted-quality-charts",
     }:
         allowed_line_sets = {"FUKA", "Bumpers", "N71-6164", "Fairings", "Other"}
         report_shipping = [row for row in snapshot.get("shipping", []) if row.get("date") == snapshot["report_date"]]

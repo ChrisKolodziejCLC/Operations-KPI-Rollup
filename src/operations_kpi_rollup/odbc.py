@@ -298,7 +298,7 @@ def execute_operations_rollup(report_date: date) -> List[Dict[str, object]]:
     iso_date = report_date.isoformat()
     expected_hash = os.environ.get(
         "KPI_SQL_PROCEDURE_HASH",
-        "A7365336FFFE5170A3D963D3C4599F158C97E29B2E01FFEBD3C59A4ED817285F",
+        "DA67E4A283C8317CC69B750B2D6636B1F76F9B6F46FF990591E82F1CA88FDD33",
     ).upper()
     if not re.fullmatch(r"[0-9A-F]{64}", expected_hash):
         raise OdbcError("The configured procedure definition hash is invalid.")

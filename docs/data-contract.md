@@ -15,7 +15,7 @@ The renderer accepts one immutable JSON document with `schema_version` set to `o
 | `painters` | array | Painter/booth throughput rows; the committed fixture uses aliases. |
 | `shipping` | array | Date and exclusive FUKA, Fairings, Bumpers, N71-6164, and optional Other piece counts. N71-6164 takes precedence over its underlying Bumper description in this display split. |
 | `top_defects` | array | Aggregate step, defect description, and count. |
-| `chart_series` | object | Aggregate-only, refresh-owned chart series. Method v19 adds the Loaded pilot described below. |
+| `chart_series` | object | Aggregate-only, refresh-owned chart series. Method v23 includes Loaded, Staged, Painted, Repaint, and Finesse contracts described below. |
 | `attention` | object | Reviewed exceptions suitable for the report. |
 | `data_quality_notes` | array | Method limitations shown to the reader. |
 
@@ -83,6 +83,18 @@ Daily procedure rows also contain aggregate loading-window fields: `first_cart_l
 `chart_series.loaded.selected_day` exposes aggregate window/rate fields plus net-time-adjusted expected target and goal counts only when the day is scored. Weekly rows expose represented production days, performance days, net loading minutes, actual rates, and average target/goal counts. A week is comparable only when every represented day is scorable; partial or mixed-completeness weeks retain activity bars but have null target/goal comparison values and are excluded from performance trend calculations.
 
 The validator recomputes the frozen baselines, target formula, selected-day rates, expected counts, weekly comparison values, category reconciliation, and hourly-to-card totals. No part IDs, cart IDs, employees, DriverLog rows, or other detail records are present in the browser JSON contract.
+
+## Extended chart series (method v23)
+
+Result set 14 is metric-keyed. Each of `loaded`, `staged`, `painted`, `repaint`, and `finesse` supplies 24 ordered hourly buckets plus the exact daily source range needed for 13 Sunday-start weeks. The service owns the SQL refresh, converts daily rows to weekly aggregates, saves them in the immutable snapshot, and serves tile selection from cache without a database query.
+
+`chart_series.staged` treats every hourly value as a point-in-time queue snapshot, not additive throughput. Its weekly values average close-of-day snapshots over represented production days. The frozen baseline is 7 carts and 7 pieces over 53 represented days; interim targets are 3.0991 carts and 9.0991 pieces, with minimum goals of 12 carts and 36 pieces.
+
+`chart_series.painted` uses paint-exit events. Pieces stay in their actual exit hour and each distinct cart is assigned to its first exit hour. Net painting time runs from first to last distinct-cart exit with the approved completed-day lunch rule. The frozen 46-day baseline is 4,529 carts and 13,560 pieces over 31,482.434 net minutes; interim targets are 8.9736 carts/hour and 26.8822 pieces/hour against goals of 10 and 30.
+
+`chart_series.repaint` and `chart_series.finesse` retain `quality_numerator`, `quality_denominator`, and a recomputable weighted `rate_percent` in every hourly and weekly row. Repaint freezes 975 / 12,446 (7.8338%), targets 6.8754%, and has a 4% at-or-below goal. Finesse freezes 1,034 / 2,527 (40.9181%), targets 53.1886%, and has a 90% at-or-above goal. A zero denominator produces a null rate, never a false zero.
+
+The validator reconciles Staged's final available hourly snapshot, Painted's sum of hourly events, and each quality numerator/denominator sum to the selected daily card. Unavailable pre-September 8 periods remain null and the partial selected week is displayed but excluded from trend calculations.
 
 ## Derived values
 
