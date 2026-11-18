@@ -523,8 +523,8 @@ async function start() {
   dateInput.min = EARLIEST_REPORT_DATE;
   dateInput.max = localDateISO();
   try {
-    const health = await fetchJson('/api/drilldown/health');
-    const reportDate = health.report_date || localDateISO();
+    // Always open on today: the service's latest snapshot can be a past day another viewer browsed.
+    const reportDate = localDateISO();
     dateInput.value = reportDate;
     await loadDate(reportDate);
   } catch (error) {

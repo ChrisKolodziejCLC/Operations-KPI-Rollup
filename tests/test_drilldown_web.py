@@ -259,3 +259,10 @@ def test_public_wallboard_query_still_excludes_detail_result_sets(monkeypatch):
     odbc.execute_operations_rollup(date(2026, 11, 18))
     assert "@IncludeRestrictedDetail = 0" in captured["query"]
     assert captured["wanted"].isdisjoint({8, 16, 17, 18, 19, 20})
+
+
+def test_drilldown_page_always_opens_on_todays_date():
+    script = (SRC / "drilldown_web" / "app.js").read_text(encoding="utf-8")
+    start = script[script.index("async function start()"):]
+    assert "localDateISO()" in start
+    assert "health.report_date" not in start

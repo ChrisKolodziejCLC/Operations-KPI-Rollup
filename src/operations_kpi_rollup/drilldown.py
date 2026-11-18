@@ -21,7 +21,7 @@ from .restricted import build_restricted_snapshot
 from .restricted_web import RestrictedRefreshError, RestrictedState
 
 
-DRILLDOWN_VERSION = "0.36.0-standard-drilldown"
+DRILLDOWN_VERSION = "0.36.1-standard-drilldown"
 _DISABLED_VALUES = {"0", "false", "no", "off"}
 
 
