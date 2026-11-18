@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "operations-kpi-rollup"
-version = "0.35.0"
+version = "0.36.0"
 description = "Reproducible Operations, Quality, and Shipping KPI email rollups"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -31,7 +31,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-operations_kpi_rollup = ["templates/*.j2", "web/*.html", "web/*.css", "web/*.js", "restricted_web/*.html", "restricted_web/*.css", "restricted_web/*.js"]
+operations_kpi_rollup = ["templates/*.j2", "web/*.html", "web/*.css", "web/*.js", "restricted_web/*.html", "restricted_web/*.css", "restricted_web/*.js", "drilldown_web/*.html", "drilldown_web/*.css", "drilldown_web/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

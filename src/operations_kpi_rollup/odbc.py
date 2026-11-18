@@ -349,3 +349,30 @@ def execute_restricted_rollup(report_date: date) -> List[Dict[str, object]]:
         "KPI_RESTRICTED_SQL_CREDENTIAL_NAME", "operations-kpi-qpts-ro"
     )
     return execute_result_sets(query, {16, 17, 18, 19, 20}, credential_name)
+
+
+def execute_standard_drilldown(report_date: date) -> List[Dict[str, object]]:
+    """Fetch the reviewed painter, repaint, and Finesse drill-down result sets.
+
+    This is the wallboard's standard drill-down view, served from the same
+    process as the aggregate wallboard but from a separate snapshot. It reuses
+    the wallboard's pinned procedure hash and read-only SQL credential and has
+    no permissive default: the hash must be present and exactly 64 hex digits.
+    """
+
+    iso_date = report_date.isoformat()
+    expected_hash = os.environ.get("KPI_SQL_PROCEDURE_HASH", "").upper()
+    if not re.fullmatch(r"[0-9A-F]{64}", expected_hash):
+        raise OdbcError("KPI_SQL_PROCEDURE_HASH must pin the reviewed drill-down procedure.")
+    query = (
+        "SET NOCOUNT ON; "
+        "DECLARE @ObservedDefinitionHash varchar(64) = CONVERT(varchar(64), "
+        "HASHBYTES('SHA2_256', CONVERT(varbinary(max), COALESCE(OBJECT_DEFINITION("
+        "OBJECT_ID(N'dbo.usp_QPTS_GetOperationsQualityShippingRollup')), N''))), 2); "
+        f"IF @ObservedDefinitionHash <> '{expected_hash}' "
+        "THROW 51002, 'The drill-down KPI procedure differs from the reviewed contract.', 1; "
+        "EXEC dbo.usp_QPTS_GetOperationsQualityShippingRollup "
+        f"@ReportDateOverride = '{iso_date}', @IncludeRestrictedDetail = 1;"
+    )
+    credential_name = os.environ.get("KPI_SQL_CREDENTIAL_NAME", "operations-kpi-qpts-ro")
+    return execute_result_sets(query, {16, 17, 18, 19, 20}, credential_name)

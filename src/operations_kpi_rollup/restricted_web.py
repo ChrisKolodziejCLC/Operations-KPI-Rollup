@@ -89,9 +89,19 @@ class RestrictedAuth:
 
 
 class RestrictedState:
+    LABEL = "restricted"
+    MODE_ENV = "KPI_RESTRICTED_DATA_MODE"
+    FRESHNESS_ENV = "KPI_RESTRICTED_REFRESH_FRESHNESS_SECONDS"
+    AUTO_REFRESH_ENV = "KPI_RESTRICTED_AUTO_REFRESH_SECONDS"
+    MIN_REFRESH_ENV = "KPI_RESTRICTED_MIN_REFRESH_SECONDS"
+    SERVICE_NAME = "operations-kpi-restricted"
+    REFRESH_BOUNDARY = "identity-gated-loopback-proxy"
+    THREAD_NAME = "operations-kpi-restricted-refresh"
+    LOG_EVENT = "restricted-auto-refresh-error"
+
     def __init__(self, mode: str, snapshot_dir: Path, fixture_path: Optional[Path] = None) -> None:
         if mode not in {"fixture", "live"}:
-            raise ValueError("KPI_RESTRICTED_DATA_MODE must be fixture or live.")
+            raise ValueError(f"{self.MODE_ENV} must be fixture or live.")
         self.mode = mode
         self.snapshot_dir = snapshot_dir
         self.fixture_path = fixture_path
@@ -106,10 +116,10 @@ class RestrictedState:
         self._auto_refresh_stop = threading.Event()
         self._auto_refresh_thread: Optional[threading.Thread] = None
         self.refresh_freshness_seconds = self._bounded_seconds(
-            "KPI_RESTRICTED_REFRESH_FRESHNESS_SECONDS", 600.0, 60.0, 3600.0
+            self.FRESHNESS_ENV, 600.0, 60.0, 3600.0
         )
         self.auto_refresh_seconds = self._bounded_seconds(
-            "KPI_RESTRICTED_AUTO_REFRESH_SECONDS", 600.0, 60.0, 3600.0
+            self.AUTO_REFRESH_ENV, 600.0, 60.0, 3600.0
         )
         self._load_initial_snapshot()
 
@@ -132,6 +142,9 @@ class RestrictedState:
             self._snapshots_by_date[snapshot["report_date"]] = snapshot
             if latest:
                 self._snapshot = snapshot
+
+    def _fetch_live(self, report_date: date) -> Dict[str, Any]:
+        return refresh_restricted_snapshot(report_date)
 
     def _read_snapshot(self, path: Path) -> Dict[str, Any]:
         snapshot = json.loads(path.read_text(encoding="utf-8"))
@@ -158,7 +171,7 @@ class RestrictedState:
             return None
         snapshot = self._read_snapshot(candidates[0])
         if snapshot["report_date"] != date_text:
-            raise RestrictedRefreshError("The saved restricted snapshot has the wrong report date.")
+            raise RestrictedRefreshError(f"The saved {self.LABEL} snapshot has the wrong report date.")
         self._remember(snapshot, latest=False)
         return self._clone(snapshot)
 
@@ -189,7 +202,7 @@ class RestrictedState:
         today = self._today()
         if report_date < RESTRICTED_HISTORY_START:
             raise RestrictedRefreshError(
-                f"Restricted history starts on {RESTRICTED_HISTORY_START.isoformat()}."
+                f"{self.LABEL.capitalize()} history starts on {RESTRICTED_HISTORY_START.isoformat()}."
             )
         if report_date > today:
             raise RestrictedRefreshError("A future report date is not allowed.")
@@ -202,9 +215,9 @@ class RestrictedState:
             if cached is not None:
                 self._last_refresh_source = "cache-during-refresh"
                 return cached
-            raise RestrictedRefreshError("A restricted refresh is already in progress.")
+            raise RestrictedRefreshError(f"A {self.LABEL} refresh is already in progress.")
         try:
-            minimum_seconds = max(1.0, float(os.environ.get("KPI_RESTRICTED_MIN_REFRESH_SECONDS", "15")))
+            minimum_seconds = max(1.0, float(os.environ.get(self.MIN_REFRESH_ENV, "15")))
             elapsed = time.monotonic() - self._last_refresh_monotonic
             if force and self._last_refresh_monotonic and elapsed < minimum_seconds:
                 raise RestrictedRefreshError(
@@ -212,10 +225,10 @@ class RestrictedState:
                 )
             started = time.monotonic()
             if self.mode == "live":
-                snapshot = refresh_restricted_snapshot(report_date)
+                snapshot = self._fetch_live(report_date)
             else:
                 if not self.fixture_path or not self.fixture_path.is_file():
-                    raise RestrictedRefreshError("The restricted fixture is unavailable.")
+                    raise RestrictedRefreshError(f"The {self.LABEL} fixture is unavailable.")
                 snapshot = self._read_snapshot(self.fixture_path)
                 if snapshot["report_date"] != report_date.isoformat():
                     raise RestrictedRefreshError("Fixture mode can refresh only its recorded report date.")
@@ -237,7 +250,7 @@ class RestrictedState:
             return
         self._auto_refresh_stop.clear()
         self._auto_refresh_thread = threading.Thread(
-            target=self._auto_refresh_loop, name="operations-kpi-restricted-refresh", daemon=True
+            target=self._auto_refresh_loop, name=self.THREAD_NAME, daemon=True
         )
         self._auto_refresh_thread.start()
 
@@ -249,7 +262,7 @@ class RestrictedState:
             except Exception as exc:
                 print(
                     json.dumps(
-                        {"event": "restricted-auto-refresh-error", "error": f"{type(exc).__name__}: {str(exc)[:240]}"},
+                        {"event": self.LOG_EVENT, "error": f"{type(exc).__name__}: {str(exc)[:240]}"},
                         separators=(",", ":"),
                     ),
                     flush=True,
@@ -267,12 +280,12 @@ class RestrictedState:
         current = self.snapshot()
         return {
             "status": "ok" if current else "ready_no_snapshot",
-            "service": "operations-kpi-restricted",
+            "service": self.SERVICE_NAME,
             "mode": self.mode,
             "method_version": CURRENT_RESTRICTED_METHOD_VERSION,
             "report_date": current.get("report_date") if current else None,
             "generated_at": current.get("generated_at") if current else None,
-            "refresh_boundary": "identity-gated-loopback-proxy",
+            "refresh_boundary": self.REFRESH_BOUNDARY,
             "refresh_in_progress": self._refresh_lock.locked(),
             "last_refresh_source": self._last_refresh_source,
             "last_query_duration_seconds": self._last_query_duration_seconds,

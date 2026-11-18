@@ -17,10 +17,14 @@ from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
 from .context import validate_snapshot
+from .drilldown import DrilldownState, create_drilldown_state, disabled_event
 from .live import CURRENT_METHOD_VERSION, refresh_live_snapshot
+from .restricted_web import RestrictedRefreshError
 
 
 STATIC_ROOT = Path(__file__).parent / "web"
+DRILLDOWN_STATIC_ROOT = Path(__file__).parent / "drilldown_web"
+DRILLDOWN_ASSETS = {"/drilldown/app.js": "app.js", "/drilldown/styles.css": "styles.css"}
 EARLIEST_SUPPORTED_DATE = date(2026, 9, 8)
 
 
@@ -312,38 +316,45 @@ def _is_private_address(value: str) -> bool:
 class AppServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, handler, app_state: AppState):
+    def __init__(self, address, handler, app_state: AppState, drilldown_state: Optional[DrilldownState] = None):
         super().__init__(address, handler)
         self.app_state = app_state
+        self.drilldown_state = drilldown_state
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPI/0.35.0"
+    server_version = "OperationsKPI/0.36.0"
     sys_version = ""
 
     @property
     def state(self) -> AppState:
         return self.server.app_state  # type: ignore[attr-defined]
 
-    def _security_headers(self, cache_control: str) -> None:
+    @property
+    def drilldown(self) -> Optional[DrilldownState]:
+        return getattr(self.server, "drilldown_state", None)
+
+    def _security_headers(self, cache_control: str, noindex: bool = False) -> None:
+        if noindex:
+            self.send_header("X-Robots-Tag", "noindex, nofollow")
         self.send_header("Cache-Control", cache_control)
         self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
 
-    def _json(self, status: int, payload: Any) -> None:
+    def _json(self, status: int, payload: Any, noindex: bool = False) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self._security_headers("no-store")
+        self._security_headers("no-store", noindex)
         self.end_headers()
         self.wfile.write(body)
 
-    def _static(self, filename: str) -> None:
-        path = (STATIC_ROOT / filename).resolve()
-        if path.parent != STATIC_ROOT.resolve() or not path.is_file():
+    def _static(self, filename: str, root: Path = STATIC_ROOT, cache_control: Optional[str] = None, noindex: bool = False) -> None:
+        path = (root / filename).resolve()
+        if path.parent != root.resolve() or not path.is_file():
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         body = path.read_bytes()
@@ -351,9 +362,32 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type + ("; charset=utf-8" if content_type.startswith("text/") or content_type.endswith("javascript") else ""))
         self.send_header("Content-Length", str(len(body)))
-        self._security_headers("public, max-age=300" if filename != "index.html" else "no-cache")
+        self._security_headers(cache_control or ("public, max-age=300" if filename != "index.html" else "no-cache"), noindex)
         self.end_headers()
         self.wfile.write(body)
+
+    def _drilldown_static(self, filename: str) -> None:
+        if self.drilldown is None:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        self._static(filename, DRILLDOWN_STATIC_ROOT, "no-cache", True)
+
+    def _drilldown_snapshot(self, parsed) -> None:
+        drilldown = self.drilldown
+        if drilldown is None:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        try:
+            values = parse_qs(parsed.query).get("report_date", [])
+            requested_date = date.fromisoformat(values[0]) if values else None
+            snapshot = drilldown.snapshot(requested_date)
+            self._json(
+                HTTPStatus.OK if snapshot else HTTPStatus.NOT_FOUND,
+                snapshot or {"error": "No drill-down snapshot is available for that date yet. Use Refresh data to build it."},
+                True,
+            )
+        except (ValueError, RestrictedRefreshError) as exc:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)}, True)
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlsplit(self.path)
@@ -374,25 +408,51 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.OK if snapshot else HTTPStatus.NOT_FOUND, snapshot or {"error": "No report snapshot has been generated for that date."})
             except (ValueError, RefreshError) as exc:
                 self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+        elif path in {"/drilldown", "/drilldown/"}:
+            self._drilldown_static("index.html")
+        elif path in DRILLDOWN_ASSETS:
+            self._drilldown_static(DRILLDOWN_ASSETS[path])
+        elif path == "/api/drilldown/health":
+            if self.drilldown is None:
+                self.send_error(HTTPStatus.NOT_FOUND)
+            else:
+                self._json(HTTPStatus.OK, self.drilldown.health(), True)
+        elif path == "/api/drilldown/snapshot":
+            self._drilldown_snapshot(parsed)
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:  # noqa: N802
-        if urlsplit(self.path).path != "/api/refresh":
+        path = urlsplit(self.path).path
+        if path == "/api/refresh":
+            self._post_refresh(
+                self.state.refresh,
+                (ValueError, RefreshError),
+                "The report refresh failed. Check the service journal for the bounded diagnostic.",
+            )
+        elif path == "/api/drilldown/refresh" and self.drilldown is not None:
+            self._post_refresh(
+                self.drilldown.refresh,
+                (ValueError, RestrictedRefreshError),
+                "The drill-down refresh failed. Check the service journal for the bounded diagnostic.",
+                True,
+            )
+        else:
             self.send_error(HTTPStatus.NOT_FOUND)
-            return
+
+    def _post_refresh(self, refresh, expected_errors, failure_message: str, noindex: bool = False) -> None:
         if self.headers.get("X-Operations-KPI-Action") != "refresh":
-            self._json(HTTPStatus.FORBIDDEN, {"error": "The refresh action header is required."})
+            self._json(HTTPStatus.FORBIDDEN, {"error": "The refresh action header is required."}, noindex)
             return
         if not _is_private_address(self.client_address[0]):
-            self._json(HTTPStatus.FORBIDDEN, {"error": "Report refresh is limited to private-network clients."})
+            self._json(HTTPStatus.FORBIDDEN, {"error": "Report refresh is limited to private-network clients."}, noindex)
             return
         try:
             content_length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             content_length = 0
         if content_length <= 0 or content_length > 4096:
-            self._json(HTTPStatus.BAD_REQUEST, {"error": "The request body is missing or too large."})
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "The request body is missing or too large."}, noindex)
             return
         try:
             payload = json.loads(self.rfile.read(content_length))
@@ -400,20 +460,20 @@ class Handler(BaseHTTPRequestHandler):
             force = payload.get("force", False)
             if not isinstance(force, bool):
                 raise ValueError("force must be true or false.")
-            snapshot = self.state.refresh(requested_date, force=force)
-            self._json(HTTPStatus.OK, snapshot)
-        except (ValueError, RefreshError) as exc:
-            self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            snapshot = refresh(requested_date, force=force)
+            self._json(HTTPStatus.OK, snapshot, noindex)
+        except expected_errors as exc:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)}, noindex)
         except Exception:
-            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "The report refresh failed. Check the service journal for the bounded diagnostic."})
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": failure_message}, noindex)
             raise
 
     def log_message(self, fmt: str, *args: Any) -> None:
         print(json.dumps({"remote": self.client_address[0], "request": fmt % args}, separators=(",", ":")), flush=True)
 
 
-def create_server(host: str, port: int, state: AppState) -> AppServer:
-    return AppServer((host, port), Handler, state)
+def create_server(host: str, port: int, state: AppState, drilldown: Optional[DrilldownState] = None) -> AppServer:
+    return AppServer((host, port), Handler, state, drilldown)
 
 
 def main() -> int:
@@ -422,17 +482,26 @@ def main() -> int:
     fixture_value = os.environ.get("KPI_FIXTURE_PATH", "")
     fixture_path = Path(fixture_value) if fixture_value else None
     state = AppState(mode=mode, snapshot_dir=snapshot_dir, fixture_path=fixture_path)
+    drilldown: Optional[DrilldownState] = None
+    try:
+        drilldown = create_drilldown_state(mode, snapshot_dir)
+    except Exception as exc:  # The aggregate wallboard must never depend on the drill-down.
+        print(disabled_event(exc), flush=True)
     host = os.environ.get("KPI_BIND_HOST", "127.0.0.1")
     port = int(os.environ.get("KPI_PORT", "5193"))
-    server = create_server(host, port, state)
+    server = create_server(host, port, state, drilldown)
     state.start_auto_refresh()
-    print(json.dumps({"status": "starting", "host": host, "port": port, "mode": mode, "auto_refresh_seconds": state.auto_refresh_seconds if mode == "live" else None}), flush=True)
+    if drilldown is not None:
+        drilldown.start_auto_refresh()
+    print(json.dumps({"status": "starting", "host": host, "port": port, "mode": mode, "auto_refresh_seconds": state.auto_refresh_seconds if mode == "live" else None, "drilldown": drilldown is not None}), flush=True)
     try:
         server.serve_forever(poll_interval=0.5)
     except KeyboardInterrupt:
         pass
     finally:
         state.stop_auto_refresh()
+        if drilldown is not None:
+            drilldown.stop_auto_refresh()
         server.server_close()
     return 0
 

@@ -170,10 +170,14 @@ The live SQL adapter is read-only and emits this contract. It must:
 - Period grains are not combined into one trend series.
 - A snapshot is immutable after a report build; corrections create a new method version and snapshot.
 
+## Drill-down snapshot (separate from the aggregate contract)
+
+The painter, repaint, and Finesse drill-down is a separate snapshot validated by the reviewed detail contract (`classification` `restricted-operational`, which labels the sensitivity of the content, not the audience). It is served only under `/drilldown/` and `/api/drilldown/*`, stored under `snapshots/drilldown`, and never appears in the aggregate `/api/snapshot` response. It carries painter-day rows, repaint contributions and part-level repaint events, and Finesse worker summaries and part-level events.
+
 ## Open decisions before live automation
 
 - Service-part scope by section.
 - Production-day calendar and shift cutoff.
 - True OEE versus continued use of the provisional composite.
 - Prepared-trailer date semantics.
-- Approved recipients, employee-detail visibility, schedule, and retention period.
+- Approved recipients, schedule, and retention period. Employee-detail visibility was decided on 2026-11-18: an unrestricted standard drill-down view for now, with Active Directory group restrictions later.

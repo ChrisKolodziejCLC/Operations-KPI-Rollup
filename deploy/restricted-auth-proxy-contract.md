@@ -1,5 +1,7 @@
 # Restricted KPI authenticated-proxy contract
 
+> **Superseded on 2026-11-18.** Chris Kolodziej directed that the drill-down be an unrestricted standard view on the GP-AI01 wallboard (`/drilldown/`). This contract is kept only as the design of the retired identity-gated surface. If restrictions are wanted later, prefer Active Directory group checks like the other CLC applications over this Entra proxy; tenant user consent is disabled, so any new Entra application would also need administrator consent.
+
 Approved production origin: `https://kpi.eliteenterprisesinc.com:5195`.
 
 Initial audience: Chris Kolodziej only, exact Entra object ID `033cd244-8162-4389-a2b3-4f83d6c78bc0` and UPN `ChrisKolodziej@creativeliquidcoatings.com`. The Teams/OpenClaw requester ID is a different identifier and must never be substituted for the Entra object ID.
