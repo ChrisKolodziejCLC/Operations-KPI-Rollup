@@ -8,7 +8,8 @@ BASE = ROOT / "sql" / "2026-11-18-add-aggregate-color-demand-details.sql"
 FORWARD = ROOT / "sql" / "2026-11-18-add-restricted-kpi-drilldown.sql"
 ROLLBACK = ROOT / "sql" / "2026-11-18-rollback-restricted-kpi-drilldown.sql"
 OLD_HASH = "C61C9D839DCA1E82EE45186A9D0179110CB141C6A5B3C40D1213015332AD1608"
-NEW_HASH = "08686EB3D38855BAEB6CA1E5760CD3467B58311E1B5BA4C7F502241CF8191D28"
+NEW_HASH = "9CF72B48DA59BBA526B0943F917793A020865D2C41DDDCA664BBB98850C970AF"
+PUBLIC_REFINED_HASH = "251CB714A6FBF62865A70E87D4BF56EF7A015CF5709A82A9835BDC5C0A44C4FD"
 BEGIN_MARKER = "    /* RESTRICTED_DRILLDOWN_RESULT_SETS_BEGIN */"
 END_MARKER = "    /* RESTRICTED_DRILLDOWN_RESULT_SETS_END */"
 GATE_BEGIN = "    /* RESTRICTED_DRILLDOWN_LEGACY_PAINTER_GATE_BEGIN */"
@@ -44,7 +45,7 @@ def test_forward_migration_is_hash_gated_apply_ready_and_default_private_off():
     assert "IF @IncludeRestrictedDetail = 1" in definition
 
 
-def test_restricted_extension_is_additive_and_public_definition_is_otherwise_identical():
+def test_restricted_extension_wraps_the_reviewed_public_chart_refinement():
     base = _reviewed_definition(BASE.read_text(encoding="utf-8"))
     candidate = _reviewed_definition(FORWARD.read_text(encoding="utf-8"))
 
@@ -74,7 +75,16 @@ def test_restricted_extension_is_additive_and_public_definition_is_otherwise_ide
         "\n    DROP TABLE #PeriodMetrics;",
         1,
     )
-    assert without_restricted == base
+    assert _definition_hash(base) == OLD_HASH
+    assert _definition_hash(without_restricted) == PUBLIC_REFINED_HASH
+    assert "@IncludeRestrictedDetail" not in without_restricted
+    assert BEGIN_MARKER not in without_restricted
+    assert "LoadedWeeklyColors AS" in without_restricted
+    assert "LoadedEligibleCartDaily AS" in without_restricted
+    assert "WHERE piece_count BETWEEN 1 AND 6" in without_restricted
+    assert "AVG(d.daily_average) AS value_count" in without_restricted
+    assert "N'loaded_weekly_unique_colors'" in without_restricted
+    assert "N'loaded_weekly_average_pieces_per_cart'" in without_restricted
 
 
 def test_restricted_results_are_separate_and_cover_the_governed_detail_shapes():

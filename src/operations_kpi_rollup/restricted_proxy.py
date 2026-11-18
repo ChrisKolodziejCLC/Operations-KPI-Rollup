@@ -343,7 +343,7 @@ class EntraOAuth:
             headers={
                 "Content-Type": "application/x-www-form-urlencoded",
                 "Accept": "application/json",
-                "User-Agent": "CLC-Operations-KPI-Restricted/0.34",
+                "User-Agent": "CLC-Operations-KPI-Restricted/0.35",
             },
         )
         try:
@@ -363,7 +363,7 @@ class EntraOAuth:
             headers={
                 "Authorization": "Bearer " + access_token,
                 "Accept": "application/json",
-                "User-Agent": "CLC-Operations-KPI-Restricted/0.34",
+                "User-Agent": "CLC-Operations-KPI-Restricted/0.35",
             },
         )
         try:
@@ -479,7 +479,7 @@ def build_backend_headers(
 
 
 class RestrictedProxyHandler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPIRestrictedProxy/0.34.1"
+    server_version = "OperationsKPIRestrictedProxy/0.35.0"
     sys_version = ""
 
     @property

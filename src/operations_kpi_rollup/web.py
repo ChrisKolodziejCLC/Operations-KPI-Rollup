@@ -190,6 +190,8 @@ class AppState:
             "last_query_duration_seconds": self._last_query_duration_seconds,
             "last_query_completed_at": self._last_query_completed_at,
             "last_refresh_error": self._last_refresh_error,
+            "reconciliation_status": (current or {}).get("scope", {}).get("reconciliation_status"),
+            "reconciliation_warnings": (current or {}).get("scope", {}).get("reconciliation_warnings", []),
         }
 
     def refresh(self, report_date: date, force: bool = False) -> Dict[str, Any]:
@@ -316,7 +318,7 @@ class AppServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPI/0.33.0"
+    server_version = "OperationsKPI/0.35.0"
     sys_version = ""
 
     @property

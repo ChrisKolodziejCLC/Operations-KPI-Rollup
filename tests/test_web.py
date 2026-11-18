@@ -333,7 +333,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.33.0-aggregate-detail-charts-r2" in html
+            assert "0.35.0-chart-refinements-r1" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html
@@ -469,8 +469,9 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "renderPaintedCharts(snapshot)" in javascript
             assert "renderQualityCharts(snapshot, 'repaint'" in javascript
             assert "renderQualityCharts(snapshot, 'finesse'" in javascript
-            assert "12 carts and 36 pieces staged" in javascript
-            assert "13-week charts include scheduled demand" in javascript
+            assert "12-cart / 36-piece minimum goals" in javascript
+            assert "Scheduled demand stays hidden until GP-only scope is proven." in javascript
+            assert "Scheduled-demand comparison is hidden until its source can be proven GP-paint-only." in javascript
             assert "against a 4% goal; lower is better" in javascript
             assert "against a 90% goal; higher is better" in javascript
             assert "not enabled in this first layout pilot" not in javascript
@@ -484,11 +485,12 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "formatValue:percentagePoint" in javascript
             assert "valueLabel.append(text(formatValue(value)))" in javascript
             assert "Daily weighted average" in javascript
-            assert "directLabel:'Daily avg'" in javascript
-            assert "Missed interim target" in javascript
+            assert "13-week weighted average" in javascript
+            assert "metric === 'finesse' ? '13-week avg' : 'Daily avg'" in javascript
+            assert "targetAssessmentLabel" in javascript
             assert "value:periodAverage === null ? 'No Data' : decimal(periodAverage)" in javascript
             assert "value:latest ? decimal(latest[options.averageField]) : 'No Data'" in javascript
-            assert javascript.count("chartType:'bar'") == 5
+            assert javascript.count("chartType:'bar'") == 7
             assert "line:!barChart" in javascript
             assert "loadedLinearTrend" in javascript
             assert "13-week daily averages" in javascript

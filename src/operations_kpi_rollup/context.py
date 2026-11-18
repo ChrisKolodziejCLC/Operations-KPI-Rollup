@@ -24,6 +24,7 @@ GP_LOCAL_REPAINT_METHODS = {
     "operations-kpi-live-v22-loaded-goal-rates",
     "operations-kpi-live-v23-staged-painted-quality-charts",
     "operations-kpi-live-v24-aggregate-detail-charts",
+    "operations-kpi-live-v25-chart-refinements",
 }
 
 LOADED_PERFORMANCE_METHODS = {
@@ -31,6 +32,7 @@ LOADED_PERFORMANCE_METHODS = {
     "operations-kpi-live-v22-loaded-goal-rates",
     "operations-kpi-live-v23-staged-painted-quality-charts",
     "operations-kpi-live-v24-aggregate-detail-charts",
+    "operations-kpi-live-v25-chart-refinements",
 }
 
 LOADED_CHART_FIELDS = (
@@ -93,6 +95,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v22-loaded-goal-rates",
         "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
     }
     for collection in ("daily", "periods"):
         for row in snapshot[collection]:
@@ -115,6 +118,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v22-loaded-goal-rates",
                 "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
             }:
                 for unique_field, total_field, label in (
                     ("unique_pieces_loaded", "parts_loaded", "loaded unique-piece"),
@@ -143,6 +147,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v22-loaded-goal-rates",
                 "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
             }:
                 for quantity_field in ("receiving_quantity", "final_quantity"):
                     if quantity_field not in row:
@@ -167,6 +172,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v22-loaded-goal-rates",
                 "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
             }:
                 required_yield_fields = (
                     "reject_ppy_total", "reject_ppy_approved", "reject_ppy_rejected_count",
@@ -189,6 +195,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v22-loaded-goal-rates",
                     "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
                 }:
                     required_yield_fields += ("ppy_repaint_count",)
                 if method_version in GP_LOCAL_REPAINT_METHODS:
@@ -226,6 +233,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v22-loaded-goal-rates",
                     "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
                 }:
                     if int(row["reject_ppy_approved"]) + int(row["reject_ppy_rejected_count"]) + int(row["reject_ppy_pending_count"]) != int(row["reject_ppy_total"]):
                         raise ValueError(f"{collection} reject PPY outcomes do not equal its total")
@@ -260,6 +268,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                         "operations-kpi-live-v22-loaded-goal-rates",
                         "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
                     }:
                         repaint_split_fields = (
                             "fuka_paint_fty_repaint_count",
@@ -365,6 +374,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v22-loaded-goal-rates",
                     "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -415,6 +425,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v22-loaded-goal-rates",
                 "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
             }:
                 inspection_fields = (
                     "trailers_shipped",
@@ -484,6 +495,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v22-loaded-goal-rates",
                 "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
             }:
                 finesse_fields = (
                     "finesse_rejected_count",
@@ -542,6 +554,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v22-loaded-goal-rates",
                     "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
                 }
                 or "n71_6164_racks_shipped" in row
             ):
@@ -570,6 +583,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     "operations-kpi-live-v22-loaded-goal-rates",
                     "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
                 },
             )
 
@@ -632,6 +646,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v22-loaded-goal-rates",
         "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
     }:
         loaded = snapshot.get("chart_series", {}).get("loaded", {})
         hourly = loaded.get("hourly")
@@ -770,6 +785,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                 "operations-kpi-live-v22-loaded-goal-rates": (12.0, 36.0),
                 "operations-kpi-live-v23-staged-painted-quality-charts": (12.0, 36.0),
                 "operations-kpi-live-v24-aggregate-detail-charts": (12.0, 36.0),
+                "operations-kpi-live-v25-chart-refinements": (12.0, 36.0),
             }[loaded_method]
             if (
                 abs(target_fraction - 0.25) > 0.0001
@@ -851,6 +867,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
     if loaded_method in {
         "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
     }:
         chart_series = snapshot.get("chart_series", {})
         report_daily = next(row for row in snapshot["daily"] if row.get("date") == snapshot["report_date"])
@@ -982,7 +999,10 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     raise ValueError(f"{metric} chart rate does not match its numerator and denominator")
 
 
-    if loaded_method == "operations-kpi-live-v24-aggregate-detail-charts":
+    if loaded_method in {
+        "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
+    }:
         chart_series = snapshot.get("chart_series", {})
         for metric, piece_field in (
             ("loaded", "parts_loaded"),
@@ -1054,6 +1074,34 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
             elif value is not None:
                 raise ValueError("unavailable painted unique-color week must be null")
 
+        if loaded_method == "operations-kpi-live-v25-chart-refinements":
+            for detail_key, label, require_value in (
+                ("loaded_weekly_unique_colors", "loaded unique-color", True),
+                ("loaded_weekly_average_pieces_per_cart", "loaded pieces-per-cart", False),
+            ):
+                rows = details.get(detail_key)
+                if not isinstance(rows, list) or len(rows) != 13:
+                    raise ValueError(f"{label} history must contain exactly 13 weeks")
+                if [date.fromisoformat(str(row.get("bucket"))) for row in rows] != expected_weeks:
+                    raise ValueError(f"{label} weeks are not ordered")
+                for index, row in enumerate(rows):
+                    full_end = expected_weeks[index] + timedelta(days=6)
+                    observed_end = min(full_end, report_date_value)
+                    if date.fromisoformat(str(row.get("bucket_end"))) != observed_end:
+                        raise ValueError(f"{label} week end is inconsistent")
+                    if row.get("is_partial") is not (observed_end < full_end):
+                        raise ValueError(f"{label} partial flag is inconsistent")
+                    if not isinstance(row.get("data_available"), bool):
+                        raise ValueError(f"{label} availability flag must be boolean")
+                    value = row.get("value")
+                    if not row["data_available"]:
+                        if value is not None:
+                            raise ValueError(f"unavailable {label} week must be null")
+                    elif require_value and (value is None or int(value) < 0):
+                        raise ValueError(f"{label} value is invalid")
+                    elif not require_value and value is not None and (float(value) <= 0 or float(value) > 6):
+                        raise ValueError(f"{label} value is invalid")
+
         color_rows = details.get("loaded_color_part_counts")
         cart_rows = details.get("loaded_cart_size_distribution")
         if not isinstance(color_rows, list) or not isinstance(cart_rows, list):
@@ -1082,6 +1130,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         "operations-kpi-live-v22-loaded-goal-rates",
         "operations-kpi-live-v23-staged-painted-quality-charts",
         "operations-kpi-live-v24-aggregate-detail-charts",
+        "operations-kpi-live-v25-chart-refinements",
     }:
         allowed_line_sets = {"FUKA", "Bumpers", "N71-6164", "Fairings", "Other"}
         report_shipping = [row for row in snapshot.get("shipping", []) if row.get("date") == snapshot["report_date"]]

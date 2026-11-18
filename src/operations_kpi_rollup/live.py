@@ -15,7 +15,7 @@ from .odbc import execute_operations_rollup
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
 PERIOD_TYPE_ORDER = {"WEEK": 1, "MONTH": 2, "QUARTER": 3}
-CURRENT_METHOD_VERSION = "operations-kpi-live-v24-aggregate-detail-charts"
+CURRENT_METHOD_VERSION = "operations-kpi-live-v25-chart-refinements"
 LOADED_CHART_FIELDS = (
     "parts_loaded",
     "production_parts_loaded",
@@ -408,6 +408,8 @@ def _aggregate_detail_row(row: Mapping[str, Any]) -> Dict[str, Any]:
     detail_key = str(row.get("detail_key") or "").strip().lower()
     if detail_key not in {
         "painted_weekly_unique_colors",
+        "loaded_weekly_unique_colors",
+        "loaded_weekly_average_pieces_per_cart",
         "loaded_color_part_counts",
         "loaded_cart_size_distribution",
     }:
@@ -415,12 +417,20 @@ def _aggregate_detail_row(row: Mapping[str, Any]) -> Dict[str, Any]:
     bucket_start = row.get("bucket_start")
     bucket_end = row.get("bucket_end")
     data_available = bool(_integer(row.get("data_available")))
+    raw_value = row.get("value_count")
+    value = None
+    if data_available and raw_value not in (None, ""):
+        value = (
+            _number(raw_value, 4)
+            if detail_key == "loaded_weekly_average_pieces_per_cart"
+            else _integer(raw_value)
+        )
     return {
         "detail_key": detail_key,
         "bucket": _date_text(bucket_start) if bucket_start is not None else None,
         "bucket_end": _date_text(bucket_end) if bucket_end is not None else None,
         "label": str(row.get("label") or "").strip() or None,
-        "value": _integer(row.get("value_count")) if data_available else None,
+        "value": value,
         "data_available": data_available,
         "is_partial": bool(_integer(row.get("is_partial"))),
     }
@@ -761,6 +771,22 @@ def snapshot_from_rollup(
             ),
             key=lambda row: str(row.get("bucket") or ""),
         ),
+        "loaded_weekly_unique_colors": sorted(
+            (
+                {key: value for key, value in row.items() if key != "detail_key"}
+                for row in aggregate_detail_rows
+                if row["detail_key"] == "loaded_weekly_unique_colors"
+            ),
+            key=lambda row: str(row.get("bucket") or ""),
+        ),
+        "loaded_weekly_average_pieces_per_cart": sorted(
+            (
+                {key: value for key, value in row.items() if key != "detail_key"}
+                for row in aggregate_detail_rows
+                if row["detail_key"] == "loaded_weekly_average_pieces_per_cart"
+            ),
+            key=lambda row: str(row.get("bucket") or ""),
+        ),
         "loaded_color_part_counts": sorted(
             (
                 {key: value for key, value in row.items() if key != "detail_key"}
@@ -841,10 +867,25 @@ def snapshot_from_rollup(
     }
     if any(row is None for row in report_chart_days.values()):
         raise ValueError("A chart daily window does not contain the report date.")
+
+    timezone_name = os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis")
+    zone = ZoneInfo(timezone_name)
+    observed_at = generated_at or datetime.now(zone)
+    if observed_at.tzinfo is None:
+        observed_at = observed_at.replace(tzinfo=zone)
+    current_report_day = report_date == observed_at.astimezone(zone).date()
+    reconciliation_warnings: List[str] = []
+
+    def reconcile_or_warn(message: str) -> None:
+        if current_report_day:
+            reconciliation_warnings.append(message)
+        else:
+            raise ValueError(message)
+
     report_daily = next(row for row in daily if row["date"] == report_date.isoformat())
     for field in LOADED_CHART_FIELDS:
         if int(report_chart_days["loaded"][field]) != int(report_daily.get(field, 0)):
-            raise ValueError(f"The loaded-chart report-day {field} does not reconcile to the daily result.")
+            reconcile_or_warn(f"The loaded-chart report-day {field} does not reconcile to the daily result.")
     for chart_field, daily_field in (
         ("staged_carts", "staged_carts"),
         ("staged_pieces", "staged_pieces"),
@@ -853,7 +894,7 @@ def snapshot_from_rollup(
     ):
         metric = "staged" if chart_field.startswith("staged") else "painted"
         if int(report_chart_days[metric][chart_field]) != int(report_daily.get(daily_field, 0)):
-            raise ValueError(f"The {metric} chart report-day {chart_field} does not reconcile to the daily result.")
+            reconcile_or_warn(f"The {metric} chart report-day {chart_field} does not reconcile to the daily result.")
     quality_expected = {
         "repaint": (
             int(report_daily.get("paint_fty_repaint_count", 0)),
@@ -872,7 +913,7 @@ def snapshot_from_rollup(
             int(chart_day["quality_numerator"]) != numerator
             or int(chart_day["quality_denominator"]) != denominator
         ):
-            raise ValueError(f"The {metric} chart report-day ratio does not reconcile to the daily result.")
+            reconcile_or_warn(f"The {metric} chart report-day ratio does not reconcile to the daily result.")
 
     loaded_selected_day = _loaded_selected_day_performance(
         report_chart_days["loaded"], loaded_performance_model
@@ -883,9 +924,6 @@ def snapshot_from_rollup(
         "paint_pieces_processed",
         painted_performance_model,
     )
-
-    timezone_name = os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis")
-    observed_at = generated_at or datetime.now(ZoneInfo(timezone_name))
     history_start = _date_text(metadata.get("history_start")) if metadata.get("history_start") else "2026-09-08"
     painter_note = "Employee-level painter detail is available only in the identity-gated restricted drill-down."
     snapshot: Dict[str, Any] = {
@@ -897,6 +935,8 @@ def snapshot_from_rollup(
             "method_version": CURRENT_METHOD_VERSION,
             "history_start": history_start,
             "timezone": timezone_name,
+            "reconciliation_status": "current_day_source_drift" if reconciliation_warnings else "reconciled",
+            "reconciliation_warnings": reconciliation_warnings,
         },
         "daily": daily,
         "periods": periods,
@@ -965,12 +1005,13 @@ def snapshot_from_rollup(
             "The inspection-time hourly report is a reconciliation source, not the wallboard date grain; daily values can differ and should reconcile over longer periods.",
             "Receiving and final quantities use insp_receive_stamp and insp_final_stamp; their FTY rates continue to use first inspection decisions and expose only reconciled aggregate product-family detail.",
             "Trailers Departed counts completed DriverLog departures dated by TimeOut; it is intentionally separate from EDI trailer-loading state.",
-            "The Loaded chart is aggregate-only. Load events stay in their actual hour; a distinct piece or cart is assigned to its first load-event hour so all 24 buckets reconcile exactly to the daily card. The 13-week view averages total carts and pieces over represented production days; unavailable history and the partial selected week are excluded from trend calculations.",
+            "The Loaded chart is aggregate-only. Load events stay in their actual hour; a distinct piece or cart is assigned to its first load-event hour. The 13-week view averages total carts and pieces over represented production days; unavailable history and the partial selected week are excluded from trend calculations. Current-day result sets can move during a live read-uncommitted query; any detected cross-result drift is retained as a health warning while historical snapshots remain strict.",
+            "Loaded unique colors are counted distinctly by week. Average pieces per cart excludes physically impossible carts above six pieces, calculates each represented day's eligible-cart average first, then averages those daily values by week.",
             "Loaded performance time runs from the first distinct cart load to the last distinct cart load. Completed days spanning at least six hours receive the approved 30-minute lunch allowance; partial days are shown but not scored. The frozen September 8 through November 15 baseline retains its carts, pieces, and net-minute denominators, and each interim target closes 25% of the gap from that baseline rate to the approved hourly goal.",
             "Staged is a point-in-time Paint Prep queue snapshot, not an hourly event count. The hourly chart shows each observed queue snapshot; the 13-week chart averages each represented production day's close-of-day snapshot. The approved minimum goals are 12 carts and 36 pieces staged.",
             "Painted is event-counted by each cart's first paint exit in the selected hour. Performance time runs from the first paint exit to the last paint exit, with the approved 30-minute lunch allowance on completed days spanning at least six hours. The approved hourly goals are 10 carts and 30 pieces painted.",
             "Repaint % is a weighted GP initial-pass repaint ratio: every chart value is recalculated from summed repaint outcomes over summed GP initial passes. Zero-denominator buckets remain unavailable rather than zero, and the approved goal is 4% or lower.",
-            "Finesse Effectiveness is a weighted governed repair ratio: every chart value is recalculated from summed completed repairs over summed governed rejects. Zero-denominator buckets remain unavailable rather than zero, and the approved goal is 90% or higher.",
+            "Finesse Effectiveness is a weighted governed repair ratio: every chart value is recalculated from summed completed repairs over summed governed rejects. The hourly reference is fixed to the weighted rate across the displayed 13-week range. Zero-denominator buckets remain unavailable rather than zero, and the approved goal is 90% or higher.",
             "Preliminary OEE is the unchanged legacy paint-plan composite and remains excluded from this yield correction and its acceptance criteria.",
             painter_note,
         ],
@@ -978,7 +1019,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "08686EB3D38855BAEB6CA1E5760CD3467B58311E1B5BA4C7F502241CF8191D28",
+                "9CF72B48DA59BBA526B0943F917793A020865D2C41DDDCA664BBB98850C970AF",
             ).upper(),
             "detail_result_sets_requested": False,
         },

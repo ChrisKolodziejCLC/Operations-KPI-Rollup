@@ -290,7 +290,6 @@ function renderCards(snapshot) {
   const paintCarts = paintCartSplit(current);
   const paintPieces = paintPieceSplit(current);
   const loadedColors = snapshot.chart_series?.loaded?.selected_day?.unique_colors;
-  const stagedColors = snapshot.chart_series?.staged?.selected_day?.unique_colors;
   const paintedColors = snapshot.chart_series?.painted?.selected_day?.unique_colors;
   const shippedDetail = shippedPieceDetail(snapshot);
   const hasPaintFinesse = current.paint_fty_repair_count !== undefined;
@@ -320,7 +319,7 @@ function renderCards(snapshot) {
   container.append(stagedMetricCard(current.staged_carts, current.staged_pieces, [
     {label:'Carts', production:current.production_staged_carts, bv:current.bv_staged_carts, service:current.service_staged_carts},
     {label:'Pieces', production:current.production_staged_pieces, bv:current.bv_staged_pieces, service:current.service_staged_pieces}
-  ], palette.green, stagedColors === undefined ? [] : [compactOptionalInteger(stagedColors) + ' Unique Colors']));
+  ], palette.green));
   container.append(splitMetricCard('Carts / Pieces painted', current.paint_pieces_processed, current.unique_pieces_processed, [
     {label:'Carts', production:paintCarts.production, bv:paintCarts.bv, service:paintCarts.service},
     {label:'Pieces', production:paintPieces.production, bv:paintPieces.bv, service:paintPieces.service}
@@ -494,18 +493,29 @@ function loadedWeeklyReferenceModel(rows, model, minutesField = 'net_loading_min
   };
 }
 
+function loadedCompletedPeriodAverages(rows) {
+  const completed = rows.filter(row => row.data_available && !row.is_partial
+    && Number(row.represented_days || 0) > 0);
+  const representedDays = completed.reduce((sum, row) => sum + Number(row.represented_days || 0), 0);
+  const performanceDays = completed.reduce((sum, row) => sum + Number(row.performance_days || 0), 0);
+  const netMinutes = completed.reduce((sum, row) => sum + Number(row.net_loading_minutes || 0), 0);
+  const carts = completed.reduce((sum, row) => sum + Number(row.carts_loaded_total || 0), 0);
+  const pieces = completed.reduce((sum, row) => sum + Number(row.parts_loaded_total || 0), 0);
+  const netHours = netMinutes / 60;
+  return {
+    representedDays,
+    performanceDays,
+    cartsPerDay:representedDays ? carts / representedDays : null,
+    piecesPerDay:representedDays ? pieces / representedDays : null,
+    cartsPerHour:performanceDays && netHours ? carts / netHours : null,
+    piecesPerHour:performanceDays && netHours ? pieces / netHours : null
+  };
+}
+
 function loadedWholeNumberScaleMaximum(values) {
   const largest = Math.max(...values.map(value => Math.max(0, Number(value))).filter(Number.isFinite), 1);
   const tickStep = Math.max(1, Math.ceil(largest * 1.18 / 4));
   return tickStep * 4;
-}
-
-function availableFieldAverage(rows, field) {
-  const values = rows
-    .filter(row => row.data_available && row[field] !== null && row[field] !== undefined)
-    .map(row => Number(row[field]))
-    .filter(Number.isFinite);
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 }
 
 function weightedQualityPercent(rows) {
@@ -574,6 +584,7 @@ function renderLoadedLineChart(container, rows, options) {
   const centerX = index => left + band * index + band / 2;
   const formatValue = options.formatValue || wholeNumber;
   const targetAssessment = options.targetAssessment || null;
+  const targetAssessmentLabel = targetAssessment?.label || 'interim target';
   const missedTarget = values.map((value, index) => {
     const row = rows[index];
     if (!targetAssessment || value === null || !Number.isFinite(value) || row.is_partial) return false;
@@ -631,7 +642,7 @@ function renderLoadedLineChart(container, rows, options) {
       const miss = missedTarget[index];
       const title = svgNode('title');
       title.append(text(options.bucketTitle(row) + ' · ' + options.label + ': ' + formatValue(value) + suffix
-        + (miss ? ' · missed interim target' : '')));
+        + (miss ? ' · missed ' + targetAssessmentLabel : '')));
       if (barChart) {
         const bar = svgNode('rect', {
           x:centerX(index) - barWidth / 2, y:y(value), width:barWidth,
@@ -642,7 +653,13 @@ function renderLoadedLineChart(container, rows, options) {
         });
         bar.append(title); svg.append(bar);
       } else {
-        segment.push(centerX(index) + ',' + y(value));
+        const pointX = centerX(index);
+        const pointY = y(value);
+        if (options.stepLine && segment.length) {
+          const previousY = segment[segment.length - 1].split(',')[1];
+          segment.push(pointX + ',' + previousY);
+        }
+        segment.push(pointX + ',' + pointY);
         const circle = svgNode('circle', {
           cx:centerX(index), cy:y(value), r:miss ? 4.4 : 3.2,
           fill:row.is_partial ? '#fff3df' : (miss ? palette.red : options.color),
@@ -723,7 +740,7 @@ function renderLoadedLineChart(container, rows, options) {
         points.push((width - right) + ',' + y(referencePoints[referencePoints.length - 1].value));
         const line = svgNode('polyline', {
           points:points.join(' '), fill:'none', stroke:reference.color,
-          'stroke-width':2.2, 'stroke-dasharray':reference.dash || '5 4',
+          'stroke-width':2.2, 'stroke-dasharray':reference.dash || 'none',
           'stroke-linejoin':'round', 'stroke-linecap':'round', opacity:.9,
           class:'loaded-reference-line loaded-reference-line-full-width'
         });
@@ -748,7 +765,7 @@ function renderLoadedLineChart(container, rows, options) {
       if (referenceSegment.length > 1) {
         line = svgNode('polyline', {
           points:referenceSegment.join(' '), fill:'none', stroke:reference.color,
-          'stroke-width':2.2, 'stroke-dasharray':reference.dash || '5 4',
+          'stroke-width':2.2, 'stroke-dasharray':reference.dash || 'none',
           'stroke-linejoin':'round', 'stroke-linecap':'round', opacity:.9,
           class:'loaded-reference-line'
         });
@@ -758,7 +775,7 @@ function renderLoadedLineChart(container, rows, options) {
         line = svgNode('line', {
           x1:pointX - halfSegment, x2:pointX + halfSegment, y1:pointY, y2:pointY,
           stroke:reference.color, 'stroke-width':2.2,
-          'stroke-dasharray':reference.dash || '5 4', 'stroke-linecap':'round', opacity:.9,
+          'stroke-dasharray':reference.dash || 'none', 'stroke-linecap':'round', opacity:.9,
           class:'loaded-reference-line'
         });
       }
@@ -789,7 +806,10 @@ function renderLoadedLineChart(container, rows, options) {
   overlays.forEach(overlay => legend.push({label:overlay.label, color:overlay.color, line:true}));
   if (trend) legend.push({label:'Linear trend', color:palette.navy, line:true});
   references.forEach(reference => legend.push({label:reference.label, color:reference.color, line:true}));
-  if (missedTarget.some(Boolean)) legend.push({label:'Missed interim target', color:palette.red, line:false});
+  if (missedTarget.some(Boolean)) {
+    const missedLabel = 'Missed ' + targetAssessmentLabel.charAt(0).toUpperCase() + targetAssessmentLabel.slice(1);
+    legend.push({label:missedLabel, color:palette.red, line:false});
+  }
   container.append(svg, chartLegend(legend));
 }
 
@@ -887,7 +907,7 @@ function loadedWeeklySummary(rows, options) {
   return summary;
 }
 
-function uniqueColorWeeklySummary(rows) {
+function uniqueColorWeeklySummary(rows, options = {}) {
   const completed = rows.filter(row => row.data_available && !row.is_partial && Number.isFinite(Number(row.value)));
   const averageValue = completed.length
     ? completed.reduce((sum, row) => sum + Number(row.value), 0) / completed.length
@@ -895,32 +915,37 @@ function uniqueColorWeeklySummary(rows) {
   const maximum = completed.reduce((best, row) => (!best || Number(row.value) > Number(best.value)) ? row : best, null);
   const minimum = completed.reduce((best, row) => (!best || Number(row.value) < Number(best.value)) ? row : best, null);
   const trend = loadedLinearTrend(rows, 'value', false);
-  return chartSummaryPanel('Unique colors painted 13-week summary', [
+  const format = options.formatValue || integer;
+  const title = options.title || 'Unique colors painted';
+  const trendUnit = options.trendUnit || 'colors/week';
+  return chartSummaryPanel(title + ' 13-week summary', [
     {
-      label:'Full-week average', value:averageValue === null ? 'No Data' : decimal(averageValue),
+      label:'Full-week average', value:averageValue === null ? 'No Data' : format(averageValue),
       detail:completed.length ? completed.length + ' completed weeks' : 'No completed available weeks'
     },
     {
-      label:'Max week', value:maximum ? integer(maximum.value) : 'No Data',
+      label:'Max week', value:maximum ? format(maximum.value) : 'No Data',
       detail:maximum ? dateLabel(maximum.bucket) + ' through ' + dateLabel(maximum.bucket_end) : 'No completed available week'
     },
     {
-      label:'Min week', value:minimum ? integer(minimum.value) : 'No Data',
+      label:'Min week', value:minimum ? format(minimum.value) : 'No Data',
       detail:minimum ? dateLabel(minimum.bucket) + ' through ' + dateLabel(minimum.bucket_end) : 'No completed available week'
     },
     {
       label:'Trend',
       value:trend ? (Math.abs(trend.slope) < .05 ? 'Flat' : (trend.slope > 0 ? 'Up' : 'Down')) : 'No Data',
-      detail:trend ? (trend.slope >= 0 ? '+' : '') + decimal(trend.slope) + ' colors/week' : 'Need two completed weeks'
+      detail:trend ? (trend.slope >= 0 ? '+' : '') + decimal(trend.slope) + ' ' + trendUnit : 'Need two completed weeks'
     }
   ]);
 }
 
 function aggregateHistoryDetails(snapshot) {
   const details = snapshot.aggregate_details || {};
-  const colors = Array.isArray(details.loaded_color_part_counts) ? details.loaded_color_part_counts : [];
-  const cartSizes = Array.isArray(details.loaded_cart_size_distribution) ? details.loaded_cart_size_distribution : [];
-  if (!colors.length && !cartSizes.length) return null;
+  const colors = Array.isArray(details.loaded_weekly_unique_colors)
+    ? details.loaded_weekly_unique_colors : [];
+  const piecesPerCart = Array.isArray(details.loaded_weekly_average_pieces_per_cart)
+    ? details.loaded_weekly_average_pieces_per_cart : [];
+  if (!colors.length && !piecesPerCart.length) return null;
 
   const container = document.createElement('details');
   container.className = 'aggregate-history-details';
@@ -928,40 +953,50 @@ function aggregateHistoryDetails(snapshot) {
   summary.append(text('13-week aggregate history details'));
   const note = document.createElement('p');
   note.className = 'aggregate-history-note';
-  note.append(text('Aggregate-only history from ' + fullDateLabel(details.window_start)
-    + ' through ' + fullDateLabel(details.window_end) + ' · no part or cart identifiers.'));
+  note.append(text('Aggregate-only weekly history from ' + fullDateLabel(details.window_start)
+    + ' through ' + fullDateLabel(details.window_end)
+    + ' · no part or cart identifiers · carts above six pieces are excluded from pieces-per-cart averages.'));
   const grid = document.createElement('div');
-  grid.className = 'aggregate-history-grid';
+  grid.className = 'loaded-chart-grid';
 
-  const appendTable = (title, description, headers, rows) => {
-    const section = document.createElement('section');
-    section.className = 'aggregate-history-table-section';
-    const heading = document.createElement('h4'); heading.append(text(title));
-    const detail = document.createElement('p'); detail.append(text(description));
-    const wrap = document.createElement('div'); wrap.className = 'table-wrap';
-    const table = document.createElement('table');
-    renderTable(table, headers, rows);
-    wrap.append(table); section.append(heading, detail, wrap); grid.append(section);
-  };
-
-  appendTable(
-    'Loaded colors',
-    'Distinct loaded parts by normalized color, highest count first.',
-    [
-      {label:'Color', value:row => row.label},
-      {label:'Part count', value:row => integer(row.value)}
-    ],
-    colors
-  );
-  appendTable(
-    'Loaded cart-size history',
-    'Cart counts by distinct pieces per cart, highest piece count first.',
-    [
-      {label:'Pieces per cart', value:row => integer(row.label)},
-      {label:'Cart count', value:row => integer(row.value)}
-    ],
-    cartSizes
-  );
+  if (colors.length) {
+    grid.append(loadedChartCard(
+      'Unique colors loaded · 13 weeks',
+      'Distinct normalized loaded colors by week',
+      colors,
+      {
+        field:'value', label:'Unique colors loaded', color:palette.purple, trend:true,
+        trendRequiresRepresentedDays:false, omitNull:true, chartType:'bar',
+        verticalLabels:true, formatValue:wholeNumber,
+        ariaLabel:'Thirteen-week unique colors loaded with summary cards and trend',
+        bucketLabel:row => dateLabel(row.bucket),
+        bucketTitle:row => fullDateLabel(row.bucket) + ' through ' + fullDateLabel(row.bucket_end),
+        showTick:() => true,
+        summaryBuilder:rows => uniqueColorWeeklySummary(rows, {
+          title:'Unique colors loaded', formatValue:integer, trendUnit:'colors/week'
+        })
+      }
+    ));
+  }
+  if (piecesPerCart.length) {
+    grid.append(loadedChartCard(
+      'Average pieces per cart · 13 weeks',
+      'Weekly average of represented daily eligible-cart averages',
+      piecesPerCart,
+      {
+        field:'value', label:'Average pieces per cart', color:palette.green, trend:true,
+        trendRequiresRepresentedDays:false, omitNull:true, chartType:'bar',
+        verticalLabels:true, formatValue:decimal,
+        ariaLabel:'Thirteen-week average pieces per eligible cart with summary cards and trend',
+        bucketLabel:row => dateLabel(row.bucket),
+        bucketTitle:row => fullDateLabel(row.bucket) + ' through ' + fullDateLabel(row.bucket_end),
+        showTick:() => true,
+        summaryBuilder:rows => uniqueColorWeeklySummary(rows, {
+          title:'Average pieces per eligible cart', formatValue:decimal, trendUnit:'pieces/cart/week'
+        })
+      }
+    ));
+  }
   container.append(summary, note, grid);
   return container;
 }
@@ -1007,6 +1042,7 @@ function renderLoadedCharts(snapshot) {
   const hourly = loaded.hourly, weekly = loaded.weekly_13;
   const performance = {model:loaded.performance_model || {}, day:loaded.selected_day || {}};
   const weeklyReference = loadedWeeklyReferenceModel(weekly, performance.model);
+  const periodAverage = loadedCompletedPeriodAverages(weekly);
   const reportDay = fullDateLabel(snapshot.report_date);
   const hourlySection = metricChartSection('Hourly · selected report day', '24 clock-hour buckets · ' + reportDay);
   hourlySection.grid.append(
@@ -1016,21 +1052,9 @@ function renderLoadedCharts(snapshot) {
       bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
       verticalLabels:true, showTick:() => true, performance,
       references:[
-        {value:performance.model.target_carts_per_hour, label:'Interim target', color:palette.amber, dash:'6 4'},
-        {value:performance.model.goal_carts_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'},
-        {value:performance.day.carts_per_net_hour, label:'Daily average', color:palette.navy, dash:'2 3', directLabel:'Daily avg', directLabelSuffix:'/hr'}
-      ],
-      overlays:[
-        {
-          label:'Unique colors', color:palette.purple, field:'unique_colors', formatValue:wholeNumber,
-          value:row => Number(row.carts_loaded || 0) > 0 ? Number(row.unique_colors || 0) : null
-        },
-        {
-          label:'Avg pieces / cart', color:palette.green, axis:'secondary', dash:'4 3',
-          value:row => Number(row.carts_loaded || 0) > 0
-            ? Number(row.parts_loaded || 0) / Number(row.carts_loaded) : null,
-          formatValue:decimal, axisFormat:decimal
-        }
+        {value:performance.model.target_carts_per_hour, label:'Interim target', color:palette.amber},
+        {value:performance.model.goal_carts_per_hour, label:'Long-term goal', color:palette.red},
+        {value:periodAverage.cartsPerHour, label:'13-week static average', color:palette.navy, dash:'2 3', directLabel:'13-week avg', directLabelSuffix:'/hr'}
       ],
       targetAssessment:{value:performance.model.target_carts_per_hour, scorePredicate:(row, value) => value > 0},
       hourlySummary:{label:'Carts', field:'carts_loaded'}
@@ -1041,9 +1065,9 @@ function renderLoadedCharts(snapshot) {
       bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
       verticalLabels:true, showTick:() => true, performance,
       references:[
-        {value:performance.model.target_pieces_per_hour, label:'Interim target', color:palette.amber, dash:'6 4'},
-        {value:performance.model.goal_pieces_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'},
-        {value:performance.day.pieces_per_net_hour, label:'Daily average', color:palette.navy, dash:'2 3', directLabel:'Daily avg', directLabelSuffix:'/hr'}
+        {value:performance.model.target_pieces_per_hour, label:'Interim target', color:palette.amber},
+        {value:performance.model.goal_pieces_per_hour, label:'Long-term goal', color:palette.red},
+        {value:periodAverage.piecesPerHour, label:'13-week static average', color:palette.navy, dash:'2 3', directLabel:'13-week avg', directLabelSuffix:'/hr'}
       ],
       targetAssessment:{value:performance.model.target_pieces_per_hour, scorePredicate:(row, value) => value > 0},
       hourlySummary:{label:'Pieces', field:'parts_loaded'}
@@ -1065,13 +1089,10 @@ function renderLoadedCharts(snapshot) {
       ...weeklyOptions, field:'average_carts_loaded', label:'Daily average carts', color:palette.teal,
       ariaLabel:'Thirteen-week daily average carts loaded with linear trend, interim target, and long-term goal',
       references:[
-        {value:weeklyReference.targetCarts, label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
-        {value:weeklyReference.goalCarts, label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
+        {value:weeklyReference.targetCarts, label:'Net-time interim target', color:palette.amber, spanFullWidth:true},
+        {value:weeklyReference.goalCarts, label:'Net-time long-term goal', color:palette.red, spanFullWidth:true},
+        {value:periodAverage.cartsPerDay, label:'13-week static average', color:palette.navy, dash:'2 3', spanFullWidth:true, directLabel:'Period avg'}
       ],
-      overlays:[{
-        label:'Avg pieces / cart', color:palette.green, axis:'secondary', dash:'4 3',
-        field:'average_pieces_per_cart', formatValue:decimal, axisFormat:decimal
-      }],
       targetAssessment:{value:weeklyReference.targetCarts, scorePredicate:row => Number(row.represented_days || 0) > 0},
       summary:{label:'Carts', averageField:'average_carts_loaded', totalField:'carts_loaded_total'}
     }),
@@ -1079,8 +1100,9 @@ function renderLoadedCharts(snapshot) {
       ...weeklyOptions, field:'average_parts_loaded', label:'Daily average pieces', color:palette.blue,
       ariaLabel:'Thirteen-week daily average pieces loaded with linear trend, interim target, and long-term goal',
       references:[
-        {value:weeklyReference.targetPieces, label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
-        {value:weeklyReference.goalPieces, label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
+        {value:weeklyReference.targetPieces, label:'Net-time interim target', color:palette.amber, spanFullWidth:true},
+        {value:weeklyReference.goalPieces, label:'Net-time long-term goal', color:palette.red, spanFullWidth:true},
+        {value:periodAverage.piecesPerDay, label:'13-week static average', color:palette.navy, dash:'2 3', spanFullWidth:true, directLabel:'Period avg'}
       ],
       targetAssessment:{value:weeklyReference.targetPieces, scorePredicate:row => Number(row.represented_days || 0) > 0},
       summary:{label:'Pieces', averageField:'average_parts_loaded', totalField:'parts_loaded_total'}
@@ -1165,19 +1187,19 @@ function throughputHourlySummary(rows, options, performance) {
 function stagedHourlySummary(rows, options, model) {
   const available = rows.filter(row => row.data_available);
   const values = available.map(row => Number(row[options.field])).filter(Number.isFinite);
-  const latest = available.length ? available[available.length - 1] : null;
-  const averageValue = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  const start = available.length ? available[0] : null;
+  const end = available.length ? available[available.length - 1] : null;
   const minimum = values.length ? Math.min(...values) : null;
   const peak = values.length ? Math.max(...values) : null;
-  const target = model[options.type === 'carts' ? 'target_carts' : 'target_pieces'];
-  const goal = model[options.type === 'carts' ? 'goal_carts' : 'goal_pieces'];
-  return chartSummaryPanel(options.label + ' staged snapshot summary', [
-    {label:'Latest snapshot', value:latest ? integer(latest[options.field]) : 'No Data', detail:latest ? hourBucketLabel(latest.bucket) + ' cutoff' : 'No available snapshot'},
-    {label:'Available-hour average', value:averageValue === null ? 'No Data' : decimal(averageValue), detail:available.length + ' available cutoffs'},
-    {label:'Lowest snapshot', value:minimum === null ? 'No Data' : integer(minimum), detail:'Minimum available queue'},
-    {label:'Peak snapshot', value:peak === null ? 'No Data' : integer(peak), detail:'Maximum available queue'},
-    {label:'Interim target', value:target === null || target === undefined ? 'No Data' : decimal(target), detail:'At or above'},
-    {label:'Minimum goal', value:goal === null || goal === undefined ? 'No Data' : integer(goal), detail:'At or above'}
+  const goal = Number(model[options.type === 'carts' ? 'goal_carts' : 'goal_pieces']);
+  const hoursAtGoal = Number.isFinite(goal)
+    ? available.filter(row => Number(row[options.field]) >= goal).length : 0;
+  return chartSummaryPanel(options.label + ' staged point-in-time queue summary', [
+    {label:'Start', value:start ? integer(start[options.field]) : 'No Data', detail:start ? hourBucketLabel(start.bucket) + ' cutoff' : 'No available snapshot'},
+    {label:'Low', value:minimum === null ? 'No Data' : integer(minimum), detail:'Minimum observed queue'},
+    {label:'Peak', value:peak === null ? 'No Data' : integer(peak), detail:'Maximum observed queue'},
+    {label:'End', value:end ? integer(end[options.field]) : 'No Data', detail:end ? hourBucketLabel(end.bucket) + ' cutoff' : 'No available snapshot'},
+    {label:'Hours at/above goal', value:Number.isFinite(goal) ? integer(hoursAtGoal) : 'No Data', detail:Number.isFinite(goal) ? 'Goal ' + integer(goal) + ' · ' + available.length + ' observed cutoffs' : 'Goal unavailable'}
   ]);
 }
 
@@ -1241,38 +1263,29 @@ function renderStagedCharts(snapshot) {
     content.append(empty); return;
   }
   const hourly = staged.hourly, weekly = staged.weekly_13, model = staged.performance_model || {};
-  const stagedCartAverage = availableFieldAverage(hourly, 'staged_carts');
-  const stagedPieceAverage = availableFieldAverage(hourly, 'staged_pieces');
   const reportDay = fullDateLabel(snapshot.report_date);
   const hourlySection = metricChartSection('Hourly queue snapshots · selected report day', 'Point-in-time Paint Prep queue at each available hour cutoff · ' + reportDay);
   const hourlyBase = {
-    trend:false, formatValue:wholeNumber, verticalLabels:true, showTick:() => true,
+    trend:false, stepLine:true, formatValue:wholeNumber, verticalLabels:true, showTick:() => true,
     bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket)
   };
   hourlySection.grid.append(
     loadedChartCard('Carts staged by hour', 'Point-in-time queue · minimum goal', hourly, {
       ...hourlyBase, field:'staged_carts', label:'Staged carts', color:palette.green,
-      ariaLabel:'Hourly staged-cart queue snapshots with interim target and minimum goal for ' + reportDay,
+      ariaLabel:'Hourly staged-cart point-in-time queue snapshots with minimum goal for ' + reportDay,
       references:[
-        {value:model.target_carts, label:'Interim target', color:palette.amber, dash:'6 4'},
-        {value:model.goal_carts, label:'Minimum goal', color:palette.red, dash:'3 4'},
-        {value:stagedCartAverage, label:'Daily average', color:palette.navy, dash:'2 3', directLabel:'Daily avg'}
+        {value:model.goal_carts, label:'Minimum goal', color:palette.red}
       ],
-      overlays:[{
-        label:'Unique colors', color:palette.purple, field:'unique_colors', formatValue:wholeNumber
-      }],
-      targetAssessment:{value:model.target_carts, scorePredicate:(row, value) => value > 0},
+      targetAssessment:{value:model.goal_carts, label:'minimum goal', scorePredicate:row => row.data_available},
       summaryBuilder:rows => stagedHourlySummary(rows, {label:'Carts', field:'staged_carts', type:'carts'}, model)
     }),
     loadedChartCard('Pieces staged by hour', 'Point-in-time queue · minimum goal', hourly, {
       ...hourlyBase, field:'staged_pieces', label:'Staged pieces', color:palette.teal,
-      ariaLabel:'Hourly staged-piece queue snapshots with interim target and minimum goal for ' + reportDay,
+      ariaLabel:'Hourly staged-piece point-in-time queue snapshots with minimum goal for ' + reportDay,
       references:[
-        {value:model.target_pieces, label:'Interim target', color:palette.amber, dash:'6 4'},
-        {value:model.goal_pieces, label:'Minimum goal', color:palette.red, dash:'3 4'},
-        {value:stagedPieceAverage, label:'Daily average', color:palette.navy, dash:'2 3', directLabel:'Daily avg'}
+        {value:model.goal_pieces, label:'Minimum goal', color:palette.red}
       ],
-      targetAssessment:{value:model.target_pieces, scorePredicate:(row, value) => value > 0},
+      targetAssessment:{value:model.goal_pieces, label:'minimum goal', scorePredicate:row => row.data_available},
       summaryBuilder:rows => stagedHourlySummary(rows, {label:'Pieces', field:'staged_pieces', type:'pieces'}, model)
     })
   );
@@ -1287,20 +1300,18 @@ function renderStagedCharts(snapshot) {
       ...weeklyBase, field:'average_carts', label:'Daily average carts', color:palette.green,
       ariaLabel:'Thirteen-week close-of-day average staged carts with trend, interim target, and minimum goal',
       references:[
-        {value:model.target_carts, label:'Interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
-        {value:model.goal_carts, label:'Minimum goal', color:palette.red, dash:'3 4', spanFullWidth:true}
+        {value:model.goal_carts, label:'Minimum goal', color:palette.red, spanFullWidth:true}
       ],
-      targetAssessment:{value:model.target_carts, scorePredicate:row => Number(row.represented_days || 0) > 0},
+      targetAssessment:{value:model.goal_carts, label:'minimum goal', scorePredicate:row => Number(row.represented_days || 0) > 0},
       summary:{label:'Carts', averageField:'average_carts', totalField:'carts_total'}
     }),
     loadedChartCard('Pieces staged · 13 weeks', 'Average close-of-day staged pieces', weekly, {
       ...weeklyBase, field:'average_pieces', label:'Daily average pieces', color:palette.teal,
       ariaLabel:'Thirteen-week close-of-day average staged pieces with trend, interim target, and minimum goal',
       references:[
-        {value:model.target_pieces, label:'Interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
-        {value:model.goal_pieces, label:'Minimum goal', color:palette.red, dash:'3 4', spanFullWidth:true}
+        {value:model.goal_pieces, label:'Minimum goal', color:palette.red, spanFullWidth:true}
       ],
-      targetAssessment:{value:model.target_pieces, scorePredicate:row => Number(row.represented_days || 0) > 0},
+      targetAssessment:{value:model.goal_pieces, label:'minimum goal', scorePredicate:row => Number(row.represented_days || 0) > 0},
       summary:{label:'Pieces', averageField:'average_pieces', totalField:'pieces_total'}
     })
   );
@@ -1332,8 +1343,8 @@ function renderPaintedCharts(snapshot) {
       ...hourlyBase, field:'paint_carts', label:'Painted carts', color:palette.blue,
       ariaLabel:'Hourly painted carts with interim target and long-term goal for ' + reportDay,
       references:[
-        {value:performance.model.target_carts_per_hour, label:'Interim target', color:palette.amber, dash:'6 4'},
-        {value:performance.model.goal_carts_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'},
+        {value:performance.model.target_carts_per_hour, label:'Interim target', color:palette.amber},
+        {value:performance.model.goal_carts_per_hour, label:'Long-term goal', color:palette.red},
         {value:performance.day.carts_per_net_hour, label:'Daily average', color:palette.navy, dash:'2 3', directLabel:'Daily avg', directLabelSuffix:'/hr'}
       ],
       overlays:[{
@@ -1347,8 +1358,8 @@ function renderPaintedCharts(snapshot) {
       ...hourlyBase, field:'paint_pieces_processed', label:'Painted pieces', color:palette.purple,
       ariaLabel:'Hourly painted pieces with interim target and long-term goal for ' + reportDay,
       references:[
-        {value:performance.model.target_pieces_per_hour, label:'Interim target', color:palette.amber, dash:'6 4'},
-        {value:performance.model.goal_pieces_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'},
+        {value:performance.model.target_pieces_per_hour, label:'Interim target', color:palette.amber},
+        {value:performance.model.goal_pieces_per_hour, label:'Long-term goal', color:palette.red},
         {value:performance.day.pieces_per_net_hour, label:'Daily average', color:palette.navy, dash:'2 3', directLabel:'Daily avg', directLabelSuffix:'/hr'}
       ],
       targetAssessment:{value:performance.model.target_pieces_per_hour, scorePredicate:(row, value) => value > 0},
@@ -1366,8 +1377,8 @@ function renderPaintedCharts(snapshot) {
       ...weeklyBase, field:'average_carts', label:'Daily average carts', color:palette.blue,
       ariaLabel:'Thirteen-week daily average painted carts with trend, interim target, and long-term goal',
       references:[
-        {value:weeklyReference.targetCarts, label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
-        {value:weeklyReference.goalCarts, label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
+        {value:weeklyReference.targetCarts, label:'Net-time interim target', color:palette.amber, spanFullWidth:true},
+        {value:weeklyReference.goalCarts, label:'Net-time long-term goal', color:palette.red, spanFullWidth:true}
       ],
       targetAssessment:{value:weeklyReference.targetCarts, scorePredicate:row => Number(row.represented_days || 0) > 0},
       summary:{label:'Carts', averageField:'average_carts', totalField:'carts_total'}
@@ -1376,18 +1387,11 @@ function renderPaintedCharts(snapshot) {
       ...weeklyBase, field:'average_pieces', label:'Daily average pieces', color:palette.purple,
       ariaLabel:'Thirteen-week daily average painted pieces with trend, interim target, and long-term goal',
       references:[
-        {value:weeklyReference.targetPieces, label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
-        {value:weeklyReference.goalPieces, label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
+        {value:weeklyReference.targetPieces, label:'Net-time interim target', color:palette.amber, spanFullWidth:true},
+        {value:weeklyReference.goalPieces, label:'Net-time long-term goal', color:palette.red, spanFullWidth:true}
       ],
-      overlays:[{
-        label:'Avg scheduled demand', color:palette.green, field:'average_demand',
-        formatValue:wholeNumber, dash:'4 3'
-      }],
       targetAssessment:{value:weeklyReference.targetPieces, scorePredicate:row => Number(row.represented_days || 0) > 0},
-      summary:{
-        label:'Pieces', averageField:'average_pieces', totalField:'pieces_total',
-        demandField:'average_demand', demandTotalField:'demand_total', demandDaysField:'demand_days'
-      }
+      summary:{label:'Pieces', averageField:'average_pieces', totalField:'pieces_total'}
     })
   );
   content.append(hourlySection.section);
@@ -1396,6 +1400,9 @@ function renderPaintedCharts(snapshot) {
     comparison.append(text('Horizontal references use one ' + decimal(weeklyReference.averageNetHours) + '-hour average net-painting day from ' + integer(weeklyReference.performanceDays) + ' completed painting days.'));
     weeklySection.section.append(comparison);
   }
+  const demandNote = document.createElement('span'); demandNote.className = 'chart-unavailable-note';
+  demandNote.append(text('Scheduled-demand comparison is hidden until its source can be proven GP-paint-only.'));
+  weeklySection.section.append(demandNote);
   appendCommonChartNotes(content, weeklySection, weekly);
   if (uniqueColors.length) {
     const colorSection = metricChartSection(
@@ -1431,7 +1438,11 @@ function renderQualityCharts(snapshot, metric, options) {
     content.append(empty); return;
   }
   const hourly = series.hourly, weekly = series.weekly_13, model = series.performance_model || {};
-  const dailyWeightedAverage = weightedQualityPercent(hourly);
+  const averageReference = metric === 'finesse'
+    ? weightedQualityPercent(weekly)
+    : weightedQualityPercent(hourly);
+  const averageLabel = metric === 'finesse' ? '13-week weighted average' : 'Daily weighted average';
+  const averageDirectLabel = metric === 'finesse' ? '13-week avg' : 'Daily avg';
   const reportDay = fullDateLabel(snapshot.report_date);
   const hourlySection = metricChartSection('Hourly · selected report day', 'Weighted within each clock hour · ' + reportDay, true);
   hourlySection.grid.append(loadedChartCard(options.label + ' by hour', options.definition, hourly, {
@@ -1441,9 +1452,9 @@ function renderQualityCharts(snapshot, metric, options) {
     verticalLabels:true, showTick:() => true,
     tooltipSuffix:row => ' · ' + integer(row.quality_numerator) + ' / ' + integer(row.quality_denominator),
     references:[
-      {value:model.target_percent, label:'Interim target', color:palette.amber, dash:'6 4'},
-      {value:model.goal_percent, label:'Goal', color:options.lowerIsBetter ? palette.green : palette.red, dash:'3 4'},
-      {value:dailyWeightedAverage, label:'Daily weighted average', color:palette.navy, dash:'2 3', directLabel:'Daily avg'}
+      {value:model.target_percent, label:'Interim target', color:palette.amber},
+      {value:model.goal_percent, label:'Goal', color:options.lowerIsBetter ? palette.green : palette.red},
+      {value:averageReference, label:averageLabel, color:palette.navy, dash:'2 3', directLabel:averageDirectLabel}
     ],
     targetAssessment:{
       value:model.target_percent, lowerIsBetter:options.lowerIsBetter,
@@ -1460,8 +1471,8 @@ function renderQualityCharts(snapshot, metric, options) {
     tooltipSuffix:row => ' · ' + integer(row.quality_numerator) + ' / ' + integer(row.quality_denominator),
     showTick:() => true,
     references:[
-      {value:model.target_percent, label:'Interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
-      {value:model.goal_percent, label:'Goal', color:options.lowerIsBetter ? palette.green : palette.red, dash:'3 4', spanFullWidth:true}
+      {value:model.target_percent, label:'Interim target', color:palette.amber, spanFullWidth:true},
+      {value:model.goal_percent, label:'Goal', color:options.lowerIsBetter ? palette.green : palette.red, spanFullWidth:true}
     ],
     targetAssessment:{
       value:model.target_percent, lowerIsBetter:options.lowerIsBetter,
@@ -1477,15 +1488,15 @@ function renderMetricCharts(snapshot) {
   $('#metric-chart-title').textContent = selectedChartLabel;
   const summary = $('#metric-chart-summary');
   if (selectedChartKey === 'loaded') {
-    summary.textContent = 'Hourly totals include daily averages, unique colors, and pieces per cart; 13-week averages include horizontal references, trend, and collapsed aggregate history details.';
+    summary.textContent = 'Hourly totals show only the metric, solid goal and target references, and a fixed completed-period average; unique colors and eligible-cart pieces-per-cart history are separated in aggregate details.';
     renderLoadedCharts(snapshot); return;
   }
   if (selectedChartKey === 'carts-pieces-staged') {
-    summary.textContent = 'Hourly queue snapshots include the daily average and unique colors; 13-week close-of-day averages use minimum goals of 12 carts and 36 pieces staged.';
+    summary.textContent = 'Hourly charts are point-in-time queue snapshots, not accumulation, shown as steps with start, low, peak, end, and hours at or above the 12-cart / 36-piece minimum goals.';
     renderStagedCharts(snapshot); return;
   }
   if (selectedChartKey === 'carts-pieces-painted') {
-    summary.textContent = 'Hourly painted totals include daily averages and unique colors; 13-week charts include scheduled demand plus unique-color history with max, min, and trend.';
+    summary.textContent = 'Hourly painted totals include daily averages and unique colors; 13-week charts include throughput and dedicated unique-color history. Scheduled demand stays hidden until GP-only scope is proven.';
     renderPaintedCharts(snapshot); return;
   }
   if (selectedChartKey === 'repaint') {

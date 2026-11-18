@@ -11,7 +11,7 @@ SET XACT_ABORT ON;
 
 DECLARE @CommitChange bit = 1;
 DECLARE @ExpectedOldHash varchar(64) = 'C61C9D839DCA1E82EE45186A9D0179110CB141C6A5B3C40D1213015332AD1608';
-DECLARE @ExpectedNewHash varchar(64) = '08686EB3D38855BAEB6CA1E5760CD3467B58311E1B5BA4C7F502241CF8191D28';
+DECLARE @ExpectedNewHash varchar(64) = '9CF72B48DA59BBA526B0943F917793A020865D2C41DDDCA664BBB98850C970AF';
 DECLARE @ProcedureName nvarchar(256) = N'dbo.usp_QPTS_GetOperationsQualityShippingRollup';
 DECLARE @OldDefinition nvarchar(max) = OBJECT_DEFINITION(OBJECT_ID(@ProcedureName, N'P'));
 DECLARE @ObservedOldHash varchar(64) = CONVERT(varchar(64), HASHBYTES('SHA2_256', CONVERT(varbinary(max), COALESCE(@OldDefinition, N''))), 2);
@@ -2067,6 +2067,17 @@ BEGIN
            AND pe.report_date <= @ReportDate
            AND pe.color_key IS NOT NULL
         GROUP BY w.week_start
+    ), LoadedWeeklyColors AS (
+        SELECT
+            w.week_start,
+            COUNT(DISTINCT le.color_key) AS value_count
+        FROM WeekBuckets AS w
+        LEFT JOIN #LoadedEvents AS le
+            ON le.report_date >= w.week_start
+           AND le.report_date < DATEADD(day, 7, w.week_start)
+           AND le.report_date <= @ReportDate
+           AND le.color_key IS NOT NULL
+        GROUP BY w.week_start
     ), LoadedColorPartCounts AS (
         SELECT
             le.color_key AS label,
@@ -2086,6 +2097,23 @@ BEGIN
           AND le.report_date <= @ReportDate
           AND le.PaintCart_ID IS NOT NULL
         GROUP BY le.report_date, le.PaintCart_ID
+    ), LoadedEligibleCartDaily AS (
+        SELECT
+            report_date,
+            AVG(CONVERT(decimal(18, 4), piece_count)) AS daily_average
+        FROM LoadedCartSizes
+        WHERE piece_count BETWEEN 1 AND 6
+        GROUP BY report_date
+    ), LoadedWeeklyPiecesPerCart AS (
+        SELECT
+            w.week_start,
+            AVG(d.daily_average) AS value_count
+        FROM WeekBuckets AS w
+        LEFT JOIN LoadedEligibleCartDaily AS d
+            ON d.report_date >= w.week_start
+           AND d.report_date < DATEADD(day, 7, w.week_start)
+           AND d.report_date <= @ReportDate
+        GROUP BY w.week_start
     ), LoadedCartSizeDistribution AS (
         SELECT
             piece_count,
@@ -2103,7 +2131,7 @@ BEGIN
                 ELSE DATEADD(day, 6, w.week_start)
             END AS bucket_end,
             CONVERT(nvarchar(255), NULL) AS label,
-            CONVERT(bigint, CASE WHEN w.week_start < @HistoryStart THEN NULL ELSE c.value_count END) AS value_count,
+            CONVERT(decimal(18, 4), CASE WHEN w.week_start < @HistoryStart THEN NULL ELSE c.value_count END) AS value_count,
             CONVERT(bit, CASE WHEN w.week_start >= @HistoryStart THEN 1 ELSE 0 END) AS data_available,
             CONVERT(bit, CASE WHEN DATEADD(day, 6, w.week_start) > @ReportDate THEN 1 ELSE 0 END) AS is_partial,
             1 AS sort_group
@@ -2113,9 +2141,43 @@ BEGIN
         UNION ALL
 
         SELECT
+            N''loaded_weekly_unique_colors'', N''loaded'',
+            w.week_start,
+            CASE
+                WHEN DATEADD(day, 6, w.week_start) > @ReportDate THEN @ReportDate
+                ELSE DATEADD(day, 6, w.week_start)
+            END,
+            CONVERT(nvarchar(255), NULL),
+            CONVERT(decimal(18, 4), CASE WHEN w.week_start < @HistoryStart THEN NULL ELSE c.value_count END),
+            CONVERT(bit, CASE WHEN w.week_start >= @HistoryStart THEN 1 ELSE 0 END),
+            CONVERT(bit, CASE WHEN DATEADD(day, 6, w.week_start) > @ReportDate THEN 1 ELSE 0 END),
+            2
+        FROM WeekBuckets AS w
+        INNER JOIN LoadedWeeklyColors AS c ON c.week_start = w.week_start
+
+        UNION ALL
+
+        SELECT
+            N''loaded_weekly_average_pieces_per_cart'', N''loaded'',
+            w.week_start,
+            CASE
+                WHEN DATEADD(day, 6, w.week_start) > @ReportDate THEN @ReportDate
+                ELSE DATEADD(day, 6, w.week_start)
+            END,
+            CONVERT(nvarchar(255), NULL),
+            CONVERT(decimal(18, 4), CASE WHEN w.week_start < @HistoryStart THEN NULL ELSE p.value_count END),
+            CONVERT(bit, CASE WHEN w.week_start >= @HistoryStart THEN 1 ELSE 0 END),
+            CONVERT(bit, CASE WHEN DATEADD(day, 6, w.week_start) > @ReportDate THEN 1 ELSE 0 END),
+            3
+        FROM WeekBuckets AS w
+        INNER JOIN LoadedWeeklyPiecesPerCart AS p ON p.week_start = w.week_start
+
+        UNION ALL
+
+        SELECT
             N''loaded_color_part_counts'', N''loaded'',
             CONVERT(date, NULL), CONVERT(date, NULL),
-            c.label, c.value_count, CONVERT(bit, 1), CONVERT(bit, 0), 2
+            c.label, CONVERT(decimal(18, 4), c.value_count), CONVERT(bit, 1), CONVERT(bit, 0), 4
         FROM LoadedColorPartCounts AS c
 
         UNION ALL
@@ -2123,8 +2185,8 @@ BEGIN
         SELECT
             N''loaded_cart_size_distribution'', N''loaded'',
             CONVERT(date, NULL), CONVERT(date, NULL),
-            CONVERT(nvarchar(255), c.piece_count), c.value_count,
-            CONVERT(bit, 1), CONVERT(bit, 0), 3
+            CONVERT(nvarchar(255), c.piece_count), CONVERT(decimal(18, 4), c.value_count),
+            CONVERT(bit, 1), CONVERT(bit, 0), 5
         FROM LoadedCartSizeDistribution AS c
     )
     SELECT
@@ -2139,10 +2201,10 @@ BEGIN
     FROM AggregateDetailRows
     ORDER BY
         sort_group,
-        CASE WHEN sort_group = 1 THEN bucket_start END,
-        CASE WHEN sort_group = 2 THEN value_count END DESC,
-        CASE WHEN sort_group = 2 THEN label END,
-        CASE WHEN sort_group = 3 THEN TRY_CONVERT(int, label) END DESC
+        CASE WHEN sort_group IN (1, 2, 3) THEN bucket_start END,
+        CASE WHEN sort_group = 4 THEN value_count END DESC,
+        CASE WHEN sort_group = 4 THEN label END,
+        CASE WHEN sort_group = 5 THEN TRY_CONVERT(int, label) END DESC
     OPTION (MAXRECURSION 20);
 
     /* RESTRICTED_DRILLDOWN_RESULT_SETS_BEGIN */

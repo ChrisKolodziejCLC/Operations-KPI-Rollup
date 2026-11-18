@@ -309,6 +309,26 @@ def result_sets():
             "data_available": str(int(available)),
             "is_partial": str(int(observed_end < full_end)),
         })
+        aggregate_rows.append({
+            "detail_key": "loaded_weekly_unique_colors",
+            "metric_key": "loaded",
+            "bucket_start": week_start.isoformat(),
+            "bucket_end": observed_end.isoformat(),
+            "label": None,
+            "value_count": str(12 + (12 - week_offset)) if available else None,
+            "data_available": str(int(available)),
+            "is_partial": str(int(observed_end < full_end)),
+        })
+        aggregate_rows.append({
+            "detail_key": "loaded_weekly_average_pieces_per_cart",
+            "metric_key": "loaded",
+            "bucket_start": week_start.isoformat(),
+            "bucket_end": observed_end.isoformat(),
+            "label": None,
+            "value_count": str(round(2.1 + (12 - week_offset) * 0.05, 2)) if available else None,
+            "data_available": str(int(available)),
+            "is_partial": str(int(observed_end < full_end)),
+        })
     aggregate_rows.extend([
         {
             "detail_key": "loaded_color_part_counts", "metric_key": "loaded",
@@ -517,6 +537,12 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert details["painted_weekly_unique_colors"][0]["value"] is None
     assert details["painted_weekly_unique_colors"][-1]["value"] == 32
     assert details["painted_weekly_unique_colors"][-1]["is_partial"] is True
+    assert len(details["loaded_weekly_unique_colors"]) == 13
+    assert details["loaded_weekly_unique_colors"][0]["value"] is None
+    assert details["loaded_weekly_unique_colors"][-1]["value"] == 24
+    assert len(details["loaded_weekly_average_pieces_per_cart"]) == 13
+    assert details["loaded_weekly_average_pieces_per_cart"][0]["value"] is None
+    assert details["loaded_weekly_average_pieces_per_cart"][-1]["value"] == 2.7
     assert [(row["label"], row["value"]) for row in details["loaded_color_part_counts"]] == [
         ("BLACK", 31), ("WHITE", 18)
     ]
@@ -525,7 +551,49 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     ]
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
     assert snapshot["source_evidence"]["procedure_definition_sha256"] == "C61C9D839DCA1E82EE45186A9D0179110CB141C6A5B3C40D1213015332AD1608"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v24-aggregate-detail-charts"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v25-chart-refinements"
+    assert snapshot["scope"]["reconciliation_status"] == "reconciled"
+    assert snapshot["scope"]["reconciliation_warnings"] == []
+
+
+def test_current_day_cross_result_drift_is_reported_without_rejecting_snapshot():
+    sets = result_sets()
+    chart_rows = next(result_set["rows"] for result_set in sets if result_set["index"] == 14)
+    report_day = next(
+        row for row in chart_rows
+        if row["metric_key"] == "staged"
+        and row["grain"] == "DAY"
+        and row["bucket_start"] == "2026-11-11"
+    )
+    report_day["staged_carts"] = "12"
+    generated = datetime(2026, 11, 11, 13, 0, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), sets, generated_at=generated)
+
+    assert snapshot["scope"]["reconciliation_status"] == "current_day_source_drift"
+    assert snapshot["scope"]["reconciliation_warnings"] == [
+        "The staged chart report-day staged_carts does not reconcile to the daily result."
+    ]
+
+
+def test_historical_cross_result_drift_remains_strict():
+    sets = result_sets()
+    chart_rows = next(result_set["rows"] for result_set in sets if result_set["index"] == 14)
+    report_day = next(
+        row for row in chart_rows
+        if row["metric_key"] == "staged"
+        and row["grain"] == "DAY"
+        and row["bucket_start"] == "2026-11-11"
+    )
+    report_day["staged_carts"] = "12"
+    generated = datetime(2026, 11, 12, 13, 0, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+
+    try:
+        snapshot_from_rollup(date(2026, 11, 11), sets, generated_at=generated)
+    except ValueError as error:
+        assert str(error) == "The staged chart report-day staged_carts does not reconcile to the daily result."
+    else:
+        raise AssertionError("historical cross-result drift was accepted")
 
 
 def test_v24_rejects_inconsistent_painted_demand_average():
@@ -1060,7 +1128,7 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "08686EB3D38855BAEB6CA1E5760CD3467B58311E1B5BA4C7F502241CF8191D28" in captured["query"]
+    assert "9CF72B48DA59BBA526B0943F917793A020865D2C41DDDCA664BBB98850C970AF" in captured["query"]
     assert "@IncludeRestrictedDetail = 0" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]
