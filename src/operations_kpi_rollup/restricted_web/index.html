@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Operations KPI Restricted Drill-down</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">Creative Liquid Coatings · Authorized operational review</p>
+      <h1>Operations KPI Restricted Drill-down</h1>
+      <p class="subtitle">Painter, booth, color, and part-level detail. Not part of the wallboard contract.</p>
+    </div>
+    <div class="header-status">
+      <span class="restricted-badge">Restricted</span>
+      <strong id="viewer">Authorized viewer</strong>
+      <span id="generated-at">Loading…</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="control-bar" aria-label="Report controls">
+      <div>
+        <label for="report-date">Report date</label>
+        <input id="report-date" type="date" min="2026-09-08">
+      </div>
+      <div class="day-navigation" aria-label="Date navigation">
+        <button id="previous-day" class="secondary" type="button">Previous</button>
+        <button id="today" class="secondary" type="button">Today</button>
+        <button id="next-day" class="secondary" type="button">Next</button>
+      </div>
+      <button id="load-date" type="button">Load selected day</button>
+      <button id="refresh" type="button">Refresh data</button>
+      <p id="status" role="status">Loading restricted snapshot…</p>
+    </section>
+
+    <section class="boundary" aria-label="Access boundary">
+      <strong>Restricted operational data</strong>
+      <span>This page contains named employee and part-level information. Do not display it on the shared wallboard or forward screenshots outside the approved audience.</span>
+    </section>
+
+    <details class="panel" open>
+      <summary>
+        <span>Painter production</span>
+        <small>Current day plus 13-week operating history</small>
+      </summary>
+      <div class="panel-body">
+        <div id="painter-kpis" class="summary-grid"></div>
+        <div class="chart-grid">
+          <figure class="chart-card"><figcaption>Share of pieces painted <small>Selected day</small></figcaption><div id="painter-share" class="chart"></div></figure>
+          <figure class="chart-card"><figcaption>Pieces by painter and booth <small>Selected day</small></figcaption><div id="painter-pieces" class="chart"></div></figure>
+          <figure class="chart-card"><figcaption>First-time yield outcomes <small>Approved, repaired, repaint, pending</small></figcaption><div id="painter-fty" class="chart"></div></figure>
+          <figure class="chart-card"><figcaption>13-week pieces trend <small>Daily rows grouped Sunday–Saturday</small></figcaption><div id="painter-history" class="chart"></div></figure>
+        </div>
+        <div class="table-wrap"><table id="painter-table"></table></div>
+      </div>
+    </details>
+
+    <details class="panel">
+      <summary>
+        <span>Repaint contribution and loop history</span>
+        <small>Painter, color, booth, and every selected-day repaint</small>
+      </summary>
+      <div class="panel-body">
+        <div class="chart-grid three">
+          <figure class="chart-card"><figcaption>By painter</figcaption><div id="repaint-painter" class="rank-bars"></div></figure>
+          <figure class="chart-card"><figcaption>By color</figcaption><div id="repaint-color" class="rank-bars"></div></figure>
+          <figure class="chart-card"><figcaption>By booth</figcaption><div id="repaint-booth" class="rank-bars"></div></figure>
+        </div>
+        <div class="table-wrap"><table id="repaint-table"></table></div>
+      </div>
+    </details>
+
+    <details class="panel">
+      <summary>
+        <span>Finesse work and outcomes</span>
+        <small>Worker contribution, outcome, time per part, and repaint history</small>
+      </summary>
+      <div class="panel-body">
+        <div class="chart-grid">
+          <figure class="chart-card"><figcaption>Parts worked by outcome</figcaption><div id="finesse-outcomes" class="chart"></div></figure>
+          <figure class="chart-card"><figcaption>Average minutes per part</figcaption><div id="finesse-time" class="chart"></div></figure>
+        </div>
+        <div class="table-wrap"><table id="finesse-table"></table></div>
+      </div>
+    </details>
+  </main>
+
+  <footer>
+    <span>Operations KPI Rollup · Restricted drill-down</span>
+    <span>0.34.0-restricted-drilldown</span>
+  </footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>

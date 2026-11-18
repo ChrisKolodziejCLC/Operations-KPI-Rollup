@@ -9,6 +9,7 @@ ROLLBACK = ROOT / "sql" / "2026-11-18-rollback-aggregate-color-demand-details.sq
 SERVICE = ROOT / "deploy" / "operations-kpi-rollup.service"
 OLD_HASH = "DA67E4A283C8317CC69B750B2D6636B1F76F9B6F46FF990591E82F1CA88FDD33"
 NEW_HASH = "C61C9D839DCA1E82EE45186A9D0179110CB141C6A5B3C40D1213015332AD1608"
+CURRENT_HASH = "420A87D4DFE5D8A20B4A8048BF51E4EAA7AAC30AD63D3D13C201B1BD61D9814A"
 
 
 def _reviewed_definition(sql: str) -> str:
@@ -102,6 +103,7 @@ def test_reverse_migration_restores_exact_prior_definition():
     assert _definition_hash(_reviewed_definition(sql)) == OLD_HASH
 
 
-def test_service_pins_aggregate_detail_definition_hash():
+def test_service_has_advanced_beyond_aggregate_detail_definition_hash():
     unit = SERVICE.read_text(encoding="utf-8")
-    assert f"Environment=KPI_SQL_PROCEDURE_HASH={NEW_HASH}" in unit
+    assert f"Environment=KPI_SQL_PROCEDURE_HASH={CURRENT_HASH}" in unit
+    assert f"Environment=KPI_SQL_PROCEDURE_HASH={NEW_HASH}" not in unit

@@ -1,0 +1,52 @@
+[Unit]
+Description=CLC Operations KPI restricted drill-down
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=operations-kpi
+Group=operations-kpi
+WorkingDirectory=/opt/clc/operations-kpi-rollup/current
+Environment=PYTHONPATH=/opt/clc/operations-kpi-rollup/current/src
+Environment=KPI_RESTRICTED_DATA_MODE=live
+Environment=KPI_RESTRICTED_BIND_HOST=127.0.0.1
+Environment=KPI_RESTRICTED_PORT=5194
+Environment=KPI_RESTRICTED_TRUSTED_PROXIES=127.0.0.1/32,::1/128
+Environment=KPI_RESTRICTED_ALLOWED_OBJECT_IDS_CREDENTIAL=operations-kpi-restricted-allowed-object-ids
+Environment=KPI_TIMEZONE=America/Indiana/Indianapolis
+Environment=KPI_RESTRICTED_SNAPSHOT_DIR=/var/lib/operations-kpi-restricted/snapshots
+Environment=KPI_RESTRICTED_SQL_CREDENTIAL_NAME=operations-kpi-qpts-ro
+Environment=KPI_SQL_EXPECTED_SERVER=brak
+Environment="KPI_SQL_EXPECTED_DATABASE=Production Tracking (Version 1.0.0)SQL"
+Environment=KPI_SQL_EXPECTED_USER=OperationsKpiRollup_RO
+Environment=KPI_RESTRICTED_SQL_PROCEDURE_HASH=420A87D4DFE5D8A20B4A8048BF51E4EAA7AAC30AD63D3D13C201B1BD61D9814A
+Environment=KPI_SQL_QUERY_TIMEOUT_SECONDS=300
+Environment=KPI_RESTRICTED_REFRESH_FRESHNESS_SECONDS=600
+Environment=KPI_RESTRICTED_AUTO_REFRESH_SECONDS=600
+LoadCredentialEncrypted=operations-kpi-qpts-ro:/etc/credstore.encrypted/operations-kpi-qpts-ro
+LoadCredentialEncrypted=operations-kpi-restricted-allowed-object-ids:/etc/credstore.encrypted/operations-kpi-restricted-allowed-object-ids
+StateDirectory=operations-kpi-restricted
+StateDirectoryMode=0700
+ExecStart=/usr/bin/python3 -m operations_kpi_rollup.restricted_web
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

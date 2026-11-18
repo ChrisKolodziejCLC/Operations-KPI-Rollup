@@ -298,7 +298,7 @@ def execute_operations_rollup(report_date: date) -> List[Dict[str, object]]:
     iso_date = report_date.isoformat()
     expected_hash = os.environ.get(
         "KPI_SQL_PROCEDURE_HASH",
-        "C61C9D839DCA1E82EE45186A9D0179110CB141C6A5B3C40D1213015332AD1608",
+        "420A87D4DFE5D8A20B4A8048BF51E4EAA7AAC30AD63D3D13C201B1BD61D9814A",
     ).upper()
     if not re.fullmatch(r"[0-9A-F]{64}", expected_hash):
         raise OdbcError("The configured procedure definition hash is invalid.")
@@ -310,11 +310,42 @@ def execute_operations_rollup(report_date: date) -> List[Dict[str, object]]:
         f"IF @ObservedDefinitionHash <> '{expected_hash}' "
         "THROW 51000, 'The Operations KPI rollup procedure differs from the reviewed contract.', 1; "
         "EXEC dbo.usp_QPTS_GetOperationsQualityShippingRollup "
-        f"@ReportDateOverride = '{iso_date}';"
+        f"@ReportDateOverride = '{iso_date}', @IncludeRestrictedDetail = 0;"
     )
-    include_painters = os.environ.get("KPI_INCLUDE_PAINTERS", "false").lower() in {"1", "true", "yes"}
+    # The public wallboard is aggregate-only. Result set 8 contains named
+    # painter data and must never be fetched into its process, even if a stale
+    # environment variable remains on a host. Restricted detail has its own
+    # service and explicit result-set contract below.
     wanted = {0, 2, 3, 4, 5, 9, 12, 14, 15}
-    if include_painters:
-        wanted.add(8)
     credential_name = os.environ.get("KPI_SQL_CREDENTIAL_NAME", "operations-kpi-qpts-ro")
     return execute_result_sets(query, wanted, credential_name)
+
+
+def execute_restricted_rollup(report_date: date) -> List[Dict[str, object]]:
+    """Fetch only the reviewed restricted drill-down result sets.
+
+    This path deliberately requires an explicit post-migration procedure hash;
+    there is no permissive default. It is called only by the separately bound,
+    identity-gated restricted service.
+    """
+
+    iso_date = report_date.isoformat()
+    expected_hash = os.environ.get("KPI_RESTRICTED_SQL_PROCEDURE_HASH", "").upper()
+    if not re.fullmatch(r"[0-9A-F]{64}", expected_hash):
+        raise OdbcError(
+            "KPI_RESTRICTED_SQL_PROCEDURE_HASH must pin the reviewed restricted-detail procedure."
+        )
+    query = (
+        "SET NOCOUNT ON; "
+        "DECLARE @ObservedDefinitionHash varchar(64) = CONVERT(varchar(64), "
+        "HASHBYTES('SHA2_256', CONVERT(varbinary(max), COALESCE(OBJECT_DEFINITION("
+        "OBJECT_ID(N'dbo.usp_QPTS_GetOperationsQualityShippingRollup')), N''))), 2); "
+        f"IF @ObservedDefinitionHash <> '{expected_hash}' "
+        "THROW 51001, 'The restricted KPI procedure differs from the reviewed contract.', 1; "
+        "EXEC dbo.usp_QPTS_GetOperationsQualityShippingRollup "
+        f"@ReportDateOverride = '{iso_date}', @IncludeRestrictedDetail = 1;"
+    )
+    credential_name = os.environ.get(
+        "KPI_RESTRICTED_SQL_CREDENTIAL_NAME", "operations-kpi-qpts-ro"
+    )
+    return execute_result_sets(query, {16, 17, 18, 19, 20}, credential_name)

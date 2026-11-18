@@ -730,17 +730,9 @@ def snapshot_from_rollup(
     ]
     periods.sort(key=lambda row: (PERIOD_TYPE_ORDER[row["period_type"]], row["period_start"]))
 
-    painters = [
-        {
-            "date": _date_text(row.get("report_date")),
-            "painter": str(row.get("painter_name") or "Unknown"),
-            "booth": _integer(row.get("booth_number")),
-            "parts": _integer(row.get("parts_painted")),
-            "minutes": _integer(row.get("minutes_logged")),
-            "parts_per_hour": _number(row.get("parts_per_hour"), 1),
-        }
-        for row in indexed.get(8, [])
-    ]
+    if indexed.get(8):
+        raise ValueError("The public rollup returned restricted employee detail.")
+    painters: List[Dict[str, Any]] = []
     top_defects = [
         {
             "step": str(row.get("inspection_step") or "Unknown"),
@@ -895,11 +887,7 @@ def snapshot_from_rollup(
     timezone_name = os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis")
     observed_at = generated_at or datetime.now(ZoneInfo(timezone_name))
     history_start = _date_text(metadata.get("history_start")) if metadata.get("history_start") else "2026-09-08"
-    painter_note = (
-        "Painter names are included for this restricted pilot."
-        if painters
-        else "Employee-level painter detail is disabled in the initial internal pilot."
-    )
+    painter_note = "Employee-level painter detail is available only in the identity-gated restricted drill-down."
     snapshot: Dict[str, Any] = {
         "schema_version": "operations-kpi-snapshot/v1",
         "report_date": report_date.isoformat(),
@@ -990,7 +978,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "C61C9D839DCA1E82EE45186A9D0179110CB141C6A5B3C40D1213015332AD1608",
+                "420A87D4DFE5D8A20B4A8048BF51E4EAA7AAC30AD63D3D13C201B1BD61D9814A",
             ).upper(),
             "detail_result_sets_requested": False,
         },

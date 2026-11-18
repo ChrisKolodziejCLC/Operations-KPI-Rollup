@@ -1060,7 +1060,34 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "C61C9D839DCA1E82EE45186A9D0179110CB141C6A5B3C40D1213015332AD1608" in captured["query"]
+    assert "420A87D4DFE5D8A20B4A8048BF51E4EAA7AAC30AD63D3D13C201B1BD61D9814A" in captured["query"]
+    assert "@IncludeRestrictedDetail = 0" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]
     assert 14 in captured["wanted"]
+
+
+def test_public_snapshot_rejects_any_restricted_employee_rows():
+    sets = result_sets()
+    sets.append(
+        {
+            "index": 8,
+            "rows": [
+                {
+                    "report_date": "2026-11-11",
+                    "painter_name": "Restricted Person",
+                    "booth_number": "1",
+                    "parts_painted": "1",
+                    "minutes_logged": "1",
+                    "parts_per_hour": "60",
+                }
+            ],
+        }
+    )
+
+    try:
+        snapshot_from_rollup(date(2026, 11, 11), sets)
+    except ValueError as error:
+        assert str(error) == "The public rollup returned restricted employee detail."
+    else:
+        raise AssertionError("The public snapshot accepted restricted employee data")

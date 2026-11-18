@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "operations-kpi-rollup"
-version = "0.33.0"
+version = "0.34.0"
 description = "Reproducible Operations, Quality, and Shipping KPI email rollups"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -21,6 +21,8 @@ dev = ["pytest>=8,<9"]
 [project.scripts]
 operations-kpi-rollup = "operations_kpi_rollup.cli:main"
 operations-kpi-wallboard = "operations_kpi_rollup.web:main"
+operations-kpi-restricted = "operations_kpi_rollup.restricted_web:main"
+operations-kpi-restricted-proxy = "operations_kpi_rollup.restricted_proxy:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -29,7 +31,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-operations_kpi_rollup = ["templates/*.j2", "web/*.html", "web/*.css", "web/*.js"]
+operations_kpi_rollup = ["templates/*.j2", "web/*.html", "web/*.css", "web/*.js", "restricted_web/*.html", "restricted_web/*.css", "restricted_web/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
