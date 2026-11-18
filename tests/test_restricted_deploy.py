@@ -5,7 +5,7 @@ ROOT = Path(__file__).parents[1]
 PUBLIC_UNIT = ROOT / "deploy" / "operations-kpi-rollup.service"
 RESTRICTED_UNIT = ROOT / "deploy" / "operations-kpi-restricted.service"
 PROXY_CONTRACT = ROOT / "deploy" / "restricted-auth-proxy-contract.md"
-CANDIDATE_HASH = "420A87D4DFE5D8A20B4A8048BF51E4EAA7AAC30AD63D3D13C201B1BD61D9814A"
+CANDIDATE_HASH = "08686EB3D38855BAEB6CA1E5760CD3467B58311E1B5BA4C7F502241CF8191D28"
 
 
 def test_public_service_explicitly_uses_restricted_safe_procedure_contract():

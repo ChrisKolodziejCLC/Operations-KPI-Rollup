@@ -479,7 +479,7 @@ def build_backend_headers(
 
 
 class RestrictedProxyHandler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPIRestrictedProxy/0.34.0"
+    server_version = "OperationsKPIRestrictedProxy/0.34.1"
     sys_version = ""
 
     @property

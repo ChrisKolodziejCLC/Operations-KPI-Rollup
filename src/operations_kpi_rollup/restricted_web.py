@@ -291,7 +291,7 @@ class RestrictedServer(ThreadingHTTPServer):
 
 
 class RestrictedHandler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPIRestricted/0.34.0"
+    server_version = "OperationsKPIRestricted/0.34.1"
     sys_version = ""
 
     @property

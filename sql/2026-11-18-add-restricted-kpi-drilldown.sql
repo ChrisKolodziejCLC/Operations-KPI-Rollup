@@ -11,7 +11,7 @@ SET XACT_ABORT ON;
 
 DECLARE @CommitChange bit = 1;
 DECLARE @ExpectedOldHash varchar(64) = 'C61C9D839DCA1E82EE45186A9D0179110CB141C6A5B3C40D1213015332AD1608';
-DECLARE @ExpectedNewHash varchar(64) = '420A87D4DFE5D8A20B4A8048BF51E4EAA7AAC30AD63D3D13C201B1BD61D9814A';
+DECLARE @ExpectedNewHash varchar(64) = '08686EB3D38855BAEB6CA1E5760CD3467B58311E1B5BA4C7F502241CF8191D28';
 DECLARE @ProcedureName nvarchar(256) = N'dbo.usp_QPTS_GetOperationsQualityShippingRollup';
 DECLARE @OldDefinition nvarchar(max) = OBJECT_DEFINITION(OBJECT_ID(@ProcedureName, N'P'));
 DECLARE @ObservedOldHash varchar(64) = CONVERT(varchar(64), HASHBYTES('SHA2_256', CONVERT(varbinary(max), COALESCE(@OldDefinition, N''))), 2);
@@ -2180,10 +2180,13 @@ BEGIN
             END AS fty_approved,
             CASE
                 WHEN COALESCE(pp.repaint_is_initial_pass, 0) = 1
+                 AND COALESCE(pp.repaint_is_pending, 0) = 0
+                 AND COALESCE(pp.repaint_is_failure, 0) = 0
                  AND COALESCE(pp.is_finesse_repair, 0) = 1 THEN 1 ELSE 0
             END AS fty_repair,
             CASE
                 WHEN COALESCE(pp.repaint_is_initial_pass, 0) = 1
+                 AND COALESCE(pp.repaint_is_pending, 0) = 0
                  AND COALESCE(pp.repaint_is_failure, 0) = 1 THEN 1 ELSE 0
             END AS fty_repaint,
             CASE
