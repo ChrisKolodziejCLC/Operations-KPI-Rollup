@@ -12,6 +12,7 @@ import pytest
 import operations_kpi_rollup.drilldown as drilldown_module
 import operations_kpi_rollup.odbc as odbc
 from operations_kpi_rollup.drilldown import DrilldownState, create_drilldown_state
+from operations_kpi_rollup.restricted import RestrictedContractError, validate_restricted_snapshot
 from operations_kpi_rollup.web import AppState, create_server
 
 
@@ -22,12 +23,13 @@ PROCEDURE_HASH = "9CF72B48DA59BBA526B0943F917793A020865D2C41DDDCA664BBB98850C970
 
 def drilldown_snapshot():
     return {
-        "contract_version": "1.0",
+        "contract_version": "2.0",
         "classification": "restricted-operational",
         "scope": {
-            "method_version": "operations-kpi-restricted-v1",
+            "method_version": "operations-kpi-restricted-v2",
             "history_start": "2026-09-08",
-            "contains_named_people": True,
+            "contains_named_people": False,
+            "contains_employee_ids": True,
             "contains_part_level_detail": True,
             "public_wallboard_compatible": False,
         },
@@ -35,31 +37,31 @@ def drilldown_snapshot():
         "generated_at": "2026-11-18T11:59:00-05:00",
         "painter_daily": [
             {
-                "date": "2026-11-18", "painter": "Synthetic Painter", "booth": 1, "carts": 3, "pieces": 9,
+                "date": "2026-11-18", "painter_id": "910001", "booth": 1, "carts": 3, "pieces": 9,
                 "minutes": 60, "pieces_per_hour": 9.0, "unique_colors": 2, "fty_total": 9, "fty_approved": 8,
                 "fty_repair": 0, "fty_repaint": 1, "fty_pending": 0, "fty_percent": 88.8889,
             }
         ],
         "repaint": {
             "contributions": [
-                {"dimension": "painter", "label": "Synthetic Painter", "repaint_events": 1, "unique_parts": 1, "contribution_percent": 100.0}
+                {"dimension": "painter", "label": "910001", "repaint_events": 1, "unique_parts": 1, "contribution_percent": 100.0}
             ],
             "details": [
                 {
                     "event_at": "2026-11-18T10:00:00", "part_id": 1001, "part_number": "PN-001", "sequence": "SEQ-001",
-                    "color": "Synthetic Color", "painter": "Synthetic Painter", "booth": 1, "repaint_loop_count": 1,
+                    "color": "Synthetic Color", "painter_id": "910001", "booth": 1, "repaint_loop_count": 1,
                     "defect": "Synthetic defect",
                 }
             ],
         },
         "finesse": {
             "summary": [
-                {"date": "2026-11-18", "worker": "Synthetic Worker", "outcome": "repaint", "parts": 1, "average_minutes_per_part": 3.5, "max_repaint_count": 1}
+                {"date": "2026-11-18", "worker_id": "910001", "outcome": "repaint", "parts": 1, "average_minutes_per_part": 3.5, "max_repaint_count": 1}
             ],
             "details": [
                 {
                     "event_at": "2026-11-18T10:15:00", "part_id": 1001, "part_number": "PN-001", "sequence": "SEQ-001",
-                    "color": "Synthetic Color", "worker": "Synthetic Worker", "outcome": "repaint", "minutes_per_part": 3.5,
+                    "color": "Synthetic Color", "worker_id": "910001", "outcome": "repaint", "minutes_per_part": 3.5,
                     "repaint_count": 1,
                 }
             ],
@@ -124,7 +126,7 @@ def test_standard_drilldown_is_served_without_any_identity(tmp_path):
         status, _, body = perform(base + "/api/drilldown/snapshot")
         snapshot = json.loads(body)
         assert status == 200
-        assert snapshot["painter_daily"][0]["painter"] == "Synthetic Painter"
+        assert snapshot["painter_daily"][0]["painter_id"] == "910001"
         status, _, body = perform(base + "/api/drilldown/snapshot?report_date=2026-11-17")
         assert status == 404 and "error" in json.loads(body)
         status, _, body = perform(base + "/api/drilldown/snapshot?report_date=not-a-date")
@@ -139,7 +141,7 @@ def test_aggregate_wallboard_contract_and_assets_remain_free_of_named_detail(tmp
         status, _, body = perform(base + "/api/snapshot")
         assert status == 200
         text = body.decode("utf-8")
-        for forbidden in ("Synthetic Painter", "painter_daily", "part_number", "repaint_loop_count"):
+        for forbidden in ("910001", "painter_id", "painter_daily", "part_number", "repaint_loop_count"):
             assert forbidden not in text
         status, _, html = perform(base + "/")
         assert status == 200 and b'href="/drilldown/"' in html
@@ -266,3 +268,63 @@ def test_drilldown_page_always_opens_on_todays_date():
     start = script[script.index("async function start()"):]
     assert "localDateISO()" in start
     assert "health.report_date" not in start
+
+
+def test_validator_rejects_snapshots_that_carry_person_names():
+    validate_restricted_snapshot(drilldown_snapshot())
+    for key in ("painter", "painter_name"):
+        snapshot = drilldown_snapshot()
+        snapshot["painter_daily"][0][key] = "Someone"
+        with pytest.raises(RestrictedContractError, match="employee IDs, not names"):
+            validate_restricted_snapshot(snapshot)
+    snapshot = drilldown_snapshot()
+    snapshot["finesse"]["summary"][0]["worker"] = "Someone"
+    with pytest.raises(RestrictedContractError, match="employee IDs, not names"):
+        validate_restricted_snapshot(snapshot)
+    snapshot = drilldown_snapshot()
+    snapshot["scope"]["contains_named_people"] = True
+    with pytest.raises(RestrictedContractError):
+        validate_restricted_snapshot(snapshot)
+
+
+def test_snapshot_retention_keeps_the_newest_three_files_per_report_date(tmp_path):
+    state = DrilldownState("live", tmp_path / "drilldown")
+    snapshot = drilldown_snapshot()
+    for _ in range(6):
+        state._persist(snapshot)
+    files = sorted((tmp_path / "drilldown").glob("2026-11-18__*.json"))
+    assert len(files) == 3
+    assert (tmp_path / "drilldown" / "latest.json").is_file()
+
+
+def test_incompatible_old_snapshots_are_discarded_instead_of_disabling_the_drilldown(tmp_path):
+    directory = tmp_path / "drilldown"
+    directory.mkdir()
+    old = drilldown_snapshot()
+    old["contract_version"] = "1.0"
+    old["scope"]["method_version"] = "operations-kpi-restricted-v1"
+    old["scope"]["contains_named_people"] = True
+    old["scope"].pop("contains_employee_ids")
+    for name in ("latest.json", "2026-11-18__1.json", "2026-11-17__2.json"):
+        (directory / name).write_text(json.dumps(old), encoding="utf-8")
+    state = DrilldownState("live", directory)
+    assert state.snapshot(date(2026, 11, 18)) is None
+    assert not list(directory.glob("*.json"))
+    state._persist(drilldown_snapshot())
+    assert DrilldownState("live", directory).snapshot(date(2026, 11, 18))["report_date"] == "2026-11-18"
+
+
+def test_drilldown_ui_shows_ids_plain_part_ids_and_trend_charts():
+    script = (SRC / "drilldown_web" / "app.js").read_text(encoding="utf-8")
+    page = (SRC / "drilldown_web" / "index.html").read_text(encoding="utf-8")
+    assert script.count("{key: 'part_id', label: 'Part ID', format: plainId}") == 2
+    assert "format: integer}" not in script.split("label: 'Part ID'")[1].split("\n")[0]
+    for name in ("renderTrends", "renderPeriodStack", "renderPeriodLines", "periodKeys"):
+        assert "function " + name + "(" in script
+    assert "renderTrends(snapshot);" in script
+    assert "Last 13 weeks" in script and "'Monthly'" in script
+    for container in ("painter-trends", "repaint-trends", "finesse-trends"):
+        assert 'id="' + container + '"' in page
+    assert "painter-history" not in page and "renderPainterHistory" not in script
+    assert "row.painter)" not in script and "row.worker)" not in script
+    assert "Painter ID" in script and "Worker ID" in script

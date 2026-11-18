@@ -1019,7 +1019,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "9CF72B48DA59BBA526B0943F917793A020865D2C41DDDCA664BBB98850C970AF",
+                "7AA6DCC3A056553C3945EF7474FE15B44565BD9C450E97030DD9970CBF569936",
             ).upper(),
             "detail_result_sets_requested": False,
         },

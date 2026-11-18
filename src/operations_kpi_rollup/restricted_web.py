@@ -155,7 +155,21 @@ class RestrictedState:
         latest = self.snapshot_dir / "latest.json"
         source = latest if latest.is_file() else self.fixture_path
         if source and source.is_file():
-            self._remember(self._read_snapshot(source))
+            try:
+                self._remember(self._read_snapshot(source))
+            except (ValueError, OSError) as exc:
+                self._incompatible_snapshot(source, exc)
+
+    def _incompatible_snapshot(self, path: Path, exc: BaseException) -> None:
+        raise exc
+
+    KEEP_PER_DATE = 3
+
+    def _prune_old_snapshots(self, report_date: str) -> None:
+        # Each refresh writes an immutable copy; keep only the newest few per report date.
+        files = sorted(self.snapshot_dir.glob(f"{report_date}__*.json"))
+        for stale in files[: -self.KEEP_PER_DATE]:
+            stale.unlink(missing_ok=True)
 
     def snapshot(self, report_date: Optional[date] = None) -> Optional[Dict[str, Any]]:
         if report_date is None:
@@ -197,6 +211,7 @@ class RestrictedState:
         temporary.write_bytes(encoded)
         temporary.chmod(0o600)
         os.replace(temporary, self.snapshot_dir / "latest.json")
+        self._prune_old_snapshots(str(snapshot["report_date"]))
 
     def refresh(self, report_date: date, *, force: bool = False) -> Dict[str, Any]:
         today = self._today()

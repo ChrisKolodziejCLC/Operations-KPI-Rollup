@@ -21,12 +21,13 @@ DENIED_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 
 def fixture_snapshot():
     return {
-        "contract_version": "1.0",
+        "contract_version": "2.0",
         "classification": "restricted-operational",
         "scope": {
-            "method_version": "operations-kpi-restricted-v1",
+            "method_version": "operations-kpi-restricted-v2",
             "history_start": "2026-09-08",
-            "contains_named_people": True,
+            "contains_named_people": False,
+            "contains_employee_ids": True,
             "contains_part_level_detail": True,
             "public_wallboard_compatible": False,
         },
@@ -35,7 +36,7 @@ def fixture_snapshot():
         "painter_daily": [
             {
                 "date": "2026-11-18",
-                "painter": "Synthetic Painter",
+                "painter_id": "910001",
                 "booth": 1,
                 "carts": 3,
                 "pieces": 9,
@@ -52,7 +53,7 @@ def fixture_snapshot():
         ],
         "repaint": {
             "contributions": [
-                {"dimension": "painter", "label": "Synthetic Painter", "repaint_events": 1, "unique_parts": 1, "contribution_percent": 100.0}
+                {"dimension": "painter", "label": "910001", "repaint_events": 1, "unique_parts": 1, "contribution_percent": 100.0}
             ],
             "details": [
                 {
@@ -61,7 +62,7 @@ def fixture_snapshot():
                     "part_number": "PN-001",
                     "sequence": "SEQ-001",
                     "color": "Synthetic Color",
-                    "painter": "Synthetic Painter",
+                    "painter_id": "910001",
                     "booth": 1,
                     "repaint_loop_count": 1,
                     "defect": "Synthetic defect",
@@ -70,7 +71,7 @@ def fixture_snapshot():
         },
         "finesse": {
             "summary": [
-                {"date": "2026-11-18", "worker": "Synthetic Worker", "outcome": "repaint", "parts": 1, "average_minutes_per_part": 3.5, "max_repaint_count": 1}
+                {"date": "2026-11-18", "worker_id": "910001", "outcome": "repaint", "parts": 1, "average_minutes_per_part": 3.5, "max_repaint_count": 1}
             ],
             "details": [
                 {
@@ -79,7 +80,7 @@ def fixture_snapshot():
                     "part_number": "PN-001",
                     "sequence": "SEQ-001",
                     "color": "Synthetic Color",
-                    "worker": "Synthetic Worker",
+                    "worker_id": "910001",
                     "outcome": "repaint",
                     "minutes_per_part": 3.5,
                     "repaint_count": 1,
@@ -198,7 +199,7 @@ def test_exact_identity_can_read_restricted_page_and_snapshot(restricted_server)
     assert status == 200
     assert payload["classification"] == "restricted-operational"
     assert payload["scope"]["public_wallboard_compatible"] is False
-    assert payload["painter_daily"][0]["painter"] == "Synthetic Painter"
+    assert payload["painter_daily"][0]["painter_id"] == "910001"
     assert "no-store" in headers["Cache-Control"]
 
 

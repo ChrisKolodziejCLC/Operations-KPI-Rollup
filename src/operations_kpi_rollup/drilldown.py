@@ -21,7 +21,7 @@ from .restricted import build_restricted_snapshot
 from .restricted_web import RestrictedRefreshError, RestrictedState
 
 
-DRILLDOWN_VERSION = "0.36.1-standard-drilldown"
+DRILLDOWN_VERSION = "0.37.0-painter-ids-trends"
 _DISABLED_VALUES = {"0", "false", "no", "off"}
 
 
@@ -50,6 +50,26 @@ class DrilldownState(RestrictedState):
 
     def _fetch_live(self, report_date: date) -> Dict[str, Any]:
         return build_restricted_snapshot(report_date, execute_standard_drilldown(report_date))
+
+    def _incompatible_snapshot(self, path: Path, exc: BaseException) -> None:
+        # Cache files from an older contract (for example the named v1 snapshots) are discarded
+        # instead of disabling the drill-down. Fixtures are never touched.
+        if path.parent != self.snapshot_dir:
+            raise exc
+        discarded = 0
+        for candidate in list(self.snapshot_dir.glob("*.json")):
+            try:
+                self._read_snapshot(candidate)
+            except (ValueError, OSError):
+                candidate.unlink(missing_ok=True)
+                discarded += 1
+        print(
+            json.dumps(
+                {"event": "drilldown-incompatible-snapshots-discarded", "files": discarded, "error": f"{type(exc).__name__}: {str(exc)[:160]}"},
+                separators=(",", ":"),
+            ),
+            flush=True,
+        )
 
     def _auto_refresh_loop(self) -> None:
         if self.initial_delay_seconds and self._auto_refresh_stop.wait(self.initial_delay_seconds):

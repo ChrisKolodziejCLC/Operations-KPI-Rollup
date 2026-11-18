@@ -1,8 +1,9 @@
-"""Restricted Operations KPI drill-down contract.
+"""Operations KPI drill-down contract.
 
 This module is intentionally separate from the aggregate wallboard contract.
-Named people and part-level rows may exist only in snapshots validated here and
-served by the identity-gated restricted service.
+Employee IDs and part-level rows may exist only in snapshots validated here and
+served by the drill-down routes. Contract 2.0 carries QPTS employee ID numbers
+instead of employee names; the validator rejects any snapshot with name fields.
 """
 
 from __future__ import annotations
@@ -15,11 +16,12 @@ from zoneinfo import ZoneInfo
 from .odbc import execute_restricted_rollup
 
 
-RESTRICTED_CONTRACT_VERSION = "1.0"
-CURRENT_RESTRICTED_METHOD_VERSION = "operations-kpi-restricted-v1"
+RESTRICTED_CONTRACT_VERSION = "2.0"
+CURRENT_RESTRICTED_METHOD_VERSION = "operations-kpi-restricted-v2"
 RESTRICTED_CLASSIFICATION = "restricted-operational"
 RESTRICTED_HISTORY_START = date(2026, 9, 8)
-MAX_RESTRICTED_ROWS = 5000
+MAX_RESTRICTED_ROWS = 20000
+_NAME_KEYS = frozenset({"painter", "worker", "painter_name", "worker_name"})
 RESTRICTED_RESULT_INDEXES = frozenset({16, 17, 18, 19, 20})
 
 
@@ -138,7 +140,7 @@ def build_restricted_snapshot(
         painter_daily.append(
             {
                 "date": row_date,
-                "painter": _text(row.get("painter_name"), maximum=200),
+                "painter_id": _text(row.get("painter_id"), maximum=32, fallback="Unassigned"),
                 "booth": _integer(row.get("booth_number")),
                 "carts": _integer(row.get("carts_painted")),
                 "pieces": _integer(row.get("parts_painted")),
@@ -179,7 +181,7 @@ def build_restricted_snapshot(
                 "part_number": _optional_text(row.get("part_number"), maximum=255),
                 "sequence": _optional_text(row.get("sequence"), maximum=255),
                 "color": _text(row.get("color"), maximum=255),
-                "painter": _text(row.get("painter_name"), maximum=200),
+                "painter_id": _text(row.get("painter_id"), maximum=32, fallback="Unassigned"),
                 "booth": _integer(row.get("booth_number")),
                 "repaint_loop_count": _integer(row.get("repaint_loop_count")),
                 "defect": _text(row.get("defect_description"), maximum=255, fallback="Unspecified"),
@@ -195,7 +197,7 @@ def build_restricted_snapshot(
         finesse_summary.append(
             {
                 "date": _date_text(row.get("report_date")),
-                "worker": _text(row.get("worker_name"), maximum=200),
+                "worker_id": _text(row.get("worker_id"), maximum=32, fallback="Unassigned"),
                 "outcome": outcome,
                 "parts": _integer(row.get("part_count")),
                 "average_minutes_per_part": _number(row.get("average_minutes_per_part")),
@@ -215,7 +217,7 @@ def build_restricted_snapshot(
                 "part_number": _optional_text(row.get("part_number"), maximum=255),
                 "sequence": _optional_text(row.get("sequence"), maximum=255),
                 "color": _text(row.get("color"), maximum=255),
-                "worker": _text(row.get("worker_name"), maximum=200),
+                "worker_id": _text(row.get("worker_id"), maximum=32, fallback="Unassigned"),
                 "outcome": outcome,
                 "minutes_per_part": _number(row.get("minutes_per_part")),
                 "repaint_count": _integer(row.get("repaint_count")),
@@ -229,7 +231,8 @@ def build_restricted_snapshot(
         "scope": {
             "method_version": CURRENT_RESTRICTED_METHOD_VERSION,
             "history_start": RESTRICTED_HISTORY_START.isoformat(),
-            "contains_named_people": True,
+            "contains_named_people": False,
+            "contains_employee_ids": True,
             "contains_part_level_detail": True,
             "public_wallboard_compatible": False,
         },
@@ -240,17 +243,17 @@ def build_restricted_snapshot(
             "contributions": repaint_contributions,
             "details": sorted(
                 repaint_details,
-                key=lambda item: (-item["repaint_loop_count"], item["painter"], item["part_id"]),
+                key=lambda item: (-item["repaint_loop_count"], item["painter_id"], item["part_id"]),
             ),
         },
         "finesse": {
             "summary": sorted(
                 finesse_summary,
-                key=lambda item: (-item["max_repaint_count"], -item["parts"], item["worker"]),
+                key=lambda item: (-item["max_repaint_count"], -item["parts"], item["worker_id"]),
             ),
             "details": sorted(
                 finesse_details,
-                key=lambda item: (-item["repaint_count"], item["worker"], item["part_id"]),
+                key=lambda item: (-item["repaint_count"], item["worker_id"], item["part_id"]),
             ),
         },
     }
@@ -272,7 +275,11 @@ def validate_restricted_snapshot(snapshot: Mapping[str, Any]) -> None:
         raise RestrictedContractError("The restricted scope is missing.")
     if scope.get("method_version") != CURRENT_RESTRICTED_METHOD_VERSION:
         raise RestrictedContractError("The restricted method version does not match this service.")
-    if scope.get("contains_named_people") is not True or scope.get("contains_part_level_detail") is not True:
+    if (
+        scope.get("contains_named_people") is not False
+        or scope.get("contains_employee_ids") is not True
+        or scope.get("contains_part_level_detail") is not True
+    ):
         raise RestrictedContractError("The restricted content flags are incomplete.")
     if scope.get("public_wallboard_compatible") is not False:
         raise RestrictedContractError("Restricted data must be marked incompatible with the public wallboard.")
@@ -288,6 +295,9 @@ def validate_restricted_snapshot(snapshot: Mapping[str, Any]) -> None:
             raise RestrictedContractError("Restricted detail collections must be lists.")
         if len(value) > MAX_RESTRICTED_ROWS:
             raise RestrictedContractError("A restricted detail collection exceeded the safety cap.")
+        for row in value:
+            if isinstance(row, Mapping) and _NAME_KEYS & row.keys():
+                raise RestrictedContractError("The drill-down snapshot must carry employee IDs, not names.")
 
 
 def refresh_restricted_snapshot(report_date: date) -> Dict[str, Any]:

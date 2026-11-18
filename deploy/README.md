@@ -20,6 +20,8 @@ The drill-down (painter, repaint, and Finesse detail) is a standard view in the 
 - Routes: `/drilldown/`, `/drilldown/app.js`, `/drilldown/styles.css`, `/api/drilldown/health`, `/api/drilldown/snapshot`, and `POST /api/drilldown/refresh` (same required action header and private-network source gate as `/api/refresh`)
 - State: `/var/lib/operations-kpi-rollup/snapshots/drilldown`, directory mode `0700`, files mode `0600`; never mixed into the aggregate snapshot files
 - SQL contract: the wallboard's pinned procedure hash (`KPI_SQL_PROCEDURE_HASH`) and read-only credential, explicit `@IncludeRestrictedDetail = 1`, and result sets 16–20 only
+- Identity: people appear only as QPTS employee ID numbers from `dbo.tblPaintBoothEmployees` (`painter_id`, `worker_id`), never as names; the validator rejects name fields and discards older named snapshot files at startup
+- Window and retention: twelve prior calendar months plus the current month (clipped to the 2026-09-08 history start); the newest three immutable snapshots per report date are kept
 - Authorization: none for now. When restrictions are wanted, add Active Directory group checks like the other CLC applications rather than reviving the Entra proxy
 - Controls: `KPI_DRILLDOWN_ENABLED=0` removes every drill-down route without a redeploy; `KPI_DRILLDOWN_INITIAL_DELAY_SECONDS` (default 20) staggers the first drill-down query behind the wallboard's startup refresh; the drill-down refreshes the current day every ten minutes. A drill-down startup failure disables only the drill-down; the aggregate wallboard keeps running
 

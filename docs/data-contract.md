@@ -172,7 +172,7 @@ The live SQL adapter is read-only and emits this contract. It must:
 
 ## Drill-down snapshot (separate from the aggregate contract)
 
-The painter, repaint, and Finesse drill-down is a separate snapshot validated by the reviewed detail contract (`classification` `restricted-operational`, which labels the sensitivity of the content, not the audience). It is served only under `/drilldown/` and `/api/drilldown/*`, stored under `snapshots/drilldown`, and never appears in the aggregate `/api/snapshot` response. It carries painter-day rows, repaint contributions and part-level repaint events, and Finesse worker summaries and part-level events.
+The painter, repaint, and Finesse drill-down is a separate snapshot validated by the reviewed detail contract (`classification` `restricted-operational`, which labels the sensitivity of the content, not the audience). It is served only under `/drilldown/` and `/api/drilldown/*`, stored under `snapshots/drilldown`, and never appears in the aggregate `/api/snapshot` response. It carries painter-day rows, repaint contributions and part-level repaint events, and Finesse worker summaries and part-level events. Since contract 2.0 (method `operations-kpi-restricted-v2`) people are identified by their QPTS employee ID (`painter_id`, `worker_id`, and the label of the painter repaint dimension) instead of by name, the scope flags are `contains_named_people: false` and `contains_employee_ids: true`, and the validator rejects any snapshot with name fields. Multi-day collections cover twelve prior calendar months plus the current month, clipped to the 2026-09-08 history start, so week-grouped and month-grouped charts are always complete.
 
 ## Open decisions before live automation
 

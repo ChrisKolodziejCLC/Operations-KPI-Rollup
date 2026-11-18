@@ -19,7 +19,7 @@ def synthetic_result_sets():
             "rows": [
                 {
                     "report_date": "2026-11-17",
-                    "painter_name": "Painter Alpha",
+                    "painter_id": "910001",
                     "booth_number": 1,
                     "carts_painted": 8,
                     "parts_painted": 24,
@@ -35,7 +35,7 @@ def synthetic_result_sets():
                 },
                 {
                     "report_date": "2026-11-18",
-                    "painter_name": "Painter Beta",
+                    "painter_id": "910002",
                     "booth_number": 2,
                     "carts_painted": 10,
                     "parts_painted": 30,
@@ -54,7 +54,7 @@ def synthetic_result_sets():
         {
             "index": 17,
             "rows": [
-                {"dimension": "painter", "label": "Painter Beta", "repaint_events": 2, "unique_parts": 2, "contribution_percent": 100},
+                {"dimension": "painter", "label": "910002", "repaint_events": 2, "unique_parts": 2, "contribution_percent": 100},
                 {"dimension": "color", "label": "Color Z", "repaint_events": 2, "unique_parts": 2, "contribution_percent": 100},
                 {"dimension": "booth", "label": "Booth 2", "repaint_events": 2, "unique_parts": 2, "contribution_percent": 100},
             ],
@@ -68,7 +68,7 @@ def synthetic_result_sets():
                     "part_number": "PN-002",
                     "sequence": "SEQ-002",
                     "color": "Color Z",
-                    "painter_name": "Painter Beta",
+                    "painter_id": "910002",
                     "booth_number": 2,
                     "repaint_loop_count": 1,
                     "defect_description": "Synthetic defect",
@@ -79,7 +79,7 @@ def synthetic_result_sets():
                     "part_number": "PN-001",
                     "sequence": "SEQ-001",
                     "color": "Color Z",
-                    "painter_name": "Painter Beta",
+                    "painter_id": "910002",
                     "booth_number": 2,
                     "repaint_loop_count": 3,
                     "defect_description": "Synthetic defect",
@@ -89,8 +89,8 @@ def synthetic_result_sets():
         {
             "index": 19,
             "rows": [
-                {"report_date": "2026-11-18", "worker_name": "Worker Alpha", "outcome": "approved", "part_count": 8, "average_minutes_per_part": 2.5, "max_repaint_count": 0},
-                {"report_date": "2026-11-18", "worker_name": "Worker Alpha", "outcome": "repaint", "part_count": 2, "average_minutes_per_part": 5.5, "max_repaint_count": 3},
+                {"report_date": "2026-11-18", "worker_id": "910001", "outcome": "approved", "part_count": 8, "average_minutes_per_part": 2.5, "max_repaint_count": 0},
+                {"report_date": "2026-11-18", "worker_id": "910001", "outcome": "repaint", "part_count": 2, "average_minutes_per_part": 5.5, "max_repaint_count": 3},
             ],
         },
         {
@@ -102,7 +102,7 @@ def synthetic_result_sets():
                     "part_number": "PN-001",
                     "sequence": "SEQ-001",
                     "color": "Color Z",
-                    "worker_name": "Worker Alpha",
+                    "worker_id": "910001",
                     "outcome": "repaint",
                     "minutes_per_part": 5.5,
                     "repaint_count": 3,
@@ -124,7 +124,8 @@ def test_build_restricted_snapshot_is_private_and_sorted():
     snapshot = synthetic_snapshot()
     validate_restricted_snapshot(snapshot)
     assert snapshot["classification"] == "restricted-operational"
-    assert snapshot["scope"]["contains_named_people"] is True
+    assert snapshot["scope"]["contains_named_people"] is False
+    assert snapshot["scope"]["contains_employee_ids"] is True
     assert snapshot["scope"]["contains_part_level_detail"] is True
     assert snapshot["scope"]["public_wallboard_compatible"] is False
     assert snapshot["repaint"]["details"][0]["repaint_loop_count"] == 3
