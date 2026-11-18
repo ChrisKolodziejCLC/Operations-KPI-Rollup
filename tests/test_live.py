@@ -146,6 +146,8 @@ def result_sets():
         "service_carts_loaded": "0",
     }
     loaded = {field: metric_row("DAY", report_date.isoformat(), report_date.isoformat())[field] for field in zero}
+    zero.update({"unique_colors": "0", "pieces_scheduled": "0"})
+    loaded.update({"unique_colors": "7", "pieces_scheduled": "0"})
     hourly = [
         {
             "metric_key": "loaded",
@@ -168,6 +170,8 @@ def result_sets():
             "represented_day": "1",
             "staged_carts": "11" if hour == 23 else "0",
             "staged_pieces": "40" if hour == 23 else "0",
+            "unique_colors": "5" if hour == 23 else "0",
+            "pieces_scheduled": "0",
         }
         for hour in range(24)
     ]
@@ -181,6 +185,8 @@ def result_sets():
             "represented_day": "1",
             "paint_carts": "35" if hour == 8 else "0",
             "paint_pieces_processed": "96" if hour == 8 else "0",
+            "unique_colors": "8" if hour == 8 else "0",
+            "pieces_scheduled": "0",
         }
         for hour in range(24)
     ]
@@ -194,6 +200,8 @@ def result_sets():
             "represented_day": "1",
             "quality_numerator": "3" if hour == 8 else "0",
             "quality_denominator": "90" if hour == 8 else "0",
+            "unique_colors": "0",
+            "pieces_scheduled": "0",
         }
         for hour in range(24)
     ]
@@ -207,6 +215,8 @@ def result_sets():
             "represented_day": "1",
             "quality_numerator": "3" if hour == 8 else "0",
             "quality_denominator": "7" if hour == 8 else "0",
+            "unique_colors": "0",
+            "pieces_scheduled": "0",
         }
         for hour in range(24)
     ]
@@ -247,6 +257,8 @@ def result_sets():
             "represented_day": str(int(represented)),
             "staged_carts": "11" if represented else "0",
             "staged_pieces": "40" if represented else "0",
+            "unique_colors": "5" if represented else "0",
+            "pieces_scheduled": "0",
         })
         daily_window.append({
             "metric_key": "painted",
@@ -257,6 +269,8 @@ def result_sets():
             "represented_day": str(int(represented)),
             "paint_carts": "35" if represented else "0",
             "paint_pieces_processed": "96" if represented else "0",
+            "unique_colors": "8" if represented else "0",
+            "pieces_scheduled": "100" if represented else "0",
             **({
                 "first_activity_at": f"{bucket.isoformat()} 08:00:00",
                 "last_activity_at": f"{bucket.isoformat()} 18:30:00",
@@ -276,7 +290,52 @@ def result_sets():
                 "represented_day": str(int(represented)),
                 "quality_numerator": str(numerator if represented else 0),
                 "quality_denominator": str(denominator if represented else 0),
+                "unique_colors": "0",
+                "pieces_scheduled": "0",
             })
+    aggregate_rows = []
+    for week_offset in range(12, -1, -1):
+        week_start = report_week - timedelta(weeks=week_offset)
+        full_end = week_start + timedelta(days=6)
+        observed_end = min(full_end, report_date)
+        available = week_start >= date(2026, 9, 8)
+        aggregate_rows.append({
+            "detail_key": "painted_weekly_unique_colors",
+            "metric_key": "painted",
+            "bucket_start": week_start.isoformat(),
+            "bucket_end": observed_end.isoformat(),
+            "label": None,
+            "value_count": str(20 + (12 - week_offset)) if available else None,
+            "data_available": str(int(available)),
+            "is_partial": str(int(observed_end < full_end)),
+        })
+    aggregate_rows.extend([
+        {
+            "detail_key": "loaded_color_part_counts", "metric_key": "loaded",
+            "bucket_start": None, "bucket_end": None, "label": "BLACK",
+            "value_count": "31", "data_available": "1", "is_partial": "0",
+        },
+        {
+            "detail_key": "loaded_color_part_counts", "metric_key": "loaded",
+            "bucket_start": None, "bucket_end": None, "label": "WHITE",
+            "value_count": "18", "data_available": "1", "is_partial": "0",
+        },
+        {
+            "detail_key": "loaded_cart_size_distribution", "metric_key": "loaded",
+            "bucket_start": None, "bucket_end": None, "label": "4",
+            "value_count": "9", "data_available": "1", "is_partial": "0",
+        },
+        {
+            "detail_key": "loaded_cart_size_distribution", "metric_key": "loaded",
+            "bucket_start": None, "bucket_end": None, "label": "2",
+            "value_count": "14", "data_available": "1", "is_partial": "0",
+        },
+        {
+            "detail_key": "loaded_cart_size_distribution", "metric_key": "loaded",
+            "bucket_start": None, "bucket_end": None, "label": "1",
+            "value_count": "6", "data_available": "1", "is_partial": "0",
+        },
+    ])
     return [
         {"index": 0, "rows": [{"history_start": "2026-09-08", "report_date": "2026-11-11"}]},
         {"index": 2, "rows": [metric_row("DAY", "2026-11-10", "2026-11-10"), metric_row("DAY", "2026-11-11", "2026-11-11")]},
@@ -293,6 +352,7 @@ def result_sets():
         {"index": 14, "rows": (
             hourly + staged_hourly + painted_hourly + repaint_hourly + finesse_hourly + daily_window
         )},
+        {"index": 15, "rows": aggregate_rows},
     ]
 
 
@@ -304,7 +364,7 @@ def test_connection_string_parser_handles_braces_and_quoted_values():
 
 
 def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
-    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "da67e4a283c8317cc69b750b2d6636b1f76f9b6f46ff990591e82f1ca88fdd33")
+    monkeypatch.setenv("KPI_SQL_PROCEDURE_HASH", "c61c9d839dca1e82ee45186a9d0179110cb141c6a5b3c40d1213015332ad1608")
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
 
@@ -361,9 +421,12 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert len(snapshot["chart_series"]["loaded"]["hourly"]) == 24
     assert len(snapshot["chart_series"]["loaded"]["weekly_13"]) == 13
     assert snapshot["chart_series"]["loaded"]["hourly"][8]["parts_loaded"] == 100
+    assert snapshot["chart_series"]["loaded"]["hourly"][8]["unique_colors"] == 7
     assert snapshot["chart_series"]["loaded"]["weekly_13"][-1]["represented_days"] == 3
     assert snapshot["chart_series"]["loaded"]["weekly_13"][-1]["average_parts_loaded"] == 33.3
     assert snapshot["chart_series"]["loaded"]["weekly_13"][-1]["average_carts_loaded"] == 13.3
+    assert snapshot["chart_series"]["loaded"]["weekly_13"][-1]["pieces_per_cart_days"] == 1
+    assert snapshot["chart_series"]["loaded"]["weekly_13"][-1]["average_pieces_per_cart"] == 2.5
     assert snapshot["chart_series"]["loaded"]["weekly_13"][-1]["is_partial"] is True
     assert snapshot["chart_series"]["loaded"]["weekly_13"][0]["data_available"] is False
     model = snapshot["chart_series"]["loaded"]["performance_model"]
@@ -380,6 +443,8 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     selected = snapshot["chart_series"]["loaded"]["selected_day"]
     assert selected["performance_scored"] is True
     assert selected["net_loading_minutes"] == 600.0
+    assert selected["unique_colors"] == 7
+    assert selected["pieces_per_cart"] == 2.5
     assert selected["carts_per_net_hour"] == 4.0
     assert selected["pieces_per_net_hour"] == 10.0
     assert selected["target_carts"] == 92.3
@@ -397,6 +462,8 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert len(staged["hourly"]) == 24
     assert staged["hourly"][-1]["staged_carts"] == 11
     assert staged["hourly"][-1]["staged_pieces"] == 40
+    assert staged["hourly"][-1]["unique_colors"] == 5
+    assert staged["selected_day"]["unique_colors"] == 5
     assert staged["weekly_13"][-1]["average_carts"] == 11.0
     assert staged["weekly_13"][-1]["average_pieces"] == 40.0
     assert staged["performance_model"]["target_carts"] == 3.0991
@@ -409,6 +476,9 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert sum(row["paint_pieces_processed"] for row in painted["hourly"]) == 96
     assert painted["weekly_13"][-1]["average_carts"] == 35.0
     assert painted["weekly_13"][-1]["average_pieces"] == 96.0
+    assert painted["weekly_13"][-1]["demand_total"] == 300
+    assert painted["weekly_13"][-1]["demand_days"] == 3
+    assert painted["weekly_13"][-1]["average_demand"] == 100.0
     assert painted["performance_model"]["baseline_carts_per_hour"] == 8.6315
     assert painted["performance_model"]["target_carts_per_hour"] == 8.9736
     assert painted["performance_model"]["goal_carts_per_hour"] == 10.0
@@ -416,6 +486,9 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert painted["performance_model"]["target_pieces_per_hour"] == 26.8822
     assert painted["performance_model"]["goal_pieces_per_hour"] == 30.0
     assert painted["selected_day"]["net_activity_minutes"] == 600.0
+    assert painted["selected_day"]["unique_colors"] == 8
+    assert painted["selected_day"]["pieces_scheduled"] == 100
+    assert painted["selected_day"]["pieces_per_cart"] == 2.7
     assert painted["selected_day"]["carts_per_net_hour"] == 3.5
     assert painted["selected_day"]["pieces_per_net_hour"] == 9.6
 
@@ -437,9 +510,48 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
     assert finesse["performance_model"]["goal_percent"] == 90.0
     assert finesse["performance_model"]["direction"] == "at_or_above"
 
+    details = snapshot["aggregate_details"]
+    assert details["window_start"] == "2026-08-16"
+    assert details["window_end"] == "2026-11-11"
+    assert len(details["painted_weekly_unique_colors"]) == 13
+    assert details["painted_weekly_unique_colors"][0]["value"] is None
+    assert details["painted_weekly_unique_colors"][-1]["value"] == 32
+    assert details["painted_weekly_unique_colors"][-1]["is_partial"] is True
+    assert [(row["label"], row["value"]) for row in details["loaded_color_part_counts"]] == [
+        ("BLACK", 31), ("WHITE", 18)
+    ]
+    assert [(row["label"], row["value"]) for row in details["loaded_cart_size_distribution"]] == [
+        ("4", 9), ("2", 14), ("1", 6)
+    ]
     assert snapshot["source_evidence"]["detail_result_sets_requested"] is False
-    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "DA67E4A283C8317CC69B750B2D6636B1F76F9B6F46FF990591E82F1CA88FDD33"
-    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v23-staged-painted-quality-charts"
+    assert snapshot["source_evidence"]["procedure_definition_sha256"] == "C61C9D839DCA1E82EE45186A9D0179110CB141C6A5B3C40D1213015332AD1608"
+    assert snapshot["scope"]["method_version"] == "operations-kpi-live-v24-aggregate-detail-charts"
+
+
+def test_v24_rejects_inconsistent_painted_demand_average():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["chart_series"]["painted"]["weekly_13"][-1]["average_demand"] = 99.0
+
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "painted weekly demand average does not match its total and days"
+    else:
+        raise AssertionError("an inconsistent painted demand average was accepted")
+
+
+def test_v24_rejects_unsorted_loaded_color_history():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    snapshot["aggregate_details"]["loaded_color_part_counts"].reverse()
+
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "loaded color detail rows are not sorted by count"
+    else:
+        raise AssertionError("unsorted loaded color history was accepted")
 
 
 def test_v21_loaded_goal_snapshot_remains_valid_for_saved_cache():
@@ -948,7 +1060,7 @@ def test_live_rollup_fails_closed_on_definition_drift_and_skips_detail_sets(monk
     odbc.execute_operations_rollup(date(2026, 11, 11))
 
     assert "HASHBYTES('SHA2_256'" in captured["query"]
-    assert "DA67E4A283C8317CC69B750B2D6636B1F76F9B6F46FF990591E82F1CA88FDD33" in captured["query"]
+    assert "C61C9D839DCA1E82EE45186A9D0179110CB141C6A5B3C40D1213015332AD1608" in captured["query"]
     assert 10 not in captured["wanted"]
     assert 13 not in captured["wanted"]
     assert 14 in captured["wanted"]

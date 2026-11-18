@@ -298,7 +298,7 @@ def execute_operations_rollup(report_date: date) -> List[Dict[str, object]]:
     iso_date = report_date.isoformat()
     expected_hash = os.environ.get(
         "KPI_SQL_PROCEDURE_HASH",
-        "DA67E4A283C8317CC69B750B2D6636B1F76F9B6F46FF990591E82F1CA88FDD33",
+        "C61C9D839DCA1E82EE45186A9D0179110CB141C6A5B3C40D1213015332AD1608",
     ).upper()
     if not re.fullmatch(r"[0-9A-F]{64}", expected_hash):
         raise OdbcError("The configured procedure definition hash is invalid.")
@@ -313,7 +313,7 @@ def execute_operations_rollup(report_date: date) -> List[Dict[str, object]]:
         f"@ReportDateOverride = '{iso_date}';"
     )
     include_painters = os.environ.get("KPI_INCLUDE_PAINTERS", "false").lower() in {"1", "true", "yes"}
-    wanted = {0, 2, 3, 4, 5, 9, 12, 14}
+    wanted = {0, 2, 3, 4, 5, 9, 12, 14, 15}
     if include_painters:
         wanted.add(8)
     credential_name = os.environ.get("KPI_SQL_CREDENTIAL_NAME", "operations-kpi-qpts-ro")

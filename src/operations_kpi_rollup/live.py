@@ -15,7 +15,7 @@ from .odbc import execute_operations_rollup
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
 PERIOD_TYPE_ORDER = {"WEEK": 1, "MONTH": 2, "QUARTER": 3}
-CURRENT_METHOD_VERSION = "operations-kpi-live-v23-staged-painted-quality-charts"
+CURRENT_METHOD_VERSION = "operations-kpi-live-v24-aggregate-detail-charts"
 LOADED_CHART_FIELDS = (
     "parts_loaded",
     "production_parts_loaded",
@@ -396,9 +396,33 @@ def _chart_row(row: Mapping[str, Any]) -> Dict[str, Any]:
         "staged_pieces": _integer(row.get("staged_pieces")),
         "paint_carts": _integer(row.get("paint_carts")),
         "paint_pieces_processed": _integer(row.get("paint_pieces_processed")),
+        "unique_colors": _integer(row.get("unique_colors")),
+        "pieces_scheduled": _integer(row.get("pieces_scheduled")),
         "quality_numerator": numerator,
         "quality_denominator": denominator,
         "rate_percent": round(numerator * 100.0 / denominator, 4) if denominator else None,
+    }
+
+
+def _aggregate_detail_row(row: Mapping[str, Any]) -> Dict[str, Any]:
+    detail_key = str(row.get("detail_key") or "").strip().lower()
+    if detail_key not in {
+        "painted_weekly_unique_colors",
+        "loaded_color_part_counts",
+        "loaded_cart_size_distribution",
+    }:
+        raise ValueError(f"The aggregate-detail result contains an unsupported key: {detail_key}")
+    bucket_start = row.get("bucket_start")
+    bucket_end = row.get("bucket_end")
+    data_available = bool(_integer(row.get("data_available")))
+    return {
+        "detail_key": detail_key,
+        "bucket": _date_text(bucket_start) if bucket_start is not None else None,
+        "bucket_end": _date_text(bucket_end) if bucket_end is not None else None,
+        "label": str(row.get("label") or "").strip() or None,
+        "value": _integer(row.get("value_count")) if data_available else None,
+        "data_available": data_available,
+        "is_partial": bool(_integer(row.get("is_partial"))),
     }
 
 
@@ -447,6 +471,11 @@ def _loaded_weekly_rows(
         represented_days = len(represented)
         parts_total = sum(int(row["parts_loaded"]) for row in represented)
         carts_total = sum(int(row["carts_loaded"]) for row in represented)
+        pieces_per_cart = [
+            int(row["parts_loaded"]) / int(row["carts_loaded"])
+            for row in represented
+            if int(row["carts_loaded"]) > 0
+        ]
         performance_rows = [
             row for row in represented
             if row["performance_scored"] and float(row["net_loading_minutes"]) > 0
@@ -496,6 +525,10 @@ def _loaded_weekly_rows(
             "carts_loaded_total": carts_total,
             "average_parts_loaded": round(parts_total / represented_days, 1) if represented_days else None,
             "average_carts_loaded": round(carts_total / represented_days, 1) if represented_days else None,
+            "pieces_per_cart_days": len(pieces_per_cart),
+            "average_pieces_per_cart": round(
+                sum(pieces_per_cart) / len(pieces_per_cart), 1
+            ) if pieces_per_cart else None,
             "carts_per_net_hour": round(carts_per_hour, 1) if carts_per_hour is not None else None,
             "pieces_per_net_hour": round(pieces_per_hour, 1) if pieces_per_hour is not None else None,
             "average_target_carts": round(average_target_carts, 1) if average_target_carts is not None else None,
@@ -520,6 +553,10 @@ def _loaded_selected_day_performance(
         "lunch_allowance_minutes": round(float(row.get("lunch_allowance_minutes") or 0), 3),
         "net_loading_minutes": round(net_minutes, 3),
         "performance_scored": scored,
+        "unique_colors": int(row.get("unique_colors") or 0),
+        "pieces_per_cart": round(
+            int(row.get("parts_loaded") or 0) / int(row.get("carts_loaded") or 0), 1
+        ) if int(row.get("carts_loaded") or 0) > 0 else None,
         "carts_per_net_hour": round(int(row.get("carts_loaded") or 0) / net_hours, 1) if net_hours > 0 else None,
         "pieces_per_net_hour": round(int(row.get("parts_loaded") or 0) / net_hours, 1) if net_hours > 0 else None,
         "target_carts": round(float(performance_model["target_carts_per_hour"]) * net_hours, 1) if scored else None,
@@ -535,6 +572,7 @@ def _count_weekly_rows(
     cart_field: str,
     piece_field: str,
     performance_model: Optional[Mapping[str, Any]] = None,
+    demand_field: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     report_week = _sunday_start(report_date)
     by_date = {date.fromisoformat(row["bucket"]): row for row in daily_rows}
@@ -563,6 +601,13 @@ def _count_weekly_rows(
             "average_carts": round(carts_total / represented_days, 1) if represented_days else None,
             "average_pieces": round(pieces_total / represented_days, 1) if represented_days else None,
         }
+        if demand_field is not None:
+            demand_total = sum(int(row[demand_field]) for row in represented)
+            week.update({
+                "demand_total": demand_total,
+                "demand_days": represented_days,
+                "average_demand": round(demand_total / represented_days, 1) if represented_days else None,
+            })
         if performance_model is not None:
             performance_rows = [
                 row for row in represented
@@ -651,6 +696,11 @@ def _throughput_selected_day(
         "lunch_allowance_minutes": round(float(row.get("lunch_allowance_minutes") or 0), 3),
         "net_activity_minutes": round(net_minutes, 3),
         "performance_scored": scored,
+        "unique_colors": int(row.get("unique_colors") or 0),
+        "pieces_scheduled": int(row.get("pieces_scheduled") or 0),
+        "pieces_per_cart": round(
+            int(row.get(piece_field) or 0) / int(row.get(cart_field) or 0), 1
+        ) if int(row.get(cart_field) or 0) > 0 else None,
         "carts_per_net_hour": round(int(row.get(cart_field) or 0) / net_hours, 1) if net_hours > 0 else None,
         "pieces_per_net_hour": round(int(row.get(piece_field) or 0) / net_hours, 1) if net_hours > 0 else None,
         "target_carts": round(float(performance_model["target_carts_per_hour"]) * net_hours, 1) if scored else None,
@@ -707,6 +757,35 @@ def snapshot_from_rollup(
         }
         for row in indexed.get(12, [])
     ]
+    aggregate_detail_rows = [_aggregate_detail_row(row) for row in indexed.get(15, [])]
+    aggregate_details = {
+        "window_start": (_sunday_start(report_date) - timedelta(weeks=12)).isoformat(),
+        "window_end": report_date.isoformat(),
+        "painted_weekly_unique_colors": sorted(
+            (
+                {key: value for key, value in row.items() if key != "detail_key"}
+                for row in aggregate_detail_rows
+                if row["detail_key"] == "painted_weekly_unique_colors"
+            ),
+            key=lambda row: str(row.get("bucket") or ""),
+        ),
+        "loaded_color_part_counts": sorted(
+            (
+                {key: value for key, value in row.items() if key != "detail_key"}
+                for row in aggregate_detail_rows
+                if row["detail_key"] == "loaded_color_part_counts"
+            ),
+            key=lambda row: (-int(row.get("value") or 0), str(row.get("label") or "")),
+        ),
+        "loaded_cart_size_distribution": sorted(
+            (
+                {key: value for key, value in row.items() if key != "detail_key"}
+                for row in aggregate_detail_rows
+                if row["detail_key"] == "loaded_cart_size_distribution"
+            ),
+            key=lambda row: -int(row.get("label") or 0),
+        ),
+    }
     chart_rows: Dict[str, Dict[str, List[Dict[str, Any]]]] = {
         metric: {"HOUR": [], "DAY": []} for metric in CHART_METRICS
     }
@@ -756,6 +835,7 @@ def snapshot_from_rollup(
         "paint_carts",
         "paint_pieces_processed",
         painted_performance_model,
+        "pieces_scheduled",
     )
     repaint_weekly_13 = _quality_weekly_rows(report_date, repaint_daily_window)
     finesse_weekly_13 = _quality_weekly_rows(report_date, finesse_daily_window)
@@ -835,6 +915,7 @@ def snapshot_from_rollup(
         "painters": painters,
         "shipping": shipping,
         "top_defects": top_defects,
+        "aggregate_details": aggregate_details,
         "chart_series": {
             "loaded": {
                 "hourly": loaded_hourly,
@@ -909,7 +990,7 @@ def snapshot_from_rollup(
             "procedure": "dbo.usp_QPTS_GetOperationsQualityShippingRollup",
             "procedure_definition_sha256": os.environ.get(
                 "KPI_SQL_PROCEDURE_HASH",
-                "DA67E4A283C8317CC69B750B2D6636B1F76F9B6F46FF990591E82F1CA88FDD33",
+                "C61C9D839DCA1E82EE45186A9D0179110CB141C6A5B3C40D1213015332AD1608",
             ).upper(),
             "detail_result_sets_requested": False,
         },

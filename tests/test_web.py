@@ -333,7 +333,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.32.0-staged-painted-quality-charts" in html
+            assert "0.33.0-aggregate-detail-charts-r2" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html
@@ -470,7 +470,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "renderQualityCharts(snapshot, 'repaint'" in javascript
             assert "renderQualityCharts(snapshot, 'finesse'" in javascript
             assert "12 carts and 36 pieces staged" in javascript
-            assert "10 carts and 30 pieces per net painting hour" in javascript
+            assert "13-week charts include scheduled demand" in javascript
             assert "against a 4% goal; lower is better" in javascript
             assert "against a 90% goal; higher is better" in javascript
             assert "not enabled in this first layout pilot" not in javascript
@@ -481,10 +481,14 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "class:'loaded-scale-label'" in javascript
             assert "loadedWholeNumberScaleMaximum" in javascript
             assert "formatValue:wholeNumber" in javascript
-            assert "valueLabel.append(text(wholeNumber(value)))" in javascript
+            assert "formatValue:percentagePoint" in javascript
+            assert "valueLabel.append(text(formatValue(value)))" in javascript
+            assert "Daily weighted average" in javascript
+            assert "directLabel:'Daily avg'" in javascript
+            assert "Missed interim target" in javascript
             assert "value:periodAverage === null ? 'No Data' : decimal(periodAverage)" in javascript
             assert "value:latest ? decimal(latest[options.averageField]) : 'No Data'" in javascript
-            assert javascript.count("chartType:'bar'") == 4
+            assert javascript.count("chartType:'bar'") == 5
             assert "line:!barChart" in javascript
             assert "loadedLinearTrend" in javascript
             assert "13-week daily averages" in javascript
@@ -510,7 +514,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "field:'average_goal_pieces'" not in javascript
             assert "Net-time interim target" in javascript
             assert "Net-time long-term goal" in javascript
-            assert javascript.count("value:performance.model.target_") == 4
+            assert javascript.count("value:performance.model.target_") == 8
             assert javascript.count("value:performance.model.goal_") == 4
             assert "class:'loaded-reference-line'" in javascript
             assert javascript.count("spanFullWidth:true") == 14
@@ -574,6 +578,8 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert ".loaded-summary-table" not in styles
             assert ".loaded-axis-label,.loaded-scale-label{font-variant-numeric:tabular-nums}" in styles
             assert ".loaded-value-label{" in styles
+            assert ".loaded-value-label-miss{" in styles
+            assert ".loaded-reference-label{" in styles
             assert ".chart-placeholder" in styles
     finally:
         server.shutdown()

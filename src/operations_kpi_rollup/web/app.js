@@ -28,6 +28,8 @@ const svgNode = (name, attributes = {}) => {
 const text = (value) => document.createTextNode(String(value ?? ''));
 const integer = (value) => Number(value || 0).toLocaleString();
 const wholeNumber = (value) => Math.round(Number(value || 0)).toLocaleString(undefined, {maximumFractionDigits:0});
+const percentagePoint = (value) => value === null || value === undefined || !Number.isFinite(Number(value))
+  ? 'No Data' : wholeNumber(value) + '%';
 const decimal = (value) => Number(value || 0).toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1});
 const optionalInteger = (value) => value === undefined || value === null ? 'No Data' : integer(value);
 const compactOptionalInteger = (value) => value === undefined || value === null ? '—' : integer(value);
@@ -165,7 +167,7 @@ function metricCard(label, value, detail, color) {
   return card;
 }
 
-function splitMetricCard(label, total, unique, rows, color) {
+function splitMetricCard(label, total, unique, rows, color, extraDetails = []) {
   const card = document.createElement('article');
   card.className = 'metric-card split-count-card';
   card.style.setProperty('--accent', color);
@@ -182,11 +184,16 @@ function splitMetricCard(label, total, unique, rows, color) {
     value.append(text(values.join(' / ')));
     line.append(rowLabel, value); list.append(line);
   });
-  card.append(labelNode, totalNode, list);
+  const details = document.createElement('div'); details.className = 'metric-detail-list';
+  extraDetails.forEach(item => {
+    const detail = document.createElement('small'); detail.className = 'metric-detail-row'; detail.append(text(item));
+    details.append(detail);
+  });
+  card.append(labelNode, totalNode, list, details);
   return card;
 }
 
-function stagedMetricCard(carts, pieces, rows, color) {
+function stagedMetricCard(carts, pieces, rows, color, extraDetails = []) {
   const card = document.createElement('article');
   card.className = 'metric-card split-count-card staged-count-card';
   card.style.setProperty('--accent', color);
@@ -201,7 +208,12 @@ function stagedMetricCard(carts, pieces, rows, color) {
     value.append(text(`${compactOptionalInteger(row.production)} Prd / ${compactOptionalInteger(row.bv)} BV / ${compactOptionalInteger(row.service)} Svc`));
     line.append(rowLabel, value); list.append(line);
   });
-  card.append(labelNode, totalNode, list);
+  const details = document.createElement('div'); details.className = 'metric-detail-list';
+  extraDetails.forEach(item => {
+    const detail = document.createElement('small'); detail.className = 'metric-detail-row'; detail.append(text(item));
+    details.append(detail);
+  });
+  card.append(labelNode, totalNode, list, details);
   return card;
 }
 
@@ -277,6 +289,9 @@ function renderCards(snapshot) {
   const carts = cartSplit(current);
   const paintCarts = paintCartSplit(current);
   const paintPieces = paintPieceSplit(current);
+  const loadedColors = snapshot.chart_series?.loaded?.selected_day?.unique_colors;
+  const stagedColors = snapshot.chart_series?.staged?.selected_day?.unique_colors;
+  const paintedColors = snapshot.chart_series?.painted?.selected_day?.unique_colors;
   const shippedDetail = shippedPieceDetail(snapshot);
   const hasPaintFinesse = current.paint_fty_repair_count !== undefined;
   const hasReceivingFinesse = current.finesse_repair_count !== undefined;
@@ -301,15 +316,15 @@ function renderCards(snapshot) {
   container.append(splitMetricCard('Carts / Pieces loaded', current.parts_loaded, current.unique_pieces_loaded, [
     {label:'Carts', production:carts.production, bv:carts.bv, service:carts.service},
     {label:'Pieces', production:loaded.production, bv:loaded.bv, service:loaded.service}
-  ], palette.teal));
+  ], palette.teal, loadedColors === undefined ? [] : [compactOptionalInteger(loadedColors) + ' Unique Colors']));
   container.append(stagedMetricCard(current.staged_carts, current.staged_pieces, [
     {label:'Carts', production:current.production_staged_carts, bv:current.bv_staged_carts, service:current.service_staged_carts},
     {label:'Pieces', production:current.production_staged_pieces, bv:current.bv_staged_pieces, service:current.service_staged_pieces}
-  ], palette.green));
+  ], palette.green, stagedColors === undefined ? [] : [compactOptionalInteger(stagedColors) + ' Unique Colors']));
   container.append(splitMetricCard('Carts / Pieces painted', current.paint_pieces_processed, current.unique_pieces_processed, [
     {label:'Carts', production:paintCarts.production, bv:paintCarts.bv, service:paintCarts.service},
     {label:'Pieces', production:paintPieces.production, bv:paintPieces.bv, service:paintPieces.service}
-  ], palette.blue));
+  ], palette.blue, paintedColors === undefined ? [] : [compactOptionalInteger(paintedColors) + ' Unique Colors']));
   container.append(metricCard(
     'Repaint %',
     percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)),
@@ -434,14 +449,14 @@ function hourBucketLabel(bucket) {
   return `${hour - 12}p`;
 }
 
-function loadedLinearTrend(rows, field) {
+function loadedLinearTrend(rows, field, requireRepresentedDays = true) {
   const firstWeek = rows.length ? Date.parse(rows[0].bucket + 'T00:00:00') : NaN;
   const points = rows.map((row, rowIndex) => ({
     rowIndex,
     weekIndex:(Date.parse(row.bucket + 'T00:00:00') - firstWeek) / (7 * 24 * 60 * 60 * 1000),
     value:Number(row[field])
   })).filter((point, index) => rows[index].data_available && !rows[index].is_partial
-      && Number(rows[index].represented_days || 0) > 0
+      && (!requireRepresentedDays || Number(rows[index].represented_days || 0) > 0)
       && rows[index][field] !== null && rows[index][field] !== undefined
       && Number.isFinite(point.weekIndex) && Number.isFinite(point.value));
   if (points.length < 2) return null;
@@ -485,6 +500,21 @@ function loadedWholeNumberScaleMaximum(values) {
   return tickStep * 4;
 }
 
+function availableFieldAverage(rows, field) {
+  const values = rows
+    .filter(row => row.data_available && row[field] !== null && row[field] !== undefined)
+    .map(row => Number(row[field]))
+    .filter(Number.isFinite);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function weightedQualityPercent(rows) {
+  const measured = rows.filter(row => row.data_available && Number(row.quality_denominator || 0) > 0);
+  const numerator = measured.reduce((sum, row) => sum + Number(row.quality_numerator || 0), 0);
+  const denominator = measured.reduce((sum, row) => sum + Number(row.quality_denominator || 0), 0);
+  return denominator > 0 ? numerator * 100 / denominator : null;
+}
+
 function renderLoadedLineChart(container, rows, options) {
   container.replaceChildren();
   if (!rows.length) {
@@ -492,12 +522,25 @@ function renderLoadedLineChart(container, rows, options) {
     empty.append(text('No aggregate chart data is available for this snapshot.'));
     container.append(empty); return;
   }
-  const width = 720, height = 250, left = 48, right = 14, top = 16;
+  const overlays = (options.overlays || []).map(overlay => ({
+    ...overlay,
+    values:rows.map(row => {
+      if (!row.data_available) return null;
+      const raw = overlay.value ? overlay.value(row) : row[overlay.field];
+      if (raw === null || raw === undefined || raw === '') return null;
+      const value = Number(raw);
+      return Number.isFinite(value) ? value : null;
+    })
+  }));
+  const hasSecondaryAxis = overlays.some(overlay => overlay.axis === 'secondary');
+  const width = 720, height = 250, left = 48, right = hasSecondaryAxis ? 52 : 14, top = 16;
   const bottom = options.verticalLabels ? 52 : 34;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const values = rows.map(row => row.data_available && row[options.field] !== null
     ? Number(row[options.field]) : null);
-  const trend = options.trend ? loadedLinearTrend(rows, options.field) : null;
+  const trend = options.trend
+    ? loadedLinearTrend(rows, options.field, options.trendRequiresRepresentedDays !== false)
+    : null;
   const references = (options.references || []).map(reference => {
     const constantValue = Number(reference.value);
     const hasConstantValue = reference.value !== null && reference.value !== undefined
@@ -513,15 +556,35 @@ function renderLoadedLineChart(container, rows, options) {
     };
   });
   const finiteValues = values.filter(value => value !== null && Number.isFinite(value));
+  overlays.filter(overlay => overlay.axis !== 'secondary').forEach(overlay => finiteValues.push(
+    ...overlay.values.filter(value => value !== null && Number.isFinite(value))
+  ));
   references.forEach(reference => finiteValues.push(
     ...reference.values.filter(value => value !== null && Number.isFinite(value))
   ));
   if (trend) finiteValues.push(Math.max(0, trend.startValue), Math.max(0, trend.endValue));
   const maximum = loadedWholeNumberScaleMaximum(finiteValues);
   const y = value => top + (maximum - Math.max(0, value)) * plotHeight / maximum;
+  const secondaryValues = overlays.filter(overlay => overlay.axis === 'secondary')
+    .flatMap(overlay => overlay.values)
+    .filter(value => value !== null && Number.isFinite(value));
+  const secondaryMaximum = hasSecondaryAxis ? loadedWholeNumberScaleMaximum(secondaryValues) : 1;
+  const secondaryY = value => top + (secondaryMaximum - Math.max(0, value)) * plotHeight / secondaryMaximum;
   const band = plotWidth / rows.length;
   const centerX = index => left + band * index + band / 2;
   const formatValue = options.formatValue || wholeNumber;
+  const targetAssessment = options.targetAssessment || null;
+  const missedTarget = values.map((value, index) => {
+    const row = rows[index];
+    if (!targetAssessment || value === null || !Number.isFinite(value) || row.is_partial) return false;
+    if (targetAssessment.scorePredicate && !targetAssessment.scorePredicate(row, value, index)) return false;
+    const constantTarget = Number(targetAssessment.value);
+    const hasConstantTarget = targetAssessment.value !== null && targetAssessment.value !== undefined
+      && Number.isFinite(constantTarget);
+    const target = hasConstantTarget ? constantTarget : Number(row[targetAssessment.field]);
+    if (!Number.isFinite(target)) return false;
+    return targetAssessment.lowerIsBetter ? value > target : value < target;
+  });
   const svg = svgNode('svg', {viewBox:'0 0 ' + width + ' ' + height, role:'img', 'aria-label':options.ariaLabel});
 
   for (let index = 0; index <= 4; index += 1) {
@@ -530,6 +593,15 @@ function renderLoadedLineChart(container, rows, options) {
     svg.append(svgNode('line', {x1:left, x2:width - right, y1:yy, y2:yy, stroke:palette.grid, 'stroke-width':1}));
     const label = svgNode('text', {x:left - 8, y:yy + 4, 'text-anchor':'end', fill:palette.muted, 'font-size':10, class:'loaded-scale-label'});
     label.append(text(formatValue(value))); svg.append(label);
+    if (hasSecondaryAxis) {
+      const secondaryValue = secondaryMaximum * index / 4;
+      const secondaryFormat = overlays.find(overlay => overlay.axis === 'secondary')?.axisFormat || decimal;
+      const secondaryLabel = svgNode('text', {
+        x:width - right + 8, y:yy + 4, 'text-anchor':'start',
+        fill:palette.muted, 'font-size':10, class:'loaded-scale-label loaded-scale-label-secondary'
+      });
+      secondaryLabel.append(text(secondaryFormat(secondaryValue))); svg.append(secondaryLabel);
+    }
   }
 
   const barChart = options.chartType === 'bar';
@@ -556,21 +628,24 @@ function renderLoadedLineChart(container, rows, options) {
       }
     } else {
       const suffix = options.tooltipSuffix ? options.tooltipSuffix(row) : '';
+      const miss = missedTarget[index];
       const title = svgNode('title');
-      title.append(text(options.bucketTitle(row) + ' · ' + options.label + ': ' + formatValue(value) + suffix));
+      title.append(text(options.bucketTitle(row) + ' · ' + options.label + ': ' + formatValue(value) + suffix
+        + (miss ? ' · missed interim target' : '')));
       if (barChart) {
         const bar = svgNode('rect', {
           x:centerX(index) - barWidth / 2, y:y(value), width:barWidth,
           height:Math.max(1, y(0) - y(value)), class:'loaded-bar',
-          fill:row.is_partial ? '#fff3df' : options.color,
-          stroke:row.is_partial ? palette.amber : options.color,
+          fill:row.is_partial ? '#fff3df' : (miss ? palette.red : options.color),
+          stroke:row.is_partial ? palette.amber : (miss ? palette.red : options.color),
           'stroke-width':row.is_partial ? 2 : 1, opacity:row.is_partial ? .94 : .86
         });
         bar.append(title); svg.append(bar);
       } else {
         segment.push(centerX(index) + ',' + y(value));
         const circle = svgNode('circle', {
-          cx:centerX(index), cy:y(value), r:3.2, fill:row.is_partial ? '#fff3df' : options.color,
+          cx:centerX(index), cy:y(value), r:miss ? 4.4 : 3.2,
+          fill:row.is_partial ? '#fff3df' : (miss ? palette.red : options.color),
           stroke:row.is_partial ? palette.amber : '#fff', 'stroke-width':row.is_partial ? 2 : 1,
           'stroke-dasharray':row.is_partial ? '2 1' : 'none'
         });
@@ -578,9 +653,9 @@ function renderLoadedLineChart(container, rows, options) {
       }
       const valueLabel = svgNode('text', {
         x:centerX(index), y:Math.max(top + 10, y(value) - 7),
-        'text-anchor':'middle', class:'loaded-value-label'
+        'text-anchor':'middle', class:'loaded-value-label' + (miss ? ' loaded-value-label-miss' : '')
       });
-      valueLabel.append(text(wholeNumber(value))); svg.append(valueLabel);
+      valueLabel.append(text(formatValue(value))); svg.append(valueLabel);
     }
     if (options.showTick(index, rows.length)) {
       const labelY = height - 8;
@@ -594,6 +669,39 @@ function renderLoadedLineChart(container, rows, options) {
     }
   });
   flushSegment();
+
+  overlays.forEach(overlay => {
+    const overlayY = overlay.axis === 'secondary' ? secondaryY : y;
+    const overlayFormat = overlay.formatValue || decimal;
+    let overlaySegment = [];
+    const flushOverlay = () => {
+      if (overlaySegment.length > 1) {
+        svg.append(svgNode('polyline', {
+          points:overlaySegment.join(' '), fill:'none', stroke:overlay.color,
+          'stroke-width':overlay.width || 2.4, 'stroke-dasharray':overlay.dash || 'none',
+          'stroke-linejoin':'round', 'stroke-linecap':'round', opacity:.92,
+          class:'loaded-overlay-line'
+        }));
+      }
+      overlaySegment = [];
+    };
+    overlay.values.forEach((value, index) => {
+      if (value === null || !Number.isFinite(value)) {
+        flushOverlay(); return;
+      }
+      overlaySegment.push(centerX(index) + ',' + overlayY(value));
+      const point = svgNode('circle', {
+        cx:centerX(index), cy:overlayY(value), r:2.7,
+        fill:rows[index].is_partial ? '#fff3df' : overlay.color,
+        stroke:rows[index].is_partial ? palette.amber : '#fff', 'stroke-width':1,
+        class:'loaded-overlay-point'
+      });
+      const title = svgNode('title');
+      title.append(text(options.bucketTitle(rows[index]) + ' · ' + overlay.label + ': ' + overlayFormat(value)));
+      point.append(title); svg.append(point);
+    });
+    flushOverlay();
+  });
 
   if (trend) {
     const trendLine = svgNode('line', {
@@ -622,6 +730,15 @@ function renderLoadedLineChart(container, rows, options) {
         const title = svgNode('title');
         title.append(text(reference.label + ' · horizontal 13-week average-day reference'));
         line.append(title); svg.append(line);
+        if (reference.directLabel) {
+          const labelValue = referencePoints[referencePoints.length - 1].value;
+          const label = svgNode('text', {
+            x:width - right - 2, y:Math.max(top + 11, y(labelValue) - 4),
+            'text-anchor':'end', fill:reference.color, class:'loaded-reference-label'
+          });
+          label.append(text(reference.directLabel + ' ' + formatValue(labelValue) + (reference.directLabelSuffix || '')));
+          svg.append(label);
+        }
       }
       return;
     }
@@ -656,10 +773,23 @@ function renderLoadedLineChart(container, rows, options) {
       else referenceSegment.push(centerX(index) + ',' + y(value));
     });
     flushReference();
+    if (reference.directLabel) {
+      const finalValue = [...reference.values].reverse().find(value => value !== null && Number.isFinite(value));
+      if (finalValue !== undefined) {
+        const label = svgNode('text', {
+          x:width - right - 2, y:Math.max(top + 11, y(finalValue) - 4),
+          'text-anchor':'end', fill:reference.color, class:'loaded-reference-label'
+        });
+        label.append(text(reference.directLabel + ' ' + formatValue(finalValue) + (reference.directLabelSuffix || '')));
+        svg.append(label);
+      }
+    }
   });
   const legend = [{label:options.label, color:options.color, line:!barChart}];
+  overlays.forEach(overlay => legend.push({label:overlay.label, color:overlay.color, line:true}));
   if (trend) legend.push({label:'Linear trend', color:palette.navy, line:true});
   references.forEach(reference => legend.push({label:reference.label, color:reference.color, line:true}));
+  if (missedTarget.some(Boolean)) legend.push({label:'Missed interim target', color:palette.red, line:false});
   container.append(svg, chartLegend(legend));
 }
 
@@ -738,6 +868,15 @@ function loadedWeeklySummary(rows, options) {
       detail:trend ? (trend.slope >= 0 ? '+' : '') + decimal(trend.slope) + ' per week' : 'Need two completed weeks'
     }
   ];
+  if (options.demandTotalField) {
+    const demandDays = completed.reduce((sum, row) => sum + Number(row[options.demandDaysField] || 0), 0);
+    const demandTotal = completed.reduce((sum, row) => sum + Number(row[options.demandTotalField] || 0), 0);
+    items.push({
+      label:'Period avg demand',
+      value:demandDays ? decimal(demandTotal / demandDays) : 'No Data',
+      detail:demandDays ? demandDays + ' represented production days' : 'No completed demand days'
+    });
+  }
   items.forEach(item => {
     const metric = document.createElement('div'); metric.className = 'loaded-chart-summary-item';
     const label = document.createElement('span'); label.append(text(item.label));
@@ -746,6 +885,85 @@ function loadedWeeklySummary(rows, options) {
     metric.append(label, value, detail); summary.append(metric);
   });
   return summary;
+}
+
+function uniqueColorWeeklySummary(rows) {
+  const completed = rows.filter(row => row.data_available && !row.is_partial && Number.isFinite(Number(row.value)));
+  const averageValue = completed.length
+    ? completed.reduce((sum, row) => sum + Number(row.value), 0) / completed.length
+    : null;
+  const maximum = completed.reduce((best, row) => (!best || Number(row.value) > Number(best.value)) ? row : best, null);
+  const minimum = completed.reduce((best, row) => (!best || Number(row.value) < Number(best.value)) ? row : best, null);
+  const trend = loadedLinearTrend(rows, 'value', false);
+  return chartSummaryPanel('Unique colors painted 13-week summary', [
+    {
+      label:'Full-week average', value:averageValue === null ? 'No Data' : decimal(averageValue),
+      detail:completed.length ? completed.length + ' completed weeks' : 'No completed available weeks'
+    },
+    {
+      label:'Max week', value:maximum ? integer(maximum.value) : 'No Data',
+      detail:maximum ? dateLabel(maximum.bucket) + ' through ' + dateLabel(maximum.bucket_end) : 'No completed available week'
+    },
+    {
+      label:'Min week', value:minimum ? integer(minimum.value) : 'No Data',
+      detail:minimum ? dateLabel(minimum.bucket) + ' through ' + dateLabel(minimum.bucket_end) : 'No completed available week'
+    },
+    {
+      label:'Trend',
+      value:trend ? (Math.abs(trend.slope) < .05 ? 'Flat' : (trend.slope > 0 ? 'Up' : 'Down')) : 'No Data',
+      detail:trend ? (trend.slope >= 0 ? '+' : '') + decimal(trend.slope) + ' colors/week' : 'Need two completed weeks'
+    }
+  ]);
+}
+
+function aggregateHistoryDetails(snapshot) {
+  const details = snapshot.aggregate_details || {};
+  const colors = Array.isArray(details.loaded_color_part_counts) ? details.loaded_color_part_counts : [];
+  const cartSizes = Array.isArray(details.loaded_cart_size_distribution) ? details.loaded_cart_size_distribution : [];
+  if (!colors.length && !cartSizes.length) return null;
+
+  const container = document.createElement('details');
+  container.className = 'aggregate-history-details';
+  const summary = document.createElement('summary');
+  summary.append(text('13-week aggregate history details'));
+  const note = document.createElement('p');
+  note.className = 'aggregate-history-note';
+  note.append(text('Aggregate-only history from ' + fullDateLabel(details.window_start)
+    + ' through ' + fullDateLabel(details.window_end) + ' · no part or cart identifiers.'));
+  const grid = document.createElement('div');
+  grid.className = 'aggregate-history-grid';
+
+  const appendTable = (title, description, headers, rows) => {
+    const section = document.createElement('section');
+    section.className = 'aggregate-history-table-section';
+    const heading = document.createElement('h4'); heading.append(text(title));
+    const detail = document.createElement('p'); detail.append(text(description));
+    const wrap = document.createElement('div'); wrap.className = 'table-wrap';
+    const table = document.createElement('table');
+    renderTable(table, headers, rows);
+    wrap.append(table); section.append(heading, detail, wrap); grid.append(section);
+  };
+
+  appendTable(
+    'Loaded colors',
+    'Distinct loaded parts by normalized color, highest count first.',
+    [
+      {label:'Color', value:row => row.label},
+      {label:'Part count', value:row => integer(row.value)}
+    ],
+    colors
+  );
+  appendTable(
+    'Loaded cart-size history',
+    'Cart counts by distinct pieces per cart, highest piece count first.',
+    [
+      {label:'Pieces per cart', value:row => integer(row.label)},
+      {label:'Cart count', value:row => integer(row.value)}
+    ],
+    cartSizes
+  );
+  container.append(summary, note, grid);
+  return container;
 }
 
 function loadedChartCard(title, note, rows, options) {
@@ -799,8 +1017,22 @@ function renderLoadedCharts(snapshot) {
       verticalLabels:true, showTick:() => true, performance,
       references:[
         {value:performance.model.target_carts_per_hour, label:'Interim target', color:palette.amber, dash:'6 4'},
-        {value:performance.model.goal_carts_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'}
+        {value:performance.model.goal_carts_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'},
+        {value:performance.day.carts_per_net_hour, label:'Daily average', color:palette.navy, dash:'2 3', directLabel:'Daily avg', directLabelSuffix:'/hr'}
       ],
+      overlays:[
+        {
+          label:'Unique colors', color:palette.purple, field:'unique_colors', formatValue:wholeNumber,
+          value:row => Number(row.carts_loaded || 0) > 0 ? Number(row.unique_colors || 0) : null
+        },
+        {
+          label:'Avg pieces / cart', color:palette.green, axis:'secondary', dash:'4 3',
+          value:row => Number(row.carts_loaded || 0) > 0
+            ? Number(row.parts_loaded || 0) / Number(row.carts_loaded) : null,
+          formatValue:decimal, axisFormat:decimal
+        }
+      ],
+      targetAssessment:{value:performance.model.target_carts_per_hour, scorePredicate:(row, value) => value > 0},
       hourlySummary:{label:'Carts', field:'carts_loaded'}
     }),
     loadedChartCard('Pieces loaded by hour', 'Total load events', hourly, {
@@ -810,8 +1042,10 @@ function renderLoadedCharts(snapshot) {
       verticalLabels:true, showTick:() => true, performance,
       references:[
         {value:performance.model.target_pieces_per_hour, label:'Interim target', color:palette.amber, dash:'6 4'},
-        {value:performance.model.goal_pieces_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'}
+        {value:performance.model.goal_pieces_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'},
+        {value:performance.day.pieces_per_net_hour, label:'Daily average', color:palette.navy, dash:'2 3', directLabel:'Daily avg', directLabelSuffix:'/hr'}
       ],
+      targetAssessment:{value:performance.model.target_pieces_per_hour, scorePredicate:(row, value) => value > 0},
       hourlySummary:{label:'Pieces', field:'parts_loaded'}
     })
   );
@@ -834,6 +1068,11 @@ function renderLoadedCharts(snapshot) {
         {value:weeklyReference.targetCarts, label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
         {value:weeklyReference.goalCarts, label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
       ],
+      overlays:[{
+        label:'Avg pieces / cart', color:palette.green, axis:'secondary', dash:'4 3',
+        field:'average_pieces_per_cart', formatValue:decimal, axisFormat:decimal
+      }],
+      targetAssessment:{value:weeklyReference.targetCarts, scorePredicate:row => Number(row.represented_days || 0) > 0},
       summary:{label:'Carts', averageField:'average_carts_loaded', totalField:'carts_loaded_total'}
     }),
     loadedChartCard('Pieces loaded · 13 weeks', 'Average total pieces per represented day', weekly, {
@@ -843,6 +1082,7 @@ function renderLoadedCharts(snapshot) {
         {value:weeklyReference.targetPieces, label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
         {value:weeklyReference.goalPieces, label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
       ],
+      targetAssessment:{value:weeklyReference.targetPieces, scorePredicate:row => Number(row.represented_days || 0) > 0},
       summary:{label:'Pieces', averageField:'average_parts_loaded', totalField:'parts_loaded_total'}
     })
   );
@@ -866,6 +1106,8 @@ function renderLoadedCharts(snapshot) {
     unavailable.append(text('Unavailable weeks before the September 8 history boundary are omitted, not zero.'));
     weeklySection.section.append(unavailable);
   }
+  const historyDetails = aggregateHistoryDetails(snapshot);
+  if (historyDetails) content.append(historyDetails);
 }
 
 
@@ -999,6 +1241,8 @@ function renderStagedCharts(snapshot) {
     content.append(empty); return;
   }
   const hourly = staged.hourly, weekly = staged.weekly_13, model = staged.performance_model || {};
+  const stagedCartAverage = availableFieldAverage(hourly, 'staged_carts');
+  const stagedPieceAverage = availableFieldAverage(hourly, 'staged_pieces');
   const reportDay = fullDateLabel(snapshot.report_date);
   const hourlySection = metricChartSection('Hourly queue snapshots · selected report day', 'Point-in-time Paint Prep queue at each available hour cutoff · ' + reportDay);
   const hourlyBase = {
@@ -1011,8 +1255,13 @@ function renderStagedCharts(snapshot) {
       ariaLabel:'Hourly staged-cart queue snapshots with interim target and minimum goal for ' + reportDay,
       references:[
         {value:model.target_carts, label:'Interim target', color:palette.amber, dash:'6 4'},
-        {value:model.goal_carts, label:'Minimum goal', color:palette.red, dash:'3 4'}
+        {value:model.goal_carts, label:'Minimum goal', color:palette.red, dash:'3 4'},
+        {value:stagedCartAverage, label:'Daily average', color:palette.navy, dash:'2 3', directLabel:'Daily avg'}
       ],
+      overlays:[{
+        label:'Unique colors', color:palette.purple, field:'unique_colors', formatValue:wholeNumber
+      }],
+      targetAssessment:{value:model.target_carts, scorePredicate:(row, value) => value > 0},
       summaryBuilder:rows => stagedHourlySummary(rows, {label:'Carts', field:'staged_carts', type:'carts'}, model)
     }),
     loadedChartCard('Pieces staged by hour', 'Point-in-time queue · minimum goal', hourly, {
@@ -1020,8 +1269,10 @@ function renderStagedCharts(snapshot) {
       ariaLabel:'Hourly staged-piece queue snapshots with interim target and minimum goal for ' + reportDay,
       references:[
         {value:model.target_pieces, label:'Interim target', color:palette.amber, dash:'6 4'},
-        {value:model.goal_pieces, label:'Minimum goal', color:palette.red, dash:'3 4'}
+        {value:model.goal_pieces, label:'Minimum goal', color:palette.red, dash:'3 4'},
+        {value:stagedPieceAverage, label:'Daily average', color:palette.navy, dash:'2 3', directLabel:'Daily avg'}
       ],
+      targetAssessment:{value:model.target_pieces, scorePredicate:(row, value) => value > 0},
       summaryBuilder:rows => stagedHourlySummary(rows, {label:'Pieces', field:'staged_pieces', type:'pieces'}, model)
     })
   );
@@ -1039,6 +1290,7 @@ function renderStagedCharts(snapshot) {
         {value:model.target_carts, label:'Interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
         {value:model.goal_carts, label:'Minimum goal', color:palette.red, dash:'3 4', spanFullWidth:true}
       ],
+      targetAssessment:{value:model.target_carts, scorePredicate:row => Number(row.represented_days || 0) > 0},
       summary:{label:'Carts', averageField:'average_carts', totalField:'carts_total'}
     }),
     loadedChartCard('Pieces staged · 13 weeks', 'Average close-of-day staged pieces', weekly, {
@@ -1048,6 +1300,7 @@ function renderStagedCharts(snapshot) {
         {value:model.target_pieces, label:'Interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
         {value:model.goal_pieces, label:'Minimum goal', color:palette.red, dash:'3 4', spanFullWidth:true}
       ],
+      targetAssessment:{value:model.target_pieces, scorePredicate:row => Number(row.represented_days || 0) > 0},
       summary:{label:'Pieces', averageField:'average_pieces', totalField:'pieces_total'}
     })
   );
@@ -1064,6 +1317,8 @@ function renderPaintedCharts(snapshot) {
     content.append(empty); return;
   }
   const hourly = painted.hourly, weekly = painted.weekly_13;
+  const uniqueColors = Array.isArray(snapshot.aggregate_details?.painted_weekly_unique_colors)
+    ? snapshot.aggregate_details.painted_weekly_unique_colors : [];
   const performance = {model:painted.performance_model || {}, day:painted.selected_day || {}};
   const weeklyReference = loadedWeeklyReferenceModel(weekly, performance.model, 'net_activity_minutes');
   const reportDay = fullDateLabel(snapshot.report_date);
@@ -1078,8 +1333,14 @@ function renderPaintedCharts(snapshot) {
       ariaLabel:'Hourly painted carts with interim target and long-term goal for ' + reportDay,
       references:[
         {value:performance.model.target_carts_per_hour, label:'Interim target', color:palette.amber, dash:'6 4'},
-        {value:performance.model.goal_carts_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'}
+        {value:performance.model.goal_carts_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'},
+        {value:performance.day.carts_per_net_hour, label:'Daily average', color:palette.navy, dash:'2 3', directLabel:'Daily avg', directLabelSuffix:'/hr'}
       ],
+      overlays:[{
+        label:'Unique colors', color:palette.green, field:'unique_colors', formatValue:wholeNumber,
+        value:row => Number(row.paint_carts || 0) > 0 ? Number(row.unique_colors || 0) : null
+      }],
+      targetAssessment:{value:performance.model.target_carts_per_hour, scorePredicate:(row, value) => value > 0},
       summaryBuilder:rows => throughputHourlySummary(rows, {label:'Carts', field:'paint_carts', type:'carts'}, performance)
     }),
     loadedChartCard('Pieces painted by hour', 'Total paint exits', hourly, {
@@ -1087,8 +1348,10 @@ function renderPaintedCharts(snapshot) {
       ariaLabel:'Hourly painted pieces with interim target and long-term goal for ' + reportDay,
       references:[
         {value:performance.model.target_pieces_per_hour, label:'Interim target', color:palette.amber, dash:'6 4'},
-        {value:performance.model.goal_pieces_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'}
+        {value:performance.model.goal_pieces_per_hour, label:'Long-term goal', color:palette.red, dash:'3 4'},
+        {value:performance.day.pieces_per_net_hour, label:'Daily average', color:palette.navy, dash:'2 3', directLabel:'Daily avg', directLabelSuffix:'/hr'}
       ],
+      targetAssessment:{value:performance.model.target_pieces_per_hour, scorePredicate:(row, value) => value > 0},
       summaryBuilder:rows => throughputHourlySummary(rows, {label:'Pieces', field:'paint_pieces_processed', type:'pieces'}, performance)
     })
   );
@@ -1106,6 +1369,7 @@ function renderPaintedCharts(snapshot) {
         {value:weeklyReference.targetCarts, label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
         {value:weeklyReference.goalCarts, label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
       ],
+      targetAssessment:{value:weeklyReference.targetCarts, scorePredicate:row => Number(row.represented_days || 0) > 0},
       summary:{label:'Carts', averageField:'average_carts', totalField:'carts_total'}
     }),
     loadedChartCard('Pieces painted · 13 weeks', 'Average total pieces per represented day', weekly, {
@@ -1115,7 +1379,15 @@ function renderPaintedCharts(snapshot) {
         {value:weeklyReference.targetPieces, label:'Net-time interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
         {value:weeklyReference.goalPieces, label:'Net-time long-term goal', color:palette.red, dash:'3 4', spanFullWidth:true}
       ],
-      summary:{label:'Pieces', averageField:'average_pieces', totalField:'pieces_total'}
+      overlays:[{
+        label:'Avg scheduled demand', color:palette.green, field:'average_demand',
+        formatValue:wholeNumber, dash:'4 3'
+      }],
+      targetAssessment:{value:weeklyReference.targetPieces, scorePredicate:row => Number(row.represented_days || 0) > 0},
+      summary:{
+        label:'Pieces', averageField:'average_pieces', totalField:'pieces_total',
+        demandField:'average_demand', demandTotalField:'demand_total', demandDaysField:'demand_days'
+      }
     })
   );
   content.append(hourlySection.section);
@@ -1125,6 +1397,29 @@ function renderPaintedCharts(snapshot) {
     weeklySection.section.append(comparison);
   }
   appendCommonChartNotes(content, weeklySection, weekly);
+  if (uniqueColors.length) {
+    const colorSection = metricChartSection(
+      '13-week unique colors painted',
+      'Distinct normalized paint colors per week · partial selected week excluded from trend and summary extremes',
+      true
+    );
+    colorSection.grid.append(loadedChartCard(
+      'Unique colors painted · 13 weeks',
+      'Weekly distinct-color count with linear trend',
+      uniqueColors,
+      {
+        field:'value', label:'Unique colors', color:palette.green, trend:true,
+        trendRequiresRepresentedDays:false, omitNull:true,
+        verticalLabels:true, chartType:'bar', formatValue:wholeNumber,
+        ariaLabel:'Thirteen-week unique colors painted with trend, maximum week, and minimum week',
+        bucketLabel:row => dateLabel(row.bucket),
+        bucketTitle:row => fullDateLabel(row.bucket) + ' through ' + fullDateLabel(row.bucket_end),
+        showTick:() => true,
+        summaryBuilder:rows => uniqueColorWeeklySummary(rows)
+      }
+    ));
+    appendCommonChartNotes(content, colorSection, uniqueColors);
+  }
 }
 
 function renderQualityCharts(snapshot, metric, options) {
@@ -1136,24 +1431,30 @@ function renderQualityCharts(snapshot, metric, options) {
     content.append(empty); return;
   }
   const hourly = series.hourly, weekly = series.weekly_13, model = series.performance_model || {};
+  const dailyWeightedAverage = weightedQualityPercent(hourly);
   const reportDay = fullDateLabel(snapshot.report_date);
   const hourlySection = metricChartSection('Hourly · selected report day', 'Weighted within each clock hour · ' + reportDay, true);
   hourlySection.grid.append(loadedChartCard(options.label + ' by hour', options.definition, hourly, {
-    field:'rate_percent', label:options.label, color:options.color, trend:false, formatValue:wholeNumber,
+    field:'rate_percent', label:options.label, color:options.color, trend:false, formatValue:percentagePoint,
     ariaLabel:'Hourly ' + options.label + ' with interim target and goal for ' + reportDay,
     bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
     verticalLabels:true, showTick:() => true,
     tooltipSuffix:row => ' · ' + integer(row.quality_numerator) + ' / ' + integer(row.quality_denominator),
     references:[
       {value:model.target_percent, label:'Interim target', color:palette.amber, dash:'6 4'},
-      {value:model.goal_percent, label:'Goal', color:options.lowerIsBetter ? palette.green : palette.red, dash:'3 4'}
+      {value:model.goal_percent, label:'Goal', color:options.lowerIsBetter ? palette.green : palette.red, dash:'3 4'},
+      {value:dailyWeightedAverage, label:'Daily weighted average', color:palette.navy, dash:'2 3', directLabel:'Daily avg'}
     ],
+    targetAssessment:{
+      value:model.target_percent, lowerIsBetter:options.lowerIsBetter,
+      scorePredicate:row => Number(row.quality_denominator || 0) > 0
+    },
     summaryBuilder:rows => qualityHourlySummary(rows, options, model)
   }));
   const weeklySection = metricChartSection('13-week weighted rates', 'Sunday–Saturday · numerator divided by denominator · partial selected week excluded from trend', true);
   weeklySection.grid.append(loadedChartCard(options.label + ' · 13 weeks', options.definition, weekly, {
     field:'rate_percent', label:options.label, color:options.color, trend:true, omitNull:true,
-    verticalLabels:true, chartType:'bar', formatValue:wholeNumber,
+    verticalLabels:true, chartType:'bar', formatValue:percentagePoint,
     ariaLabel:'Thirteen-week weighted ' + options.label + ' with trend, interim target, and goal',
     bucketLabel:row => dateLabel(row.bucket), bucketTitle:row => fullDateLabel(row.bucket) + ' through ' + fullDateLabel(row.bucket_end),
     tooltipSuffix:row => ' · ' + integer(row.quality_numerator) + ' / ' + integer(row.quality_denominator),
@@ -1162,6 +1463,10 @@ function renderQualityCharts(snapshot, metric, options) {
       {value:model.target_percent, label:'Interim target', color:palette.amber, dash:'6 4', spanFullWidth:true},
       {value:model.goal_percent, label:'Goal', color:options.lowerIsBetter ? palette.green : palette.red, dash:'3 4', spanFullWidth:true}
     ],
+    targetAssessment:{
+      value:model.target_percent, lowerIsBetter:options.lowerIsBetter,
+      scorePredicate:row => Number(row.quality_denominator || 0) > 0
+    },
     summaryBuilder:rows => qualityWeeklySummary(rows, options, model)
   }));
   content.append(hourlySection.section);
@@ -1172,15 +1477,15 @@ function renderMetricCharts(snapshot) {
   $('#metric-chart-title').textContent = selectedChartLabel;
   const summary = $('#metric-chart-summary');
   if (selectedChartKey === 'loaded') {
-    summary.textContent = 'Hourly totals with interim-target and long-term-goal lines, followed by 13-week daily averages with horizontal average-day references and trend.';
+    summary.textContent = 'Hourly totals include daily averages, unique colors, and pieces per cart; 13-week averages include horizontal references, trend, and collapsed aggregate history details.';
     renderLoadedCharts(snapshot); return;
   }
   if (selectedChartKey === 'carts-pieces-staged') {
-    summary.textContent = 'Hourly queue snapshots and 13-week close-of-day averages with minimum goals of 12 carts and 36 pieces staged.';
+    summary.textContent = 'Hourly queue snapshots include the daily average and unique colors; 13-week close-of-day averages use minimum goals of 12 carts and 36 pieces staged.';
     renderStagedCharts(snapshot); return;
   }
   if (selectedChartKey === 'carts-pieces-painted') {
-    summary.textContent = 'Hourly painted totals and 13-week daily averages with goals of 10 carts and 30 pieces per net painting hour.';
+    summary.textContent = 'Hourly painted totals include daily averages and unique colors; 13-week charts include scheduled demand plus unique-color history with max, min, and trend.';
     renderPaintedCharts(snapshot); return;
   }
   if (selectedChartKey === 'repaint') {
