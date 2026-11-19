@@ -2,7 +2,7 @@
 
    Creates dbo.usp_QPTS_GetOperationsProcessTimes (daily average, median, and 90th percentile
    minutes between the cart-load, booth, oven-in, oven-out, end-of-line-approval, and final-approval
-   scans, first-pass and repaint loops reported separately) and grants the existing read-only
+   scans, first-pass and repaint loops reported separately, counting only production days) and grants the existing read-only
    dashboard login EXECUTE and VIEW DEFINITION on it. No existing object is changed. The procedure
    reads QPTS and writes nothing but session temp tables. This script is hash-gated and reversible
    (see 2026-11-19-rollback-operations-process-times.sql).
@@ -11,7 +11,7 @@ SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
 DECLARE @CommitChange bit = 1;
-DECLARE @ExpectedHash varchar(64) = 'ED3BACBA40D1B31DE2A9573BF189DD8E4846560C1392C533C5608550230A2708';
+DECLARE @ExpectedHash varchar(64) = 'A78FB98D191C88437AB07DDFEC5657CC409A7BCAD2BE7A2682AEEC29977417C4';
 DECLARE @ProcedureName nvarchar(256) = N'dbo.usp_QPTS_GetOperationsProcessTimes';
 
 IF OBJECT_ID(@ProcedureName, N'P') IS NOT NULL
@@ -30,6 +30,11 @@ DECLARE @ReviewedDefinition nvarchar(max) = N'/*
     in minutes. Intervals that run backwards (scans out of order) are counted in
     excluded_negative and left out of the statistics. Repaint loops are reported separately
     from first-pass loops so repaints never change the standard averages.
+
+    Only days the plant is producing count. A production day is a calendar date with at least
+    @MinimumOvenExitsForProductionDay oven-exit scans; every whole calendar date strictly between
+    the two scans of an interval that is not a production day (weekends, holidays, shutdowns) is
+    removed from that interval. Overnight waits on production days still count.
 
     The window is 91 days ending on the report date and never reaches before the governed
     event-history start of 2026-09-08.
@@ -50,6 +55,7 @@ BEGIN
     DECLARE @EventStart date = DATEADD(day, -21, @WindowStart);
     IF @EventStart < @HistoryStart SET @EventStart = @HistoryStart;
     DECLARE @WindowEndExclusive datetime2(0) = DATEADD(day, 1, CONVERT(datetime2(0), @ReportDate));
+    DECLARE @MinimumOvenExitsForProductionDay int = 20;
 
     SELECT e.[Part ID] AS part_id
     INTO #ProcessParts
@@ -60,6 +66,35 @@ BEGIN
        AND MAX(CASE WHEN CONVERT(nvarchar(8), e.[Origin]) = N''F'' THEN 1 ELSE 0 END) = 1;
 
     CREATE UNIQUE CLUSTERED INDEX IX_ProcessParts_Part ON #ProcessParts(part_id);
+
+    SELECT CONVERT(date, oo.TimeStamp_Out) AS production_day
+    INTO #ProductionDays
+    FROM dbo.tblCarts_Paint_Oven_Out AS oo
+    WHERE oo.TimeStamp_Out >= CONVERT(datetime2(0), @EventStart)
+      AND oo.TimeStamp_Out < @WindowEndExclusive
+    GROUP BY CONVERT(date, oo.TimeStamp_Out)
+    HAVING COUNT_BIG(*) >= @MinimumOvenExitsForProductionDay;
+
+    CREATE UNIQUE CLUSTERED INDEX IX_ProductionDays_Day ON #ProductionDays(production_day);
+
+    ;WITH Spine AS (
+        SELECT @EventStart AS day_date
+        UNION ALL
+        SELECT DATEADD(day, 1, s.day_date) FROM Spine AS s WHERE s.day_date < @ReportDate
+    )
+    SELECT
+        s.day_date,
+        CASE WHEN p.production_day IS NULL THEN 0 ELSE 1 END AS is_production_day,
+        SUM(CASE WHEN p.production_day IS NULL THEN 1 ELSE 0 END) OVER (
+            ORDER BY s.day_date
+            ROWS UNBOUNDED PRECEDING
+        ) AS idle_days_through
+    INTO #DayIndex
+    FROM Spine AS s
+    LEFT JOIN #ProductionDays AS p ON p.production_day = s.day_date
+    OPTION (MAXRECURSION 1000);
+
+    CREATE UNIQUE CLUSTERED INDEX IX_DayIndex_Day ON #DayIndex(day_date);
 
     SELECT
         h.id,
@@ -128,7 +163,14 @@ BEGIN
         CASE WHEN l.is_repaint = 1 THEN N''repaint'' ELSE N''standard'' END AS population,
         x.stage_order,
         x.stage,
-        CONVERT(decimal(14, 2), DATEDIFF(second, x.started_at, x.ended_at) / 60.0) AS minutes
+        CONVERT(decimal(14, 2),
+            DATEDIFF(second, x.started_at, x.ended_at) / 60.0
+            - 1440.0 * CASE
+                WHEN CONVERT(date, x.ended_at) > CONVERT(date, x.started_at)
+                    THEN COALESCE(ei.idle_days_through, 0) - COALESCE(si.idle_days_through, 0)
+                ELSE 0
+              END
+        ) AS minutes
     INTO #ProcessIntervals
     FROM #ProcessLoops AS l
     CROSS APPLY (VALUES
@@ -139,6 +181,8 @@ BEGIN
         (5, N''eol_approved_to_final_approved'', l.eol_approved_at, l.final_approved_at),
         (6, N''total_load_to_final_approved'', l.loaded_at, l.final_approved_at)
     ) AS x(stage_order, stage, started_at, ended_at)
+    LEFT JOIN #DayIndex AS si ON si.day_date = CONVERT(date, x.started_at)
+    LEFT JOIN #DayIndex AS ei ON ei.day_date = DATEADD(day, -1, CONVERT(date, x.ended_at))
     WHERE x.started_at IS NOT NULL
       AND x.ended_at IS NOT NULL
       AND x.ended_at >= CONVERT(datetime2(3), @WindowStart)
@@ -148,7 +192,10 @@ BEGIN
         @ReportDate AS report_date,
         @WindowStart AS window_start,
         @HistoryStart AS history_start,
-        N''operations-kpi-process-time-v1'' AS method_version,
+        N''operations-kpi-process-time-v2-production-days'' AS method_version,
+        @MinimumOvenExitsForProductionDay AS production_day_minimum_oven_exits,
+        (SELECT COUNT(*) FROM #DayIndex WHERE is_production_day = 1 AND day_date >= @WindowStart) AS production_days_in_window,
+        (SELECT COUNT(*) FROM #DayIndex WHERE is_production_day = 0 AND day_date >= @WindowStart) AS skipped_days_in_window,
         (SELECT COUNT_BIG(*) FROM #ProcessEvents) AS events_scanned,
         (SELECT COUNT_BIG(*) FROM #ProcessLoops) AS loops_scanned,
         SYSDATETIME() AS generated_at;
@@ -219,6 +266,8 @@ BEGIN
     DROP TABLE #ProcessIntervals;
     DROP TABLE #ProcessLoops;
     DROP TABLE #ProcessEvents;
+    DROP TABLE #DayIndex;
+    DROP TABLE #ProductionDays;
     DROP TABLE #ProcessParts;
 END;
 ';

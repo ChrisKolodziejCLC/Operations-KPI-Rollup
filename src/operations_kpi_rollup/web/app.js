@@ -1569,11 +1569,34 @@ const PROCESS_METRICS = [
   {key: 'p90_minutes', label: '90th percentile'}
 ];
 let processMetricKey = 'average_minutes';
+// Hours by default (end-to-end times run past 14 hours); the choice is remembered in this browser.
+const PROCESS_UNIT_STORAGE_KEY = 'kpi.processTimeUnit';
+let processUnit = (() => {
+  try { return window.localStorage.getItem(PROCESS_UNIT_STORAGE_KEY) === 'minutes' ? 'minutes' : 'hours'; } catch (error) { return 'hours'; }
+})();
 
-function processMinutes(value) {
+function processMinutes(value, unit = processUnit) {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
   const minutes = Number(value);
-  return minutes >= 180 ? (minutes / 60).toFixed(1) + ' h' : Math.round(minutes) + ' min';
+  if (unit === 'hours') return (minutes / 60).toFixed(minutes >= 6000 ? 0 : 1) + ' h';
+  return Math.round(minutes).toLocaleString() + ' min';
+}
+
+function processBoth(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
+  return processMinutes(value) + ' (' + processMinutes(value, processUnit === 'hours' ? 'minutes' : 'hours') + ')';
+}
+
+function processTicks(maximumMinutes, steps) {
+  const unitSize = processUnit === 'hours' ? 60 : 1;
+  const maximumUnits = maximumMinutes / unitSize;
+  const rough = maximumUnits / Math.max(steps, 1);
+  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(rough, 0.001))));
+  const normalized = rough / magnitude;
+  const step = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 5 ? 5 : 10) * magnitude;
+  const ticks = [];
+  for (let value = 0; value <= maximumUnits * 1.0001; value += step) ticks.push(value * unitSize);
+  return ticks;
 }
 
 function processDayRows(section, population) {
@@ -1622,18 +1645,17 @@ function processTitle(node, message) {
 
 function processDetail(row) {
   if (!row) return 'no data';
-  return processMinutes(row.average_minutes) + ' average, ' + processMinutes(row.median_minutes) + ' median, ' + processMinutes(row.p90_minutes) + ' 90th percentile, ' + integer(row.intervals) + ' intervals';
+  return processBoth(row.average_minutes) + ' average, ' + processBoth(row.median_minutes) + ' median, ' + processBoth(row.p90_minutes) + ' 90th percentile, ' + integer(row.intervals) + ' intervals';
 }
 
 function processAxis(svg, maximum, left, right, width, y, steps = 5) {
-  for (let index = 0; index <= steps; index += 1) {
-    const value = maximum * index / steps;
+  processTicks(maximum, steps).forEach(value => {
     const yy = y(value);
     svg.append(svgNode('line', {x1: left, x2: width - right, y1: yy, y2: yy, stroke: palette.grid, 'stroke-width': 1}));
     const label = svgNode('text', {x: left - 8, y: yy + 4, 'text-anchor': 'end', fill: palette.muted, 'font-size': 10});
-    label.append(text(maximum >= 240 ? (value / 60).toFixed(value / 60 < 10 ? 1 : 0) + ' h' : Math.round(value) + ' min'));
+    label.append(text(processMinutes(value)));
     svg.append(label);
-  }
+  });
 }
 
 function processDateLabels(svg, rows, x, height, bottomOffset = 14) {
@@ -1790,7 +1812,7 @@ function renderProcessTimeCharts(snapshot) {
     let negative = 0, long = 0;
     section.stages.forEach(stage => { const totals = processWindowTotals(rows, stage.key); negative += totals.negative; long += totals.long; });
     const note = document.createElement('p'); note.className = 'process-note'; note.setAttribute('role', 'note');
-    note.append(text('Each interval is dated by the scan that ends it. Overnight and weekend waits are included, so days after a break run high; the hover text also shows the median and 90th percentile. The axis stops near the 92nd-percentile day so a few multi-day waits do not flatten the rest; clipped days are labelled with their true value. '
+    note.append(text('Each interval is dated by the scan that ends it. Only days the plant is producing count: a day with fewer than ' + integer(section.production_day_minimum_oven_exits) + ' oven exits (' + integer(section.skipped_days_in_window) + ' calendar days in this window: weekends, holidays, shutdowns) is removed from every interval, while overnight waits between production days still count. The hover text also shows the median and 90th percentile. The axis stops near the 92nd-percentile day so a few long waits do not flatten the rest; clipped days are labelled with their true value. '
       + integer(negative) + ' intervals ran backwards (scans out of order) and are left out; ' + integer(long) + ' intervals exceeded 12 hours and are counted. '
       + 'Total average over the window: ' + processMinutes(total.average) + ' across ' + integer(total.intervals) + ' parts.'));
     block.append(note);
@@ -1803,6 +1825,18 @@ function renderProcessTimeCharts(snapshot) {
     const button = document.createElement('button'); button.type = 'button'; button.append(text(item.label));
     button.setAttribute('aria-pressed', String(item.key === processMetricKey));
     button.addEventListener('click', () => { processMetricKey = item.key; renderProcessTimeCharts(snapshot); });
+    toggle.append(button);
+  });
+  const unitLabel = document.createElement('span'); unitLabel.className = 'process-toggle-gap'; unitLabel.append(text('Times in'));
+  toggle.append(unitLabel);
+  [{key: 'hours', label: 'Hours'}, {key: 'minutes', label: 'Minutes'}].forEach(item => {
+    const button = document.createElement('button'); button.type = 'button'; button.append(text(item.label));
+    button.setAttribute('aria-pressed', String(item.key === processUnit));
+    button.addEventListener('click', () => {
+      processUnit = item.key;
+      try { window.localStorage.setItem(PROCESS_UNIT_STORAGE_KEY, item.key); } catch (error) { /* the choice then lasts only for this page view */ }
+      renderCards(activeSnapshot || snapshot);
+    });
     toggle.append(button);
   });
   content.replaceChildren(toggle, ...blocks);
@@ -1818,12 +1852,14 @@ function processTimeCard(snapshot) {
     return rows.length ? rows[rows.length - 1] : null;
   };
   const standard = latest('standard'), repaint = latest('repaint');
+  const windowAverage = population => processWindowTotals(processDayRows(section, population), 'total_load_to_final_approved').average;
   return metricCard(
     'Process time',
     standard ? processMinutes(standard.stages.total_load_to_final_approved.average_minutes) : '—',
     [
       standard ? 'First-pass load to final · ' + dateLabel(standard.date) : 'No first-pass data yet',
-      'Repaints: ' + (repaint ? processMinutes(repaint.stages.total_load_to_final_approved.average_minutes) + ' · ' + dateLabel(repaint.date) : '—')
+      '13-week first-pass average: ' + processMinutes(windowAverage('standard')),
+      'Repaints: ' + (repaint ? processMinutes(repaint.stages.total_load_to_final_approved.average_minutes) + ' · ' + dateLabel(repaint.date) : '—') + ' (13-week ' + processMinutes(windowAverage('repaint')) + ')'
     ],
     palette.purple
   );
@@ -1863,7 +1899,7 @@ function renderMetricCharts(snapshot) {
     }); return;
   }
   if (selectedChartKey === 'process-time') {
-    summary.textContent = 'Daily average minutes between the cart-load, booth, oven-in, oven-out, EOL-approval, and final-inspection scans, with repaints reported separately and excluded from the first-pass averages.';
+    summary.textContent = 'Daily time between the cart-load, booth, oven-in, oven-out, EOL-approval, and final-inspection scans, counting only production days, with repaints reported separately and excluded from the first-pass numbers. Choose hours or minutes and average, median, or 90th percentile.';
     renderProcessTimeCharts(snapshot); return;
   }
   summary.textContent = 'This tile is selectable; its chart contract is not enabled yet.';

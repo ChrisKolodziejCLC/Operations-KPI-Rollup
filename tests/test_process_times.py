@@ -28,6 +28,7 @@ def _result_sets(extra_daily=None):
     meta = {
         "report_date": "2026-11-19", "window_start": "2026-09-09", "history_start": "2026-09-08",
         "method_version": METHOD_VERSION, "events_scanned": 1000, "loops_scanned": 400, "generated_at": "2026-11-19 16:00:00",
+        "production_day_minimum_oven_exits": 20, "production_days_in_window": 50, "skipped_days_in_window": 21,
     }
     daily = [
         {"event_date": "2026-11-18", "population": population, "stage_order": order, "stage": stage, "intervals": 10,
@@ -49,6 +50,8 @@ def test_section_is_aggregate_only_and_complete():
     assert [stage["key"] for stage in section["stages"]] == list(STAGE_KEYS)
     assert len(section["daily"]) == 12 and len(section["coverage"]) == 2
     assert section["daily"][0]["average_minutes"] == 40.5
+    assert section["production_day_minimum_oven_exits"] == 20 and section["production_days_in_window"] == 50 and section["skipped_days_in_window"] == 21
+    assert METHOD_VERSION.endswith("production-days")
     serialized = repr(section).lower()
     for forbidden in ("part_id", "cart_id", "painter", "worker", "employee", "user_name"):
         assert forbidden not in serialized
@@ -140,6 +143,9 @@ def test_wallboard_wires_the_process_time_card_and_charts():
     for name in ("function renderProcessTimeCharts(", "function processTimeCard(", "function renderProcessStack(", "function renderProcessStageTrend(", "function processAxisLimit("):
         assert name in script
     assert "selectedChartKey === 'process-time'" in script and "container.append(processTimeCard(snapshot));" in script
+    for name in ("processUnit", "processTicks(", "processBoth(", "kpi.processTimeUnit", "13-week first-pass average"):
+        assert name in script
+    assert "renderCards(activeSnapshot || snapshot)" in script
     for stage in STAGE_KEYS:
         assert stage not in script or True
     css = (SRC / "web" / "styles.css").read_text(encoding="utf-8")

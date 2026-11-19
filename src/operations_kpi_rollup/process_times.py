@@ -12,7 +12,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
-METHOD_VERSION = "operations-kpi-process-time-v1"
+METHOD_VERSION = "operations-kpi-process-time-v2-production-days"
 POPULATIONS = ("standard", "repaint")
 
 STAGES = (
@@ -33,7 +33,8 @@ _DAILY_FIELDS = {
 _COVERAGE_FIELDS = {"date", "population", "loops_loaded", "loops_finished", "loops_with_every_scan"}
 _SECTION_FIELDS = {
     "available", "method_version", "report_date", "window_start", "history_start", "events_scanned",
-    "loops_scanned", "stages", "daily", "coverage", "standards", "reason",
+    "loops_scanned", "production_day_minimum_oven_exits", "production_days_in_window", "skipped_days_in_window",
+    "stages", "daily", "coverage", "standards", "reason",
 }
 
 
@@ -127,6 +128,9 @@ def process_time_section(
         "history_start": _text_date(meta.get("history_start")),
         "events_scanned": _integer(meta.get("events_scanned")),
         "loops_scanned": _integer(meta.get("loops_scanned")),
+        "production_day_minimum_oven_exits": _integer(meta.get("production_day_minimum_oven_exits")),
+        "production_days_in_window": _integer(meta.get("production_days_in_window")),
+        "skipped_days_in_window": _integer(meta.get("skipped_days_in_window")),
         "stages": [dict(stage) for stage in STAGES],
         "daily": daily,
         "coverage": coverage,
@@ -148,6 +152,9 @@ def validate_process_time_section(section: Mapping[str, Any]) -> None:
         return
     date.fromisoformat(str(section["report_date"]))
     date.fromisoformat(str(section["window_start"]))
+    for field in ("production_day_minimum_oven_exits", "production_days_in_window", "skipped_days_in_window"):
+        if not isinstance(section.get(field), int) or section[field] < 0:
+            raise ValueError("process_time " + field + " must be a non-negative integer")
     for row in section["daily"]:
         if set(row) != _DAILY_FIELDS:
             raise ValueError("process_time daily rows have unexpected fields")
