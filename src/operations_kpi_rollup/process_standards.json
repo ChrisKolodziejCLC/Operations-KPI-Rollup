@@ -1,19 +1,25 @@
 {
-  "_note": "Standard minutes per stage. null means no standard has been supplied yet; the wallboard then draws no standard line for that stage.",
+  "_note": "Standard minutes per measured step for one part passing through on its own (Chris Kolodziej, 2026-11-19 18:29 EST). A null means no standard. The loading step itself (5 min) is not scan-measured.",
   "standard": {
-    "load_to_booth": null,
-    "booth_to_oven_in": null,
-    "oven_in_to_oven_out": null,
-    "oven_out_to_eol_approved": null,
-    "eol_approved_to_final_approved": null,
-    "total_load_to_final_approved": null
+    "load_to_booth": 3,
+    "booth_to_oven_in": 15,
+    "oven_in_to_oven_out": 30,
+    "oven_out_to_eol_approved": 5,
+    "eol_approved_to_final_approved": 10,
+    "total_load_to_final_approved": 63
   },
   "repaint": {
-    "load_to_booth": null,
-    "booth_to_oven_in": null,
-    "oven_in_to_oven_out": null,
-    "oven_out_to_eol_approved": null,
-    "eol_approved_to_final_approved": null,
-    "total_load_to_final_approved": null
+    "load_to_booth": 3,
+    "booth_to_oven_in": 15,
+    "oven_in_to_oven_out": 30,
+    "oven_out_to_eol_approved": 5,
+    "eol_approved_to_final_approved": 10,
+    "total_load_to_final_approved": 63
+  },
+  "other_standards_not_charted": {
+    "load_cart": 5,
+    "eol_reject_to_repair_disposition": 10,
+    "repaired_to_eol_inspection": 3,
+    "wfp_to_repaint_load": 5
   }
 }

@@ -29,6 +29,7 @@ def _result_sets(extra_daily=None):
         "report_date": "2026-11-19", "window_start": "2026-09-09", "history_start": "2026-09-08",
         "method_version": METHOD_VERSION, "events_scanned": 1000, "loops_scanned": 400, "generated_at": "2026-11-19 16:00:00",
         "production_day_minimum_oven_exits": 20, "production_days_in_window": 50, "skipped_days_in_window": 21,
+        "step_intervals_off_production_days": 2,
     }
     daily = [
         {"event_date": "2026-11-18", "population": population, "stage_order": order, "stage": stage, "intervals": 10,
@@ -51,7 +52,7 @@ def test_section_is_aggregate_only_and_complete():
     assert len(section["daily"]) == 12 and len(section["coverage"]) == 2
     assert section["daily"][0]["average_minutes"] == 40.5
     assert section["production_day_minimum_oven_exits"] == 20 and section["production_days_in_window"] == 50 and section["skipped_days_in_window"] == 21
-    assert METHOD_VERSION.endswith("production-days")
+    assert METHOD_VERSION.endswith("production-days-exact") and section["step_intervals_off_production_days"] == 2
     serialized = repr(section).lower()
     for forbidden in ("part_id", "cart_id", "painter", "worker", "employee", "user_name"):
         assert forbidden not in serialized
@@ -80,8 +81,13 @@ def test_section_rejects_wrong_date_method_and_bad_rows():
         validate_process_time_section(section)
 
 
-def test_standards_default_to_none_and_load_positive_numbers(tmp_path):
-    assert all(value is None for population in load_standards().values() for value in population.values())
+def test_packaged_standards_are_positive_and_the_total_is_the_sum_of_the_steps(tmp_path):
+    packaged = load_standards()
+    for population in ("standard", "repaint"):
+        steps = packaged[population]
+        assert all(isinstance(value, float) and value > 0 for value in steps.values())
+        assert steps["total_load_to_final_approved"] == sum(value for key, value in steps.items() if key != "total_load_to_final_approved")
+    assert load_standards(tmp_path / "missing.json")["standard"]["load_to_booth"] is None
     path = tmp_path / "standards.json"
     path.write_text('{"standard": {"load_to_booth": 90, "booth_to_oven_in": -5, "oven_in_to_oven_out": "x"}}', encoding="utf-8")
     loaded = load_standards(path)
@@ -124,7 +130,7 @@ def test_snapshot_gets_process_time_only_when_the_procedure_is_pinned(monkeypatc
 
 
 def test_process_time_migrations_are_hash_gated_and_reversible():
-    definition = (ROOT / "sql/procedures/usp_QPTS_GetOperationsProcessTimes.sql").read_text(encoding="utf-8")
+    definition = (ROOT / "sql/procedures/previous/usp_QPTS_GetOperationsProcessTimes.v39.sql").read_text(encoding="utf-8")
     digest = hashlib.sha256(definition.encode("utf-16-le")).hexdigest().upper()
     forward = (ROOT / "sql/2026-11-19-add-operations-process-times.sql").read_text(encoding="utf-8")
     rollback = (ROOT / "sql/2026-11-19-rollback-operations-process-times.sql").read_text(encoding="utf-8")
@@ -146,7 +152,31 @@ def test_wallboard_wires_the_process_time_card_and_charts():
     for name in ("processUnit", "processTicks(", "processBoth(", "kpi.processTimeUnit", "13-week first-pass average"):
         assert name in script
     assert "renderCards(activeSnapshot || snapshot)" in script
+    assert "section.step_intervals_off_production_days" in script and "Only time on days the plant is producing counts" in script
     for stage in STAGE_KEYS:
         assert stage not in script or True
     css = (SRC / "web" / "styles.css").read_text(encoding="utf-8")
     assert ".process-block" in css and ".process-toggle" in css
+
+
+def test_production_day_fix_migrations_swap_the_definition_and_round_trip_the_hash():
+    previous = (ROOT / "sql/procedures/previous/usp_QPTS_GetOperationsProcessTimes.v39.sql").read_text(encoding="utf-8")
+    current = (ROOT / "sql/procedures/usp_QPTS_GetOperationsProcessTimes.sql").read_text(encoding="utf-8")
+    previous_hash = hashlib.sha256(previous.encode("utf-16-le")).hexdigest().upper()
+    current_hash = hashlib.sha256(current.encode("utf-16-le")).hexdigest().upper()
+    assert previous_hash == "A78FB98D191C88437AB07DDFEC5657CC409A7BCAD2BE7A2682AEEC29977417C4" and current_hash != previous_hash
+    forward = (ROOT / "sql/2026-11-19-process-times-production-day-fix.sql").read_text(encoding="utf-8")
+    rollback = (ROOT / "sql/2026-11-19-rollback-process-times-production-day-fix.sql").read_text(encoding="utf-8")
+    assert f"@ExpectedCurrentHash varchar(64) = '{previous_hash}'" in forward and f"@ExpectedNewHash varchar(64) = '{current_hash}'" in forward
+    assert f"@ExpectedCurrentHash varchar(64) = '{current_hash}'" in rollback and f"@ExpectedNewHash varchar(64) = '{previous_hash}'" in rollback
+    for text in (forward, rollback):
+        assert "DROP PROCEDURE dbo.usp_QPTS_GetOperationsProcessTimes;" in text and text.count("GRANT ") == 2
+        assert "refusing to replace it" in text and "@GrantRows <> 2" in text
+    pattern = r"DECLARE @ReviewedDefinition nvarchar\(max\) = N'(.*?)';\nDECLARE @ReviewedHash"
+    assert re.search(pattern, forward, re.S).group(1).replace("''", "'") == current
+    assert re.search(pattern, rollback, re.S).group(1).replace("''", "'") == previous
+    assert "operations-kpi-process-time-v3-production-days-exact" in current and "step_intervals_off_production_days" in current
+    unit = (ROOT / "deploy/operations-kpi-rollup.service").read_text(encoding="utf-8")
+    assert f"KPI_PROCESS_TIME_PROCEDURE_HASH={current_hash}" in unit
+    for banned in ("INSERT ", "UPDATE ", "DELETE ", "MERGE ", "TRUNCATE ", "ALTER TABLE"):
+        assert banned not in current.upper()

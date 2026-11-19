@@ -12,7 +12,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
-METHOD_VERSION = "operations-kpi-process-time-v2-production-days"
+METHOD_VERSION = "operations-kpi-process-time-v3-production-days-exact"
 POPULATIONS = ("standard", "repaint")
 
 STAGES = (
@@ -34,7 +34,7 @@ _COVERAGE_FIELDS = {"date", "population", "loops_loaded", "loops_finished", "loo
 _SECTION_FIELDS = {
     "available", "method_version", "report_date", "window_start", "history_start", "events_scanned",
     "loops_scanned", "production_day_minimum_oven_exits", "production_days_in_window", "skipped_days_in_window",
-    "stages", "daily", "coverage", "standards", "reason",
+    "step_intervals_off_production_days", "stages", "daily", "coverage", "standards", "reason",
 }
 
 
@@ -131,6 +131,7 @@ def process_time_section(
         "production_day_minimum_oven_exits": _integer(meta.get("production_day_minimum_oven_exits")),
         "production_days_in_window": _integer(meta.get("production_days_in_window")),
         "skipped_days_in_window": _integer(meta.get("skipped_days_in_window")),
+        "step_intervals_off_production_days": _integer(meta.get("step_intervals_off_production_days")),
         "stages": [dict(stage) for stage in STAGES],
         "daily": daily,
         "coverage": coverage,
@@ -152,7 +153,7 @@ def validate_process_time_section(section: Mapping[str, Any]) -> None:
         return
     date.fromisoformat(str(section["report_date"]))
     date.fromisoformat(str(section["window_start"]))
-    for field in ("production_day_minimum_oven_exits", "production_days_in_window", "skipped_days_in_window"):
+    for field in ("production_day_minimum_oven_exits", "production_days_in_window", "skipped_days_in_window", "step_intervals_off_production_days"):
         if not isinstance(section.get(field), int) or section[field] < 0:
             raise ValueError("process_time " + field + " must be a non-negative integer")
     for row in section["daily"]:

@@ -10,10 +10,13 @@
     excluded_negative and left out of the statistics. Repaint loops are reported separately
     from first-pass loops so repaints never change the standard averages.
 
-    Only days the plant is producing count. A production day is a calendar date with at least
-    @MinimumOvenExitsForProductionDay oven-exit scans; every whole calendar date strictly between
-    the two scans of an interval that is not a production day (weekends, holidays, shutdowns) is
-    removed from that interval. Overnight waits on production days still count.
+    Only time on days the plant is producing counts. A production day is a calendar date with at
+    least @MinimumOvenExitsForProductionDay oven-exit scans. Time that falls on any other date
+    (weekends, holidays, shutdowns, and stray dates with only a few scans) is removed from each
+    interval exactly: every whole date between the two scans, and the rest of the starting date
+    when the starting scan itself was on a non-production date. An interval that ends on a
+    non-production date is left out of the daily statistics and counted in the metadata field
+    step_intervals_off_production_days. Overnight waits between production days still count.
 
     The window is 91 days ending on the report date and never reaches before the governed
     event-history start of 2026-09-08.
@@ -149,7 +152,13 @@ BEGIN
                     THEN COALESCE(ei.idle_days_through, 0) - COALESCE(si.idle_days_through, 0)
                 ELSE 0
               END
-        ) AS minutes
+            - CASE
+                WHEN CONVERT(date, x.ended_at) > CONVERT(date, x.started_at) AND COALESCE(si.is_production_day, 1) = 0
+                    THEN DATEDIFF(second, x.started_at, CONVERT(datetime2(3), DATEADD(day, 1, CONVERT(date, x.started_at)))) / 60.0
+                ELSE 0
+              END
+        ) AS minutes,
+        CASE WHEN COALESCE(ed.is_production_day, 0) = 1 THEN 0 ELSE 1 END AS ended_off_production_day
     INTO #ProcessIntervals
     FROM #ProcessLoops AS l
     CROSS APPLY (VALUES
@@ -162,6 +171,7 @@ BEGIN
     ) AS x(stage_order, stage, started_at, ended_at)
     LEFT JOIN #DayIndex AS si ON si.day_date = CONVERT(date, x.started_at)
     LEFT JOIN #DayIndex AS ei ON ei.day_date = DATEADD(day, -1, CONVERT(date, x.ended_at))
+    LEFT JOIN #DayIndex AS ed ON ed.day_date = CONVERT(date, x.ended_at)
     WHERE x.started_at IS NOT NULL
       AND x.ended_at IS NOT NULL
       AND x.ended_at >= CONVERT(datetime2(3), @WindowStart)
@@ -171,10 +181,11 @@ BEGIN
         @ReportDate AS report_date,
         @WindowStart AS window_start,
         @HistoryStart AS history_start,
-        N'operations-kpi-process-time-v2-production-days' AS method_version,
+        N'operations-kpi-process-time-v3-production-days-exact' AS method_version,
         @MinimumOvenExitsForProductionDay AS production_day_minimum_oven_exits,
         (SELECT COUNT(*) FROM #DayIndex WHERE is_production_day = 1 AND day_date >= @WindowStart) AS production_days_in_window,
         (SELECT COUNT(*) FROM #DayIndex WHERE is_production_day = 0 AND day_date >= @WindowStart) AS skipped_days_in_window,
+        (SELECT COUNT_BIG(*) FROM #ProcessIntervals WHERE stage_order < 6 AND ended_off_production_day = 1) AS step_intervals_off_production_days,
         (SELECT COUNT_BIG(*) FROM #ProcessEvents) AS events_scanned,
         (SELECT COUNT_BIG(*) FROM #ProcessLoops) AS loops_scanned,
         SYSDATETIME() AS generated_at;
@@ -194,6 +205,7 @@ BEGIN
                 PARTITION BY i.event_date, i.population, i.stage_order
             ) AS p90_minutes
         FROM #ProcessIntervals AS i
+        WHERE i.ended_off_production_day = 0
     )
     SELECT
         r.event_date,
@@ -225,6 +237,7 @@ BEGIN
             0 AS loops_with_every_scan
         FROM #ProcessLoops AS l
         WHERE l.loaded_at >= CONVERT(datetime2(3), @WindowStart) AND l.loaded_at < @WindowEndExclusive
+          AND EXISTS (SELECT 1 FROM #DayIndex AS di WHERE di.day_date = CONVERT(date, l.loaded_at) AND di.is_production_day = 1)
         UNION ALL
         SELECT
             CONVERT(date, l.final_approved_at),
@@ -238,6 +251,7 @@ BEGIN
             END
         FROM #ProcessLoops AS l
         WHERE l.final_approved_at >= CONVERT(datetime2(3), @WindowStart) AND l.final_approved_at < @WindowEndExclusive
+          AND EXISTS (SELECT 1 FROM #DayIndex AS di WHERE di.day_date = CONVERT(date, l.final_approved_at) AND di.is_production_day = 1)
     ) AS d
     GROUP BY d.event_date, d.population
     ORDER BY d.population, d.event_date;
