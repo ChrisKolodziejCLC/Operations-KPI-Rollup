@@ -81,7 +81,9 @@ def test_signed_cookie_round_trip_tamper_and_expiry():
     codec = SignedCookieCodec(b"s" * 48)
     value = codec.encode({"sub": CHRIS_OID, "exp": int(time.time()) + 60})
     assert codec.decode(value)["sub"] == CHRIS_OID
-    replacement = "A" if value[-1] != "A" else "B"
+    # the last base64url character of an unpadded 32-byte signature has only 4 significant bits, so the replacement
+    # must differ in those bits for every possible original character
+    replacement = "Q" if value[-1] in "ABCD" else "A"
     with pytest.raises(ProxyAuthError):
         codec.decode(value[:-1] + replacement)
     with pytest.raises(ProxyAuthError):
