@@ -110,3 +110,10 @@ KPI_PORT=5193 \
 ```
 
 Then open `http://127.0.0.1:5193/`. Live GP-AI01 deployment details and rollback boundaries are in [deploy/README.md](deploy/README.md).
+
+## Daily Parts Shipped - GP email job
+
+The early-morning shipped-count email (pieces shipped, trailers loaded and trailers departed by day) is a separate job on
+GP-AI01 and is not part of the wallboard service. Its source, units and tests are in
+[jobs/daily-parts-shipped-email](jobs/daily-parts-shipped-email/README.md). Its trailer numbers use the same definitions as
+the wallboard's Loaded and Departed trailers.

@@ -1,7 +1,8 @@
 # Daily Parts Shipped - GP email job
 
-Sends the early-morning "Daily Parts Shipped - GP" email (pieces shipped by day for the week) from GP-AI01.
-It replaced a Windows service on Chris Kolodziej's PC (CLC07-OPS002), which needed that PC to be on and connected.
+Sends the early-morning "Daily Parts Shipped - GP" email (pieces shipped, trailers loaded and trailers departed, by day
+for the week) from GP-AI01. It replaced a Windows service on Chris Kolodziej's PC (CLC07-OPS002), which needed that PC to be
+on and connected.
 
 This job is separate from the wallboard service. It has its own release root, system user, systemd units and
 encrypted credential, and the wallboard keeps its "outbound mail: none" boundary. This is the only code in this
@@ -10,15 +11,36 @@ repository that sends mail.
 ## What it does
 
 1. Runs the BRAK procedure `dbo.usp_QPTS_SendWeeklyShippedCountEmail` (database `Production Tracking (Version 1.0.0)SQL`).
-   The procedure does not send anything. It returns the daily shipped counts for the week (Monday through yesterday),
-   a summary row and the finished email. Its shipped count is the number of `dbo.[EDI Data Table]` rows with a ship date.
-2. Checks what came back: summary row present, report date equals yesterday in Central time (so a wrong clock on BRAK
-   cannot send the wrong day), numbers are numbers, and the daily rows add up to the week total.
-3. Sends the email through the FlowForge Alerts mailer on GP-AI01 (`127.0.0.1:5096`, sender
+   The procedure does not send anything. It returns the daily shipped counts for the week (Monday through yesterday)
+   and a summary row. Its shipped count is the number of `dbo.[EDI Data Table]` rows with a ship date. The job uses the
+   procedure's numbers and subject only. The procedure's own email text is not used any more.
+2. Reads the trailers loaded and the trailers departed for the same days with two read-only SELECTs (see Trailer counts).
+3. Checks what came back: summary row present, report date equals yesterday in Central time (so a wrong clock on BRAK
+   cannot send the wrong day), numbers are numbers, the daily rows add up to the week total, and the trailer counts fall
+   on the days shown.
+4. Builds the email itself (HTML and plain text, same look as the old procedure email plus the two trailer columns and a
+   short footnote). Wording and layout are changed in `build_html` and `build_text`, not in BRAK.
+5. Sends the email through the FlowForge Alerts mailer on GP-AI01 (`127.0.0.1:5096`, sender
    `flowforge-alerts@creativeliquidcoatings.com`). The mailer only accepts the configured subject prefixes and
    recipients in `creativeliquidcoatings.com`.
-4. If the run cannot finish, it retries after 60 and 120 seconds. After that it sends a short failure notice to the
-   configured failure recipient only, never to the list.
+6. If the run cannot finish, it retries after 60 and 120 seconds. After that it sends a short failure notice to the
+   configured failure recipient only, never to the list. The email is all or nothing: it does not go out with a column
+   missing.
+
+## Trailer counts
+
+The two trailer columns use the same definitions as the Operations KPI wallboard's trailer tile (its Loaded and Departed):
+
+- **Trailers Loaded**: the number of distinct (ship date, ship trailer) pairs on `dbo.[EDI Data Table]` for that day, with
+  service parts (`Model = Service`) and blank trailers left out. Wallboard field `trailers_prepared`; wallboard SQL in
+  `sql/2026-11-12-add-bv-quality-trailer-breakdowns.sql` (`TrailerContents`, `TrailerDaily`).
+- **Trailers Departed**: the number of `dbo.DriverLog` rows whose `TimeOut` falls on that day and whose `TrailerID` is not
+  blank. Wallboard field `trailers_shipped`; wallboard SQL in `sql/2026-11-13-driverlog-trailer-inspection-details.sql`
+  (`TrailerDepartureDaily`). The two counts are separate; they are not matched trailer by trailer.
+
+Both are in `TRAILER_SQL` in `shipped_count_email.py`: two SELECTs, `READ UNCOMMITTED`, no writes (a test checks that).
+The email week starts on Monday and the wallboard week starts on Sunday, so the job asks for its own list of days.
+If the wallboard's definitions change, change `TRAILER_SQL` and its tests to match.
 
 ## Run modes
 

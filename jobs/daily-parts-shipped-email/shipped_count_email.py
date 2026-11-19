@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Daily Parts Shipped - GP.
 
-Runs the BRAK procedure dbo.usp_QPTS_SendWeeklyShippedCountEmail (it returns the finished email: subject, recipients and HTML),
-checks the result, and sends it through the FlowForge Alerts mailer. Replaces the Windows service on CLC07-OPS002.
+Runs the BRAK procedure dbo.usp_QPTS_SendWeeklyShippedCountEmail for the shipped count by day, reads the trailers loaded and the
+trailers departed for the same days (the same definitions the Operations KPI wallboard uses), builds the email, checks the numbers,
+and sends it through the FlowForge Alerts mailer. Replaces the Windows service on CLC07-OPS002.
 
   python3 shipped_count_email.py             live run (the seven recipients)
   python3 shipped_count_email.py --dry-run   run the procedure and check it, send nothing
@@ -19,6 +20,7 @@ import re
 import sys
 import time
 import traceback
+from html import escape
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
@@ -26,6 +28,44 @@ EMAIL_PATTERN = re.compile(r"^[A-Za-z0-9._%+'-]+@creativeliquidcoatings\.com$")
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RETRY_WAITS = (60, 120)
 SUBJECT_PREFIX_FOR_NOTICES = "[FlowForge] "
+SUMMARY_LEAD = "FlowForge shipped count summary for"
+COLUMN_LABELS = ("Ship Date", "Day", "Shipped Count", "Trailers Loaded", "Trailers Departed")
+HEAD_STYLE = "padding:6px 10px;border:1px solid #cccccc;background:#f2f2f2;"
+CELL_STYLE = "padding:6px 10px;border:1px solid #cccccc;"
+FOOTNOTE = ("Trailers Loaded is the number of different trailers the shipped parts went out on that day (service parts are not counted). "
+            "Trailers Departed is the number of trailers the drivers logged as leaving that day.")
+
+# The trailer counts use the same definitions as the Operations KPI wallboard (its "Loaded" and "Departed" trailers):
+#   loaded   = distinct (ship date, ship trailer) pairs on dbo.[EDI Data Table], service parts left out, blank trailer left out;
+#   departed = dbo.DriverLog rows by the date of TimeOut with a non-blank TrailerID.
+# Read only: two SELECTs, no temp tables, READ UNCOMMITTED like the shipped-count procedure.
+TRAILER_SQL = """SET NOCOUNT ON;
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+DECLARE @FirstDay datetime2(0) = CONVERT(datetime2(0), '@FIRST@', 23);
+DECLARE @DayAfterLast datetime2(0) = DATEADD(day, 1, CONVERT(datetime2(0), '@LAST@', 23));
+SELECT CONVERT(varchar(10), t.report_date, 23) AS report_date, COUNT_BIG(*) AS trailers_loaded
+FROM (
+    SELECT CONVERT(date, e.ship_date) AS report_date, LTRIM(RTRIM(e.ship_trailer)) AS trailer_id
+    FROM dbo.[EDI Data Table] AS e
+    WHERE e.ship_date >= @FirstDay
+      AND e.ship_date < @DayAfterLast
+      AND ISNULL(e.Model, N'') <> N'Service'
+      AND NULLIF(LTRIM(RTRIM(e.ship_trailer)), N'') IS NOT NULL
+    GROUP BY CONVERT(date, e.ship_date), LTRIM(RTRIM(e.ship_trailer))
+) AS t
+GROUP BY t.report_date
+ORDER BY t.report_date;
+SELECT CONVERT(varchar(10), x.report_date, 23) AS report_date, COUNT_BIG(*) AS trailers_departed
+FROM (
+    SELECT CONVERT(date, d.TimeOut) AS report_date
+    FROM dbo.DriverLog AS d
+    WHERE d.TimeOut >= @FirstDay
+      AND d.TimeOut < @DayAfterLast
+      AND NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(255), d.TrailerID))), N'') IS NOT NULL
+) AS x
+GROUP BY x.report_date
+ORDER BY x.report_date;
+"""
 
 
 class PermanentError(Exception):
@@ -90,14 +130,8 @@ def expected_report_date(now_utc, timezone_name):
     return (local.date() - datetime.timedelta(days=1)).isoformat()
 
 
-def run_procedure(cfg, password, recipients, report_date_override):
+def run_sql(cfg, password, sql, label):
     import odbc_min  # imported here so the checks below can be tested without the ODBC library
-    sql = "SET NOCOUNT ON; EXEC dbo.usp_QPTS_SendWeeklyShippedCountEmail @Recipients = N'" + ";".join(recipients) + "'"
-    if report_date_override:
-        if not DATE_PATTERN.match(report_date_override):
-            raise PermanentError("the report date must look like 2026-11-18")
-        sql += ", @ReportDateOverride = '" + report_date_override + "'"
-    sql += ";"
     try:
         connection = odbc_min.Connection(odbc_min.build_connection_string(cfg["server"], cfg["database"], cfg["user"], password))
     except odbc_min.OdbcError as error:
@@ -105,9 +139,58 @@ def run_procedure(cfg, password, recipients, report_date_override):
     try:
         return connection.run_batch(sql)
     except odbc_min.OdbcError as error:
-        raise TransientError("SQL procedure: " + str(error)[:300])
+        raise TransientError("SQL %s: %s" % (label, str(error)[:300]))
     finally:
         connection.close()
+
+
+def run_procedure(cfg, password, recipients, report_date_override):
+    sql = "SET NOCOUNT ON; EXEC dbo.usp_QPTS_SendWeeklyShippedCountEmail @Recipients = N'" + ";".join(recipients) + "'"
+    if report_date_override:
+        if not DATE_PATTERN.match(report_date_override):
+            raise PermanentError("the report date must look like 2026-11-18")
+        sql += ", @ReportDateOverride = '" + report_date_override + "'"
+    sql += ";"
+    return run_sql(cfg, password, sql, "procedure")
+
+
+def trailer_sql(first_day, last_day):
+    for value in (first_day, last_day):
+        if not DATE_PATTERN.match(value or ""):
+            raise PermanentError("the trailer dates must look like 2026-11-18")
+    return TRAILER_SQL.replace("@FIRST@", first_day).replace("@LAST@", last_day)
+
+
+def run_trailer_counts(cfg, password, days):
+    return run_sql(cfg, password, trailer_sql(days[0], days[-1]), "trailer counts")
+
+
+def parse_trailer_counts(result_sets, days):
+    """Turn the two trailer result sets into {date: (loaded, departed)}; a day with no rows counts as zero."""
+    if len(result_sets) != 2:
+        raise PermanentError("the trailer query returned %d result sets, expected 2" % len(result_sets))
+    counts = {day: [0, 0] for day in days}
+    for index, rows in enumerate(result_sets):
+        for row in rows:
+            if len(row) < 2 or row[0] not in counts:
+                raise PermanentError("the trailer query returned a day outside the week: " + str(row[:1])[:40])
+            try:
+                value = int(row[1])
+            except (TypeError, ValueError):
+                raise PermanentError("the trailer counts are not numbers")
+            if value < 0:
+                raise PermanentError("a trailer count is negative")
+            counts[row[0]][index] = value
+    return {day: (pair[0], pair[1]) for day, pair in counts.items()}
+
+
+def merge_rows(daily, trailers):
+    """One dict per day: date, day name, shipped count, trailers loaded, trailers departed."""
+    rows = []
+    for item in daily:
+        loaded, departed = trailers[item[0]]
+        rows.append({"date": item[0], "day": item[1], "shipped": int(item[2]), "loaded": loaded, "departed": departed})
+    return rows
 
 
 def check_result(result_sets, expected_date, skip_date_guard):
@@ -120,12 +203,10 @@ def check_result(result_sets, expected_date, skip_date_guard):
         raise PermanentError("the summary row has " + str(len(row)) + " columns, expected 7")
     summary = {
         "report_date": row[0], "previous_day_count": row[1], "week_total_count": row[2], "subject": row[3],
-        "recipients": row[4], "source_object": row[5], "html": row[6],
+        "recipients": row[4], "source_object": row[5],
     }
     if not summary["subject"] or "\n" in summary["subject"] or "\r" in summary["subject"]:
         raise PermanentError("the procedure returned no usable subject")
-    if not summary["html"] or "<table" not in summary["html"]:
-        raise PermanentError("the procedure returned no email table")
     if not DATE_PATTERN.match(summary["report_date"] or ""):
         raise PermanentError("the procedure returned no report date")
     try:
@@ -145,17 +226,52 @@ def us_date(iso):
     return datetime.datetime.strptime(iso, "%Y-%m-%d").strftime("%m/%d/%Y")
 
 
-def build_text(summary, daily):
+def week_totals(summary, rows):
+    return int(summary["week_total_count"]), sum(row["loaded"] for row in rows), sum(row["departed"] for row in rows)
+
+
+def build_html(summary, rows):
+    """The email body: the same look as the old procedure email, with the two trailer columns added."""
+    shipped_total, loaded_total, departed_total = week_totals(summary, rows)
+
+    def cell(value, extra=""):
+        return '<td style="%s%s">%s</td>' % (CELL_STYLE, extra, escape(str(value)))
+
+    right = "text-align:right;"
     lines = [
-        "QPTS shipped count summary for %s." % us_date(summary["report_date"]), "",
+        '<html><body style="font-family:Segoe UI, Arial, sans-serif;font-size:12pt;">',
+        "<p>%s <strong>%s</strong>.</p>" % (SUMMARY_LEAD, escape(us_date(summary["report_date"]))),
+        "<p><strong>Previous day shipped count:</strong> %s</p>" % escape(str(summary["previous_day_count"])),
+        "<p><strong>Week-to-date grand total:</strong> %s</p>" % escape(str(summary["week_total_count"])),
+        "<p><strong>Week-to-date breakdown</strong> (week containing the reported ship date):</p>",
+        '<table style="border-collapse:collapse;">',
+        "<tr>" + "".join('<th style="%s">%s</th>' % (HEAD_STYLE, escape(label)) for label in COLUMN_LABELS) + "</tr>",
+    ]
+    for row in rows:
+        lines.append("<tr>" + cell(us_date(row["date"])) + cell(row["day"]) + cell(row["shipped"], right)
+                     + cell(row["loaded"], right) + cell(row["departed"], right) + "</tr>")
+    total_style = "background:#f2f2f2;font-weight:bold;"
+    lines.append('<tr><td colspan="2" style="%s%s">Week Total</td>' % (CELL_STYLE, total_style)
+                 + "".join(cell(value, total_style + right) for value in (shipped_total, loaded_total, departed_total)) + "</tr>")
+    lines.append("</table>")
+    lines.append('<p style="font-size:9pt;color:#666666;">%s</p>' % escape(FOOTNOTE))
+    lines.append("</body></html>")
+    return "".join(lines)
+
+
+def build_text(summary, rows):
+    shipped_total, loaded_total, departed_total = week_totals(summary, rows)
+    lines = [
+        "%s %s." % (SUMMARY_LEAD, us_date(summary["report_date"])), "",
         "Previous day shipped count: %s" % summary["previous_day_count"], "",
         "Week-to-date grand total: %s" % summary["week_total_count"], "",
         "Week-to-date breakdown (week containing the reported ship date):", "",
-        "Ship Date\tDay\tShipped Count",
+        "\t".join(COLUMN_LABELS),
     ]
-    for item in daily:
-        lines.append("%s\t%s\t%s" % (us_date(item[0]), item[1], item[2]))
-    lines.append("Week Total\t\t%s" % summary["week_total_count"])
+    for row in rows:
+        lines.append("\t".join((us_date(row["date"]), row["day"], str(row["shipped"]), str(row["loaded"]), str(row["departed"]))))
+    lines.append("Week Total\t\t%d\t%d\t%d" % (shipped_total, loaded_total, departed_total))
+    lines += ["", FOOTNOTE]
     return "\r\n".join(lines) + "\r\n"
 
 
@@ -214,18 +330,22 @@ def attempt(cfg, password, mode, report_date_override, now_utc):
     summary, daily = check_result(result_sets, expected, bool(report_date_override))
     log("procedure_ok", report_date=summary["report_date"], previous_day=summary["previous_day_count"], week_total=summary["week_total_count"],
         days=len(daily), subject=summary["subject"], mode=mode)
+    days = [item[0] for item in daily]
+    rows = merge_rows(daily, parse_trailer_counts(run_trailer_counts(cfg, password, days), days))
+    log("trailers_ok", table=[[row["date"], row["shipped"], row["loaded"], row["departed"]] for row in rows], columns="date,shipped,loaded,departed")
+    html_body = build_html(summary, rows)
+    text_body = build_text(summary, rows)
     if mode == "dry-run":
-        log("dry_run_done", would_send_to=len(cfg["recipients"]), body_chars=len(summary["html"]))
+        log("dry_run_done", would_send_to=len(cfg["recipients"]), body_chars=len(html_body))
         return summary
     subject = summary["subject"]
-    html_body = summary["html"]
     if mode == "test":
         subject = subject + " (TEST from the server)"
         html_body = with_test_banner(html_body)
         key = "daily-parts-shipped-gp:test:%d" % int(time.time())
     else:
         key = "daily-parts-shipped-gp:" + summary["report_date"]
-    response = post_to_mailer(cfg, mail_payload(cfg, key, subject, html_body, build_text(summary, daily), recipients, "daily-parts-shipped"))
+    response = post_to_mailer(cfg, mail_payload(cfg, key, subject, html_body, text_body, recipients, "daily-parts-shipped"))
     log("mail_accepted", mode=mode, recipients=len(recipients), provider_message_id=response.get("ProviderMessageId"), idempotency_key=key)
     return summary
 
