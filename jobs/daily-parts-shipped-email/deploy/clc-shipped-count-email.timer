@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Parts Shipped - GP email at 03:00 Central (04:00 Eastern), the time the old Windows service ran
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 America/Chicago
+AccuracySec=1s
+Persistent=true
+Unit=clc-shipped-count-email.service
+
+[Install]
+WantedBy=timers.target

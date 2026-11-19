@@ -1,0 +1,27 @@
+[Unit]
+Description=Daily Parts Shipped - GP email (BRAK procedure, sent through FlowForge Alerts)
+After=network-online.target clc-flowforge-alerts-mailer.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=clc-shipped-count
+Group=clc-shipped-count
+EnvironmentFile=/etc/clc/shipped-count-email/job.env
+LoadCredentialEncrypted=shipped-count-sql:/etc/credstore.encrypted/clc-shipped-count-email/shipped-count-sql
+WorkingDirectory=/opt/clc/shipped-count-email/current
+ExecStart=/usr/bin/python3 /opt/clc/shipped-count-email/current/shipped_count_email.py
+TimeoutStartSec=20min
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+UMask=0077

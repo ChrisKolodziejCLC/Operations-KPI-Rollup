@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""Daily Parts Shipped - GP.
+
+Runs the BRAK procedure dbo.usp_QPTS_SendWeeklyShippedCountEmail (it returns the finished email: subject, recipients and HTML),
+checks the result, and sends it through the FlowForge Alerts mailer. Replaces the Windows service on CLC07-OPS002.
+
+  python3 shipped_count_email.py             live run (the seven recipients)
+  python3 shipped_count_email.py --dry-run   run the procedure and check it, send nothing
+  python3 shipped_count_email.py --test      one test email to the test recipient only
+
+Configuration comes from the environment (job.env); the SQL password comes from the systemd credential shipped-count-sql.
+"""
+import argparse
+import datetime
+import http.client
+import json
+import os
+import re
+import sys
+import time
+import traceback
+from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
+
+EMAIL_PATTERN = re.compile(r"^[A-Za-z0-9._%+'-]+@creativeliquidcoatings\.com$")
+DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+RETRY_WAITS = (60, 120)
+SUBJECT_PREFIX_FOR_NOTICES = "[FlowForge] "
+
+
+class PermanentError(Exception):
+    """A problem a retry cannot fix (bad data, refused request)."""
+
+
+class TransientError(Exception):
+    """A problem that may pass (SQL or mailer not reachable)."""
+
+
+def log(event, **fields):
+    record = {"ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "event": event}
+    record.update(fields)
+    print(json.dumps(record, default=str), flush=True)
+
+
+def split_addresses(value):
+    return [item.strip() for item in re.split(r"[;,]", value or "") if item.strip()]
+
+
+def validate_addresses(addresses, label):
+    if not addresses:
+        raise PermanentError(label + " is empty")
+    for address in addresses:
+        if not EMAIL_PATTERN.match(address):
+            raise PermanentError(label + " has an address outside creativeliquidcoatings.com or with unsafe characters: " + address[:80])
+    return addresses
+
+
+def load_config(environ):
+    def need(name):
+        value = environ.get(name, "").strip()
+        if not value:
+            raise PermanentError("missing setting " + name)
+        return value
+    return {
+        "server": need("SHIPPED_COUNT_SERVER_HOST") + "\\" + need("SHIPPED_COUNT_SERVER_INSTANCE"),
+        "database": need("SHIPPED_COUNT_DATABASE"),
+        "user": need("SHIPPED_COUNT_USER"),
+        "recipients": validate_addresses(split_addresses(need("SHIPPED_COUNT_RECIPIENTS")), "SHIPPED_COUNT_RECIPIENTS"),
+        "test_recipient": validate_addresses(split_addresses(need("SHIPPED_COUNT_TEST_RECIPIENT")), "SHIPPED_COUNT_TEST_RECIPIENT")[:1],
+        "failure_recipient": validate_addresses(split_addresses(need("SHIPPED_COUNT_FAILURE_RECIPIENT")), "SHIPPED_COUNT_FAILURE_RECIPIENT")[:1],
+        "mailer_url": need("SHIPPED_COUNT_MAILER_URL"),
+        "sender": need("SHIPPED_COUNT_SENDER"),
+        "timezone": environ.get("SHIPPED_COUNT_TIMEZONE", "America/Chicago").strip() or "America/Chicago",
+    }
+
+
+def read_password(environ):
+    directory = environ.get("CREDENTIALS_DIRECTORY", "")
+    if not directory:
+        raise PermanentError("no systemd credentials directory (run the job through its service)")
+    with open(os.path.join(directory, "shipped-count-sql"), "rb") as handle:
+        password = handle.read().decode("utf-8").strip()
+    if not password:
+        raise PermanentError("the SQL credential is empty")
+    return password
+
+
+def expected_report_date(now_utc, timezone_name):
+    local = now_utc.astimezone(ZoneInfo(timezone_name))
+    return (local.date() - datetime.timedelta(days=1)).isoformat()
+
+
+def run_procedure(cfg, password, recipients, report_date_override):
+    import odbc_min  # imported here so the checks below can be tested without the ODBC library
+    sql = "SET NOCOUNT ON; EXEC dbo.usp_QPTS_SendWeeklyShippedCountEmail @Recipients = N'" + ";".join(recipients) + "'"
+    if report_date_override:
+        if not DATE_PATTERN.match(report_date_override):
+            raise PermanentError("the report date must look like 2026-11-18")
+        sql += ", @ReportDateOverride = '" + report_date_override + "'"
+    sql += ";"
+    try:
+        connection = odbc_min.Connection(odbc_min.build_connection_string(cfg["server"], cfg["database"], cfg["user"], password))
+    except odbc_min.OdbcError as error:
+        raise TransientError("SQL connect: " + str(error)[:300])
+    try:
+        return connection.run_batch(sql)
+    except odbc_min.OdbcError as error:
+        raise TransientError("SQL procedure: " + str(error)[:300])
+    finally:
+        connection.close()
+
+
+def check_result(result_sets, expected_date, skip_date_guard):
+    """Validate what the procedure returned and return (summary dict, daily rows)."""
+    if len(result_sets) < 2 or not result_sets[-1]:
+        raise PermanentError("the procedure did not return the expected summary row")
+    daily = result_sets[0]
+    row = result_sets[-1][0]
+    if len(row) < 7:
+        raise PermanentError("the summary row has " + str(len(row)) + " columns, expected 7")
+    summary = {
+        "report_date": row[0], "previous_day_count": row[1], "week_total_count": row[2], "subject": row[3],
+        "recipients": row[4], "source_object": row[5], "html": row[6],
+    }
+    if not summary["subject"] or "\n" in summary["subject"] or "\r" in summary["subject"]:
+        raise PermanentError("the procedure returned no usable subject")
+    if not summary["html"] or "<table" not in summary["html"]:
+        raise PermanentError("the procedure returned no email table")
+    if not DATE_PATTERN.match(summary["report_date"] or ""):
+        raise PermanentError("the procedure returned no report date")
+    try:
+        daily_total = sum(int(item[2]) for item in daily)
+        total = int(summary["week_total_count"])
+        int(summary["previous_day_count"])
+    except (ValueError, IndexError):
+        raise PermanentError("the shipped counts are not numbers")
+    if daily_total != total:
+        raise PermanentError("the daily rows add up to %d but the week total says %d" % (daily_total, total))
+    if not skip_date_guard and summary["report_date"] != expected_date:
+        raise PermanentError("the report date is %s but yesterday is %s (check the clocks on BRAK and GP-AI01)" % (summary["report_date"], expected_date))
+    return summary, daily
+
+
+def us_date(iso):
+    return datetime.datetime.strptime(iso, "%Y-%m-%d").strftime("%m/%d/%Y")
+
+
+def build_text(summary, daily):
+    lines = [
+        "QPTS shipped count summary for %s." % us_date(summary["report_date"]), "",
+        "Previous day shipped count: %s" % summary["previous_day_count"], "",
+        "Week-to-date grand total: %s" % summary["week_total_count"], "",
+        "Week-to-date breakdown (week containing the reported ship date):", "",
+        "Ship Date\tDay\tShipped Count",
+    ]
+    for item in daily:
+        lines.append("%s\t%s\t%s" % (us_date(item[0]), item[1], item[2]))
+    lines.append("Week Total\t\t%s" % summary["week_total_count"])
+    return "\r\n".join(lines) + "\r\n"
+
+
+def post_to_mailer(cfg, payload):
+    parts = urlparse(cfg["mailer_url"])
+    body = json.dumps(payload).encode("utf-8")
+    try:
+        connection = http.client.HTTPConnection(parts.hostname, parts.port or 80, timeout=60)
+        try:
+            connection.request("POST", "/api/send", body=body, headers={"Content-Type": "application/json", "Content-Length": str(len(body))})
+            response = connection.getresponse()
+            raw = response.read().decode("utf-8", "replace")
+        finally:
+            connection.close()
+    except (OSError, http.client.HTTPException) as error:
+        raise TransientError("mailer not reachable: " + str(error)[:200])
+    if response.status == 200:
+        try:
+            return json.loads(raw or "{}")
+        except ValueError:
+            raise TransientError("mailer answered 200 with an unreadable body")
+    if 500 <= response.status < 600:
+        raise TransientError("mailer HTTP %d: %s" % (response.status, raw[:200]))
+    raise PermanentError("mailer refused the message, HTTP %d: %s" % (response.status, raw[:300]))
+
+
+def mail_payload(cfg, key, subject, html_body, text_body, recipients, template):
+    return {"IdempotencyKey": key[:200], "SenderIdentity": cfg["sender"], "To": list(recipients), "Cc": [], "Bcc": [],
+            "Subject": subject, "PlainTextBody": text_body, "HtmlBody": html_body, "TemplateName": template,
+            "TemplateVersion": "1", "CorrelationId": key[:200]}
+
+
+def with_test_banner(html_body):
+    banner = ('<p style="padding:8px 10px;background:#fff4ce;border:1px solid #e0c36a;"><strong>Test from the server.</strong> '
+              'This is a one-time test of the server job that replaces the Windows service. The usual recipients did not receive it.</p>')
+    index = html_body.find(">", html_body.lower().find("<body"))
+    return html_body[:index + 1] + banner + html_body[index + 1:] if index > 0 else banner + html_body
+
+
+def failure_notice(cfg, message, expected_date):
+    html_body = ("<p>The Daily Parts Shipped - GP email for <strong>%s</strong> did not go out.</p><p>%s</p>"
+                 "<p>The server job will try again at its next scheduled time. To send it now, run: sudo systemctl start clc-shipped-count-email.service</p>"
+                 "<p>This notice went only to you.</p>") % (us_date(expected_date), message.replace("&", "&amp;").replace("<", "&lt;"))
+    text_body = ("The Daily Parts Shipped - GP email for %s did not go out.\r\n\r\n%s\r\n\r\nThe server job will try again at its next scheduled time. "
+                 "To send it now, run: sudo systemctl start clc-shipped-count-email.service\r\n\r\nThis notice went only to you.\r\n") % (us_date(expected_date), message)
+    key = "daily-parts-shipped-gp:failure:%s:%d" % (expected_date, int(time.time() // 3600))
+    return mail_payload(cfg, key, SUBJECT_PREFIX_FOR_NOTICES + "Daily Parts Shipped - GP did not go out", html_body, text_body,
+                        cfg["failure_recipient"], "daily-parts-shipped-failure")
+
+
+def attempt(cfg, password, mode, report_date_override, now_utc):
+    expected = expected_report_date(now_utc, cfg["timezone"])
+    live = mode == "live"
+    recipients = cfg["recipients"] if live else cfg["test_recipient"]
+    result_sets = run_procedure(cfg, password, cfg["recipients"], report_date_override)
+    summary, daily = check_result(result_sets, expected, bool(report_date_override))
+    log("procedure_ok", report_date=summary["report_date"], previous_day=summary["previous_day_count"], week_total=summary["week_total_count"],
+        days=len(daily), subject=summary["subject"], mode=mode)
+    if mode == "dry-run":
+        log("dry_run_done", would_send_to=len(cfg["recipients"]), body_chars=len(summary["html"]))
+        return summary
+    subject = summary["subject"]
+    html_body = summary["html"]
+    if mode == "test":
+        subject = subject + " (TEST from the server)"
+        html_body = with_test_banner(html_body)
+        key = "daily-parts-shipped-gp:test:%d" % int(time.time())
+    else:
+        key = "daily-parts-shipped-gp:" + summary["report_date"]
+    response = post_to_mailer(cfg, mail_payload(cfg, key, subject, html_body, build_text(summary, daily), recipients, "daily-parts-shipped"))
+    log("mail_accepted", mode=mode, recipients=len(recipients), provider_message_id=response.get("ProviderMessageId"), idempotency_key=key)
+    return summary
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--dry-run", action="store_true")
+    group.add_argument("--test", action="store_true")
+    parser.add_argument("--report-date", default="", help="YYYY-MM-DD; for tests only")
+    args = parser.parse_args(argv)
+    mode = "dry-run" if args.dry_run else "test" if args.test else "live"
+    log("start", mode=mode, report_date_override=args.report_date or None)
+    try:
+        cfg = load_config(os.environ)
+        password = read_password(os.environ)
+    except PermanentError as error:
+        log("failed", reason=str(error))
+        return 1
+    last_error = "unknown"
+    for number in range(len(RETRY_WAITS) + 1):
+        try:
+            attempt(cfg, password, mode, args.report_date, datetime.datetime.now(datetime.timezone.utc))
+            log("done", mode=mode, attempts=number + 1)
+            return 0
+        except TransientError as error:
+            last_error = str(error)
+            log("attempt_failed", attempt=number + 1, transient=True, reason=last_error)
+            if number < len(RETRY_WAITS):
+                time.sleep(RETRY_WAITS[number])
+        except PermanentError as error:
+            last_error = str(error)
+            log("attempt_failed", attempt=number + 1, transient=False, reason=last_error)
+            break
+        except Exception as error:  # a defect: record it, do not hide it
+            last_error = "unexpected error: " + type(error).__name__ + ": " + str(error)[:200]
+            log("attempt_failed", attempt=number + 1, transient=False, reason=last_error, trace=traceback.format_exc()[-600:])
+            break
+    if mode == "live":
+        try:
+            post_to_mailer(cfg, failure_notice(cfg, last_error, expected_report_date(datetime.datetime.now(datetime.timezone.utc), cfg["timezone"])))
+            log("failure_notice_sent", to=cfg["failure_recipient"][0])
+        except (TransientError, PermanentError) as error:
+            log("failure_notice_not_sent", reason=str(error))
+    log("failed", mode=mode, reason=last_error)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
