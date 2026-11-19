@@ -180,3 +180,34 @@ def test_production_day_fix_migrations_swap_the_definition_and_round_trip_the_ha
     assert f"KPI_PROCESS_TIME_PROCEDURE_HASH={current_hash}" in unit
     for banned in ("INSERT ", "UPDATE ", "DELETE ", "MERGE ", "TRUNCATE ", "ALTER TABLE"):
         assert banned not in current.upper()
+
+
+def _fixture_snapshot():
+    import json as _json
+    return _json.loads((ROOT / "examples" / "2026-09-16.json").read_text(encoding="utf-8"))
+
+
+def test_saved_snapshots_from_an_earlier_process_time_method_still_load(tmp_path):
+    import json as _json
+    from operations_kpi_rollup.process_times import normalize_stored_process_time
+    from operations_kpi_rollup.web import AppState
+
+    snapshot = _fixture_snapshot()
+    snapshot["process_time"] = {"available": True, "method_version": "operations-kpi-process-time-v2-production-days", "report_date": snapshot["report_date"]}
+    folder = tmp_path / "snapshots"
+    folder.mkdir()
+    (folder / "latest.json").write_text(_json.dumps(snapshot), encoding="utf-8")
+    (folder / (snapshot["report_date"] + "__20261119T000000Z.json")).write_text(_json.dumps(snapshot), encoding="utf-8")
+    state = AppState("live", folder)
+    latest = state.snapshot()
+    assert latest["process_time"]["available"] is False
+    assert "earlier process-time method" in latest["process_time"]["reason"]
+    other = AppState("live", folder)
+    other._snapshots_by_date.clear()
+    saved = other.snapshot(date.fromisoformat(snapshot["report_date"]))
+    assert saved["process_time"]["available"] is False
+    untouched = _fixture_snapshot()
+    assert "process_time" not in normalize_stored_process_time(untouched)
+    current = _fixture_snapshot()
+    current["process_time"] = unavailable_section("current method placeholder")
+    assert normalize_stored_process_time(current)["process_time"]["reason"] == "current method placeholder"

@@ -78,6 +78,21 @@ def unavailable_section(reason: str) -> Dict[str, Any]:
     return {"available": False, "method_version": METHOD_VERSION, "reason": reason}
 
 
+def normalize_stored_process_time(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep saved snapshots written under an earlier process-time method loadable.
+
+    A section whose method differs from the current one is replaced by an unavailable notice instead of
+    failing validation, so a release that changes the method can still start on top of the snapshots that
+    are already on disk. The next refresh of that day recomputes the section.
+    """
+    section = snapshot.get("process_time")
+    if isinstance(section, dict) and section.get("method_version") != METHOD_VERSION:
+        snapshot["process_time"] = unavailable_section(
+            "This saved day was produced with an earlier process-time method; refresh it to recompute."
+        )
+    return snapshot
+
+
 def process_time_section(
     result_sets: Iterable[Mapping[str, Any]],
     report_date: date,

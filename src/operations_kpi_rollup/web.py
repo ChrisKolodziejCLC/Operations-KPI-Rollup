@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
 from .context import validate_snapshot
+from .process_times import normalize_stored_process_time
 from .drilldown import DrilldownState, create_drilldown_state, disabled_event
 from .live import CURRENT_METHOD_VERSION, refresh_live_snapshot
 from .restricted_web import RestrictedRefreshError
@@ -88,6 +89,7 @@ class AppState:
         source = latest if latest.is_file() else self.fixture_path
         if source and source.is_file():
             snapshot = json.loads(source.read_text(encoding="utf-8"))
+            normalize_stored_process_time(snapshot)
             validate_snapshot(snapshot)
             self._remember(snapshot)
 
@@ -104,6 +106,7 @@ class AppState:
         source = candidates[0]
         try:
             snapshot = json.loads(source.read_text(encoding="utf-8"))
+            normalize_stored_process_time(snapshot)
             validate_snapshot(snapshot)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise RefreshError(f"The saved {date_text} snapshot is invalid.") from exc
@@ -239,6 +242,7 @@ class AppState:
                 if not self.fixture_path or not self.fixture_path.is_file():
                     raise RefreshError("The fixture snapshot is unavailable.")
                 snapshot = json.loads(self.fixture_path.read_text(encoding="utf-8"))
+                normalize_stored_process_time(snapshot)
                 validate_snapshot(snapshot)
                 if snapshot["report_date"] != report_date.isoformat():
                     raise RefreshError("Fixture mode can only rebuild its recorded report date.")
