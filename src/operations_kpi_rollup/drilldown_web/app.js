@@ -1,11 +1,86 @@
 'use strict';
 
+// <chart-kit>
+// Shared by the wallboard and the drill-down. The two copies must stay identical (tests compare them).
+const CHART_SERIES_COLORS = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#E69F00', '#56B4E9', '#6A3D9A', '#8C6D31'];
+const CHART_SERIES_MARKERS = ['circle', 'square', 'triangle', 'diamond', 'cross', 'triangle-down', 'ring', 'plus'];
+
+function chartMarker(kind, cx, cy, size, color) {
+  const filled = {fill: color, stroke: '#fff', 'stroke-width': 1};
+  const stroked = {fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-linecap': 'round'};
+  const point = (x, y) => (cx + x) + ',' + (cy + y);
+  switch (kind) {
+    case 'square':
+      return svgNode('rect', Object.assign({x: cx - size, y: cy - size, width: size * 2, height: size * 2}, filled));
+    case 'triangle':
+      return svgNode('polygon', Object.assign({points: [point(0, -size * 1.25), point(size * 1.2, size * 0.95), point(-size * 1.2, size * 0.95)].join(' ')}, filled));
+    case 'triangle-down':
+      return svgNode('polygon', Object.assign({points: [point(0, size * 1.25), point(size * 1.2, -size * 0.95), point(-size * 1.2, -size * 0.95)].join(' ')}, filled));
+    case 'diamond':
+      return svgNode('polygon', Object.assign({points: [point(0, -size * 1.3), point(size * 1.3, 0), point(0, size * 1.3), point(-size * 1.3, 0)].join(' ')}, filled));
+    case 'cross':
+      return svgNode('path', Object.assign({d: 'M' + point(-size, -size) + ' L' + point(size, size) + ' M' + point(-size, size) + ' L' + point(size, -size)}, stroked));
+    case 'plus':
+      return svgNode('path', Object.assign({d: 'M' + point(-size * 1.1, 0) + ' L' + point(size * 1.1, 0) + ' M' + point(0, -size * 1.1) + ' L' + point(0, size * 1.1)}, stroked));
+    case 'ring':
+      return svgNode('circle', {cx: cx, cy: cy, r: size * 0.9, fill: '#fff', stroke: color, 'stroke-width': 2});
+    default:
+      return svgNode('circle', Object.assign({cx: cx, cy: cy, r: size}, filled));
+  }
+}
+
+function chartLegendKey(item) {
+  const key = document.createElement('span');
+  key.className = 'legend-key';
+  if (item.series !== null) {
+    key.setAttribute('data-series', item.series || item.label);
+    key.setAttribute('tabindex', '0');
+  }
+  const holder = document.createElement('span');
+  holder.className = 'legend-swatch-holder';
+  const width = 34;
+  const svg = svgNode('svg', {width: width, height: 14, viewBox: '0 0 ' + width + ' 14', 'aria-hidden': 'true', focusable: 'false'});
+  if (item.line) {
+    svg.appendChild(svgNode('line', {x1: 1, y1: 7, x2: width - 1, y2: 7, stroke: item.color, 'stroke-width': item.width || 2.6, 'stroke-dasharray': item.dash || 'none', 'stroke-linecap': 'butt'}));
+    if (item.marker) svg.appendChild(chartMarker(item.marker, width / 2, 7, 3.4, item.color));
+  } else {
+    svg.appendChild(svgNode('rect', {x: 6, y: 2, width: width - 12, height: 10, rx: 2, fill: item.color}));
+  }
+  holder.appendChild(svg);
+  const label = document.createElement('span');
+  label.textContent = item.label;
+  key.append(holder, label);
+  return key;
+}
+
+function bindSeriesHighlight(container) {
+  container.classList.remove('has-highlight');
+  container.querySelectorAll('.is-active').forEach((node) => node.classList.remove('is-active'));
+  if (container.getAttribute('data-highlight-bound') === '1') return;
+  container.setAttribute('data-highlight-bound', '1');
+  const activate = (series) => {
+    container.classList.toggle('has-highlight', series !== null);
+    container.querySelectorAll('[data-series]').forEach((node) => {
+      node.classList.toggle('is-active', series !== null && node.getAttribute('data-series') === series);
+    });
+  };
+  const seriesOf = (event) => {
+    const node = event.target && event.target.closest ? event.target.closest('[data-series]') : null;
+    return node ? node.getAttribute('data-series') : null;
+  };
+  container.addEventListener('mouseover', (event) => activate(seriesOf(event)));
+  container.addEventListener('mouseleave', () => activate(null));
+  container.addEventListener('focusin', (event) => activate(seriesOf(event)));
+  container.addEventListener('focusout', () => activate(null));
+}
+// </chart-kit>
+
 const palette = {
   teal: '#13858c', blue: '#3478ad', green: '#37856e', purple: '#826aa4',
   amber: '#df922a', red: '#bd524d', navy: '#0b2239', gray: '#9aabb5',
   grid: '#d9e3e8', muted: '#607487'
 };
-const seriesColors = [palette.teal, palette.blue, palette.green, palette.purple, palette.amber, palette.red, '#5f7f95', '#a46f52'];
+const seriesColors = CHART_SERIES_COLORS;
 const EARLIEST_REPORT_DATE = '2026-09-08';
 let activeSnapshot = null;
 let busy = false;
@@ -91,18 +166,9 @@ function aggregate(rows, keyField, fields) {
 function appendLegend(container, items) {
   const legend = document.createElement('div');
   legend.className = 'chart-legend';
-  items.forEach((item) => {
-    const key = document.createElement('span');
-    key.className = 'legend-key';
-    const swatch = document.createElement('span');
-    swatch.className = 'legend-swatch';
-    swatch.style.background = item.color;
-    const label = document.createElement('span');
-    label.textContent = item.label;
-    key.append(swatch, label);
-    legend.appendChild(key);
-  });
+  items.forEach((item) => legend.appendChild(chartLegendKey(item)));
   container.appendChild(legend);
+  bindSeriesHighlight(container);
 }
 
 function renderRankBars(selector, rows, valueField, labelField, color, formatter) {
@@ -163,7 +229,9 @@ function renderStackedHorizontal(selector, rows, segments, options) {
       const amount = Number(row[segment.field] || 0);
       const segmentWidth = amount * plotWidth / maximum;
       if (segmentWidth > 0) {
-        svg.appendChild(svgNode('rect', {x: x, y: y + 4, width: segmentWidth, height: 22, fill: segment.color}));
+        const rect = svgNode('rect', {x: x, y: y + 4, width: segmentWidth, height: 22, fill: segment.color, stroke: '#fff', 'stroke-width': 1, 'data-series': segment.label});
+        addTitle(rect, String(row.label || row.key || 'Unknown') + ' · ' + segment.label + ': ' + integer(amount));
+        svg.appendChild(rect);
         x += segmentWidth;
       }
     });
@@ -234,6 +302,38 @@ function regression(values) {
 }
 
 const plainId = (value) => value === null || value === undefined || value === '' ? '—' : String(value);
+
+// ---------- unassigned handling ----------
+// Rows with no painter or worker ID arrive as "Unassigned". Charts leave that category out and the
+// footnote under each panel's charts states how many records were left out.
+const isUnassigned = (value) => value === null || value === undefined || String(value).trim() === '' || String(value).trim().toLowerCase() === 'unassigned';
+
+function unassignedCounts(rows, field, measures, reportDate) {
+  const weekKeys = new Set(periodKeys('week', reportDate));
+  const monthKeys = new Set(periodKeys('month', reportDate));
+  const unassigned = rows.filter((row) => isUnassigned(row[field]) && row.date <= reportDate);
+  const scopes = {
+    day: unassigned.filter((row) => row.date === reportDate),
+    weeks: unassigned.filter((row) => weekKeys.has(periodKey(row.date, 'week'))),
+    months: unassigned.filter((row) => monthKeys.has(periodKey(row.date, 'month')))
+  };
+  const counts = {};
+  Object.keys(scopes).forEach((scope) => {
+    counts[scope] = {};
+    Object.keys(measures).forEach((name) => { counts[scope][name] = sum(scopes[scope], measures[name]); });
+  });
+  return counts;
+}
+
+function renderUnassignedNote(selector, subject, counts, units) {
+  const node = $(selector);
+  if (!node) return;
+  const noun = (amount, unit) => (Number(amount) === 1 && unit.singular ? unit.singular : unit.label);
+  const describe = (scope) => units.map((unit) => integer(counts[scope][unit.name]) + ' ' + noun(counts[scope][unit.name], unit)).join(' on ');
+  node.textContent = 'Unassigned ' + subject + ' (no ID recorded in QPTS) are left out of the charts above. Unassigned records found: '
+    + describe('day') + ' on the selected day; ' + describe('weeks') + ' in the last 13 weeks; '
+    + describe('months') + ' in the monthly view.';
+}
 
 // ---------- 13-week and monthly trend charts ----------
 const OUTCOME_SERIES = [
@@ -415,7 +515,7 @@ function renderPeriodStack(container, spec) {
       const segmentHeight = amount * geometry.plotHeight / maximum;
       y -= segmentHeight;
       if (segmentHeight > 0) {
-        const rect = svgNode('rect', {x: x, y: y, width: barWidth, height: segmentHeight, fill: entry.color});
+        const rect = svgNode('rect', {x: x, y: y, width: barWidth, height: segmentHeight, fill: entry.color, stroke: '#fff', 'stroke-width': 0.8, 'data-series': entry.label});
         addTitle(rect, entry.label + ' · ' + periodLabel(item.key, spec.grain) + ': ' + spec.format(amount));
         svg.appendChild(rect);
       }
@@ -437,12 +537,12 @@ function renderPeriodStack(container, spec) {
         const y = geometry.top + geometry.plotHeight - Math.max(0, value) * geometry.plotHeight / maximum;
         return x + ',' + y;
       }).filter(Boolean).join(' ');
-      svg.appendChild(svgNode('polyline', {points: points, fill: 'none', stroke: palette.navy, 'stroke-width': 2.5, 'stroke-dasharray': '6 4'}));
+      svg.appendChild(svgNode('polyline', {points: points, fill: 'none', stroke: palette.navy, 'stroke-width': 2.5, 'stroke-dasharray': '6 4', 'data-series': 'Completed-period trend'}));
     }
   }
   container.appendChild(svg);
   const legend = series.map((entry) => ({label: entry.label, color: entry.color}));
-  if (spec.trend && spec.grain === 'week') legend.push({label: 'Completed-period trend', color: palette.navy});
+  if (spec.trend && spec.grain === 'week') legend.push({label: 'Completed-period trend', color: palette.navy, line: true, dash: '6 4', width: 2.5});
   appendLegend(container, legend);
 }
 
@@ -454,6 +554,7 @@ function renderPeriodLines(container, spec) {
   const lines = ranked.map((entity, index) => ({
     label: entity,
     color: seriesColors[index % seriesColors.length],
+    marker: CHART_SERIES_MARKERS[index % CHART_SERIES_MARKERS.length],
     values: periods.map((period) => period.entities.has(entity) ? spec.rate(period.entities.get(entity)) : null)
   }));
   const finite = lines.reduce((all, line) => all.concat(line.values), overall).filter((value) => value !== null && Number.isFinite(value));
@@ -469,11 +570,11 @@ function renderPeriodLines(container, spec) {
   const svg = svgNode('svg', {viewBox: '0 0 ' + geometry.width + ' ' + geometry.height, role: 'img', 'aria-label': spec.ariaLabel});
   drawAxes(svg, geometry, maximum, (value) => spec.axisFormat ? spec.axisFormat(value) : decimal(value, 0), minimum);
   const pointAt = (index, value) => [geometry.left + slot * index + slot / 2, geometry.top + geometry.plotHeight - Math.min(span, Math.max(0, value - minimum)) * geometry.plotHeight / span];
-  const drawLine = (label, color, values, dashed, width) => {
+  const drawLine = (label, color, values, dashed, width, marker) => {
     let segment = [];
     const flush = () => {
       if (segment.length > 1) {
-        svg.appendChild(svgNode('polyline', {points: segment.map((point) => point.join(',')).join(' '), fill: 'none', stroke: color, 'stroke-width': width, 'stroke-dasharray': dashed ? '6 4' : '0', 'stroke-linejoin': 'round'}));
+        svg.appendChild(svgNode('polyline', {points: segment.map((point) => point.join(',')).join(' '), fill: 'none', stroke: color, 'stroke-width': width, 'stroke-dasharray': dashed ? '6 4' : 'none', 'stroke-linejoin': 'round', 'data-series': label}));
       }
       segment = [];
     };
@@ -485,17 +586,18 @@ function renderPeriodLines(container, spec) {
     values.forEach((value, index) => {
       if (value === null || !Number.isFinite(value)) return;
       const point = pointAt(index, value);
-      const circle = svgNode('circle', {cx: point[0], cy: point[1], r: dashed ? 3.2 : 3.6, fill: color, stroke: '#fff', 'stroke-width': 1});
-      addTitle(circle, label + ' · ' + periodLabel(periods[index].key, spec.grain) + ': ' + spec.format(value));
-      svg.appendChild(circle);
+      const mark = chartMarker(marker || 'circle', point[0], point[1], dashed ? 3.2 : 3.6, color);
+      mark.setAttribute('data-series', label);
+      addTitle(mark, label + ' · ' + periodLabel(periods[index].key, spec.grain) + ': ' + spec.format(value));
+      svg.appendChild(mark);
     });
   };
-  lines.forEach((line) => drawLine(line.label, line.color, line.values, false, 2));
-  drawLine(spec.overallLabel, palette.navy, overall, true, 2.8);
+  lines.forEach((line) => drawLine(line.label, line.color, line.values, false, 2, line.marker));
+  drawLine(spec.overallLabel, palette.navy, overall, true, 2.8, 'circle');
   drawPeriodLabels(svg, geometry, periods, spec.grain, spec.reportDate);
   container.appendChild(svg);
-  const legend = lines.map((line) => ({label: line.label, color: line.color}));
-  legend.push({label: spec.overallLabel, color: palette.navy});
+  const legend = lines.map((line) => ({label: line.label, color: line.color, line: true, marker: line.marker}));
+  legend.push({label: spec.overallLabel, color: palette.navy, line: true, dash: '6 4', width: 2.8, marker: 'circle'});
   appendLegend(container, legend);
 }
 
@@ -528,8 +630,8 @@ function renderTrendMetrics(gridSelector, rows, reportDate, metrics) {
 
 function renderTrends(snapshot) {
   const reportDate = snapshot.report_date;
-  const painterRows = (snapshot.painter_daily || []).filter((row) => row.date <= reportDate);
-  const finesseRows = ((snapshot.finesse && snapshot.finesse.summary) || []).filter((row) => row.date <= reportDate).map((row) => {
+  const painterRows = (snapshot.painter_daily || []).filter((row) => row.date <= reportDate && !isUnassigned(row.painter_id));
+  const finesseRows = ((snapshot.finesse && snapshot.finesse.summary) || []).filter((row) => row.date <= reportDate && !isUnassigned(row.worker_id)).map((row) => {
     const timed = row.average_minutes_per_part !== null && row.average_minutes_per_part !== undefined;
     return Object.assign({}, row, {
       timed_parts: timed ? Number(row.parts || 0) : 0,
@@ -596,6 +698,7 @@ function renderTable(selector, columns, rows, emptyMessage) {
 function renderPainter(snapshot) {
   const allRows = snapshot.painter_daily || [];
   const rows = allRows.filter((row) => row.date === snapshot.report_date).slice().sort((a, b) => Number(b.pieces || 0) - Number(a.pieces || 0));
+  const chartRows = rows.filter((row) => !isUnassigned(row.painter_id));
   const totalPieces = sum(rows, 'pieces');
   const totalCarts = sum(rows, 'carts');
   const totalMinutes = sum(rows, 'minutes');
@@ -613,9 +716,10 @@ function renderPainter(snapshot) {
     ['First-time yield', ftyTotal > 0 ? percent(ftyApproved * 100 / ftyTotal) : '—', integer(ftyApproved) + ' approved / ' + integer(ftyTotal) + ' evaluated', palette.amber],
     ['Most colors / painter-booth', rows.length ? integer(Math.max.apply(null, rows.map((row) => Number(row.unique_colors || 0)))) : '0', 'Per-row distinct color count', palette.red]
   ].forEach((card) => kpis.appendChild(summaryCard(card[0], card[1], card[2], card[3])));
-  renderPainterShare(rows);
-  renderPainterBooth(rows);
-  renderPainterFty(rows);
+  renderPainterShare(chartRows);
+  renderPainterBooth(chartRows);
+  renderPainterFty(chartRows);
+  renderUnassignedNote('#painter-footnote', 'painters', unassignedCounts(allRows, 'painter_id', {pieces: 'pieces', carts: 'carts'}, snapshot.report_date), [{name: 'pieces', label: 'pieces', singular: 'piece'}, {name: 'carts', label: 'carts', singular: 'cart'}]);
   renderTable('#painter-table', [
     {key: 'painter_id', label: 'Painter ID', format: plainId},
     {key: 'booth', label: 'Booth', format: (value) => value ? 'Booth ' + integer(value) : 'Unknown'},
@@ -635,13 +739,18 @@ function renderPainter(snapshot) {
 function renderRepaint(snapshot) {
   const contributions = snapshot.repaint && snapshot.repaint.contributions ? snapshot.repaint.contributions : [];
   ['painter', 'color', 'booth'].forEach((dimension) => {
-    const rows = contributions.filter((row) => row.dimension === dimension).map((row) => ({
+    const rows = contributions.filter((row) => row.dimension === dimension && !(dimension === 'painter' && isUnassigned(row.label))).map((row) => ({
       label: row.label,
       repaint_events: row.repaint_events,
       contribution_percent: row.contribution_percent
     }));
     renderRankBars('#repaint-' + dimension, rows, 'repaint_events', 'label', dimension === 'painter' ? palette.red : dimension === 'color' ? palette.amber : palette.purple, (row) => integer(row.repaint_events) + ' · ' + percent(row.contribution_percent));
   });
+  const painterHistory = snapshot.painter_daily || [];
+  const repaintCounts = unassignedCounts(painterHistory, 'painter_id', {events: 'fty_repaint'}, snapshot.report_date);
+  const dayUnassigned = contributions.filter((row) => row.dimension === 'painter' && isUnassigned(row.label)).reduce((total, row) => total + Number(row.repaint_events || 0), 0);
+  repaintCounts.day.events = Math.max(repaintCounts.day.events, dayUnassigned);
+  renderUnassignedNote('#repaint-footnote', 'painters', repaintCounts, [{name: 'events', label: 'repaint events', singular: 'repaint event'}]);
   const details = (snapshot.repaint && snapshot.repaint.details ? snapshot.repaint.details : [])
     .filter((row) => !row.event_at || row.event_at.slice(0, 10) === snapshot.report_date);
   renderTable('#repaint-table', [
@@ -658,7 +767,8 @@ function renderRepaint(snapshot) {
 }
 
 function renderFinesse(snapshot) {
-  const summary = snapshot.finesse && snapshot.finesse.summary ? snapshot.finesse.summary.filter((row) => row.date === snapshot.report_date) : [];
+  const allSummary = snapshot.finesse && snapshot.finesse.summary ? snapshot.finesse.summary : [];
+  const summary = allSummary.filter((row) => row.date === snapshot.report_date && !isUnassigned(row.worker_id));
   const workers = Array.from(new Set(summary.map((row) => row.worker_id))).sort();
   const outcomes = ['approved', 'repaired', 'repaint', 'pending'];
   const grouped = workers.map((worker) => {
@@ -681,6 +791,7 @@ function renderFinesse(snapshot) {
     return {label: worker, minutes: parts > 0 ? weightedMinutes / parts : 0};
   });
   renderRankBars('#finesse-time', timeRows, 'minutes', 'label', palette.blue, (row) => decimal(row.minutes, 1) + ' min');
+  renderUnassignedNote('#finesse-footnote', 'Finesse workers', unassignedCounts(allSummary, 'worker_id', {parts: 'parts'}, snapshot.report_date), [{name: 'parts', label: 'parts', singular: 'part'}]);
   const details = (snapshot.finesse && snapshot.finesse.details ? snapshot.finesse.details : [])
     .filter((row) => !row.event_at || row.event_at.slice(0, 10) === snapshot.report_date);
   renderTable('#finesse-table', [

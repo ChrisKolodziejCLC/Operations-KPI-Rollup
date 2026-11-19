@@ -1,4 +1,5 @@
 import json
+import re
 import os
 from datetime import date
 from pathlib import Path
@@ -328,3 +329,44 @@ def test_drilldown_ui_shows_ids_plain_part_ids_and_trend_charts():
     assert "painter-history" not in page and "renderPainterHistory" not in script
     assert "row.painter)" not in script and "row.worker)" not in script
     assert "Painter ID" in script and "Worker ID" in script
+
+def _chart_kit(script):
+    start = script.index("// <chart-kit>")
+    end_marker = "// </chart-kit>\n"
+    return script[start:script.index(end_marker) + len(end_marker)]
+
+
+def test_wallboard_and_drilldown_share_one_chart_kit():
+    wallboard = (SRC / "web" / "app.js").read_text(encoding="utf-8")
+    drilldown = (SRC / "drilldown_web" / "app.js").read_text(encoding="utf-8")
+    assert _chart_kit(wallboard) == _chart_kit(drilldown)
+    kit = _chart_kit(drilldown)
+    for name in ("CHART_SERIES_COLORS", "CHART_SERIES_MARKERS", "chartMarker", "chartLegendKey", "bindSeriesHighlight"):
+        assert name in kit
+    assert "stroke-dasharray" in kit and "data-series" in kit
+    assert len(set(re.findall(r"#[0-9A-Fa-f]{6}", kit.split("CHART_SERIES_COLORS = ")[1].split("]")[0]))) == 8
+
+
+def test_chart_series_and_legends_support_hover_highlight_and_dashed_swatches():
+    wallboard = (SRC / "web" / "app.js").read_text(encoding="utf-8")
+    drilldown = (SRC / "drilldown_web" / "app.js").read_text(encoding="utf-8")
+    for script in (wallboard, drilldown):
+        assert "bindSeriesHighlight(container)" in script
+        assert "'data-series'" in script
+    assert "dash: '6 4'" in drilldown and "line: true" in drilldown
+    assert "dash:reference.dash" in wallboard and "dash:'7 5'" in wallboard
+    for sheet in ("web", "drilldown_web"):
+        css = (SRC / sheet / "styles.css").read_text(encoding="utf-8")
+        assert ".has-highlight" in css and "[data-series]" in css and ".legend-swatch-holder" in css
+
+
+def test_unassigned_categories_are_left_out_of_charts_with_a_footnote():
+    script = (SRC / "drilldown_web" / "app.js").read_text(encoding="utf-8")
+    page = (SRC / "drilldown_web" / "index.html").read_text(encoding="utf-8")
+    for name in ("isUnassigned", "unassignedCounts", "renderUnassignedNote"):
+        assert "function " in script and name in script
+    for note in ("painter-footnote", "repaint-footnote", "finesse-footnote"):
+        assert 'id="' + note + '"' in page
+        assert "'#" + note + "'" in script
+    assert "!isUnassigned(row.painter_id)" in script and "!isUnassigned(row.worker_id)" in script
+    assert "Unassigned records found" in script

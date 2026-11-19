@@ -51,8 +51,16 @@ button.secondary{border-color:#b6c7d0;background:#eef4f6;color:var(--navy)}
 .chart svg{display:block;width:100%;height:auto}
 .chart-empty{display:grid;place-items:center;min-height:220px;color:var(--muted);font-size:.8rem;text-align:center}
 .chart-legend{display:flex;flex-wrap:wrap;gap:.45rem .9rem;margin:.45rem .3rem;color:var(--muted);font-size:.68rem}
-.legend-key{display:inline-flex;align-items:center;gap:.35rem}
-.legend-swatch{width:.75rem;height:.25rem;border-radius:2px}
+.legend-key{display:inline-flex;align-items:center;gap:.4rem;padding:.12rem .35rem;border-radius:4px;cursor:default;transition:background .12s ease,opacity .12s ease}
+.legend-key:focus-visible{outline:2px solid var(--navy);outline-offset:1px}
+.legend-swatch-holder{display:inline-flex;flex:none}
+.legend-swatch-holder svg{display:block}
+.has-highlight [data-series]{opacity:.14;transition:opacity .12s ease}
+.has-highlight [data-series].is-active{opacity:1}
+.has-highlight polyline[data-series].is-active{stroke-width:4.2px}
+.has-highlight .legend-key[data-series]{opacity:.5}
+.has-highlight .legend-key[data-series].is-active{opacity:1;background:#e3edf2;color:var(--navy);font-weight:800}
+.chart-footnote{margin:.9rem 0 0;padding:.55rem .8rem;border-left:4px solid #b6c7d0;background:#f3f7f9;color:var(--muted);font-size:.74rem;line-height:1.4}
 .rank-bars{display:grid;gap:.6rem;min-height:220px;align-content:start}
 .rank-row{display:grid;grid-template-columns:minmax(90px,1fr) 3fr auto;gap:.55rem;align-items:center;font-size:.72rem}
 .chart-grid.three .rank-row{grid-template-columns:minmax(130px,1.3fr) 2fr auto}

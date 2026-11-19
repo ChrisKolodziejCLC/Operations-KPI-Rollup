@@ -1,5 +1,80 @@
 'use strict';
 
+// <chart-kit>
+// Shared by the wallboard and the drill-down. The two copies must stay identical (tests compare them).
+const CHART_SERIES_COLORS = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#E69F00', '#56B4E9', '#6A3D9A', '#8C6D31'];
+const CHART_SERIES_MARKERS = ['circle', 'square', 'triangle', 'diamond', 'cross', 'triangle-down', 'ring', 'plus'];
+
+function chartMarker(kind, cx, cy, size, color) {
+  const filled = {fill: color, stroke: '#fff', 'stroke-width': 1};
+  const stroked = {fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-linecap': 'round'};
+  const point = (x, y) => (cx + x) + ',' + (cy + y);
+  switch (kind) {
+    case 'square':
+      return svgNode('rect', Object.assign({x: cx - size, y: cy - size, width: size * 2, height: size * 2}, filled));
+    case 'triangle':
+      return svgNode('polygon', Object.assign({points: [point(0, -size * 1.25), point(size * 1.2, size * 0.95), point(-size * 1.2, size * 0.95)].join(' ')}, filled));
+    case 'triangle-down':
+      return svgNode('polygon', Object.assign({points: [point(0, size * 1.25), point(size * 1.2, -size * 0.95), point(-size * 1.2, -size * 0.95)].join(' ')}, filled));
+    case 'diamond':
+      return svgNode('polygon', Object.assign({points: [point(0, -size * 1.3), point(size * 1.3, 0), point(0, size * 1.3), point(-size * 1.3, 0)].join(' ')}, filled));
+    case 'cross':
+      return svgNode('path', Object.assign({d: 'M' + point(-size, -size) + ' L' + point(size, size) + ' M' + point(-size, size) + ' L' + point(size, -size)}, stroked));
+    case 'plus':
+      return svgNode('path', Object.assign({d: 'M' + point(-size * 1.1, 0) + ' L' + point(size * 1.1, 0) + ' M' + point(0, -size * 1.1) + ' L' + point(0, size * 1.1)}, stroked));
+    case 'ring':
+      return svgNode('circle', {cx: cx, cy: cy, r: size * 0.9, fill: '#fff', stroke: color, 'stroke-width': 2});
+    default:
+      return svgNode('circle', Object.assign({cx: cx, cy: cy, r: size}, filled));
+  }
+}
+
+function chartLegendKey(item) {
+  const key = document.createElement('span');
+  key.className = 'legend-key';
+  if (item.series !== null) {
+    key.setAttribute('data-series', item.series || item.label);
+    key.setAttribute('tabindex', '0');
+  }
+  const holder = document.createElement('span');
+  holder.className = 'legend-swatch-holder';
+  const width = 34;
+  const svg = svgNode('svg', {width: width, height: 14, viewBox: '0 0 ' + width + ' 14', 'aria-hidden': 'true', focusable: 'false'});
+  if (item.line) {
+    svg.appendChild(svgNode('line', {x1: 1, y1: 7, x2: width - 1, y2: 7, stroke: item.color, 'stroke-width': item.width || 2.6, 'stroke-dasharray': item.dash || 'none', 'stroke-linecap': 'butt'}));
+    if (item.marker) svg.appendChild(chartMarker(item.marker, width / 2, 7, 3.4, item.color));
+  } else {
+    svg.appendChild(svgNode('rect', {x: 6, y: 2, width: width - 12, height: 10, rx: 2, fill: item.color}));
+  }
+  holder.appendChild(svg);
+  const label = document.createElement('span');
+  label.textContent = item.label;
+  key.append(holder, label);
+  return key;
+}
+
+function bindSeriesHighlight(container) {
+  container.classList.remove('has-highlight');
+  container.querySelectorAll('.is-active').forEach((node) => node.classList.remove('is-active'));
+  if (container.getAttribute('data-highlight-bound') === '1') return;
+  container.setAttribute('data-highlight-bound', '1');
+  const activate = (series) => {
+    container.classList.toggle('has-highlight', series !== null);
+    container.querySelectorAll('[data-series]').forEach((node) => {
+      node.classList.toggle('is-active', series !== null && node.getAttribute('data-series') === series);
+    });
+  };
+  const seriesOf = (event) => {
+    const node = event.target && event.target.closest ? event.target.closest('[data-series]') : null;
+    return node ? node.getAttribute('data-series') : null;
+  };
+  container.addEventListener('mouseover', (event) => activate(seriesOf(event)));
+  container.addEventListener('mouseleave', () => activate(null));
+  container.addEventListener('focusin', (event) => activate(seriesOf(event)));
+  container.addEventListener('focusout', () => activate(null));
+}
+// </chart-kit>
+
 const palette = {
   teal: '#13858c', blue: '#3478ad', green: '#37856e', purple: '#826aa4',
   amber: '#df922a', red: '#bd524d', navy: '#0b2239', grid: '#d9e3e8', muted: '#607487'
@@ -429,13 +504,7 @@ function markSelectableCards(container) {
 
 function chartLegend(items) {
   const legend = document.createElement('div'); legend.className = 'chart-legend';
-  items.forEach(item => {
-    const key = document.createElement('span'); key.className = 'legend-key';
-    const swatch = document.createElement('span'); swatch.className = `legend-swatch${item.line ? ' line' : ''}`;
-    swatch.style.background = item.color;
-    swatch.style.color = item.color;
-    key.append(swatch, text(item.label)); legend.append(key);
-  });
+  items.forEach(item => legend.append(chartLegendKey(item)));
   return legend;
 }
 
@@ -622,7 +691,7 @@ function renderLoadedLineChart(container, rows, options) {
     if (segment.length > 1) {
       svg.append(svgNode('polyline', {
         points:segment.join(' '), fill:'none', stroke:options.color, 'stroke-width':2.7,
-        'stroke-linejoin':'round', 'stroke-linecap':'round'
+        'stroke-linejoin':'round', 'stroke-linecap':'round', 'data-series':options.label
       }));
     }
     segment = [];
@@ -649,7 +718,8 @@ function renderLoadedLineChart(container, rows, options) {
           height:Math.max(1, y(0) - y(value)), class:'loaded-bar',
           fill:row.is_partial ? '#fff3df' : (miss ? palette.red : options.color),
           stroke:row.is_partial ? palette.amber : (miss ? palette.red : options.color),
-          'stroke-width':row.is_partial ? 2 : 1, opacity:row.is_partial ? .94 : .86
+          'stroke-width':row.is_partial ? 2 : 1, opacity:row.is_partial ? .94 : .86,
+          'data-series':options.label
         });
         bar.append(title); svg.append(bar);
       } else {
@@ -664,13 +734,14 @@ function renderLoadedLineChart(container, rows, options) {
           cx:centerX(index), cy:y(value), r:miss ? 4.4 : 3.2,
           fill:row.is_partial ? '#fff3df' : (miss ? palette.red : options.color),
           stroke:row.is_partial ? palette.amber : '#fff', 'stroke-width':row.is_partial ? 2 : 1,
-          'stroke-dasharray':row.is_partial ? '2 1' : 'none'
+          'stroke-dasharray':row.is_partial ? '2 1' : 'none', 'data-series':options.label
         });
         circle.append(title); svg.append(circle);
       }
       const valueLabel = svgNode('text', {
         x:centerX(index), y:Math.max(top + 10, y(value) - 7),
-        'text-anchor':'middle', class:'loaded-value-label' + (miss ? ' loaded-value-label-miss' : '')
+        'text-anchor':'middle', class:'loaded-value-label' + (miss ? ' loaded-value-label-miss' : ''),
+        'data-series':options.label
       });
       valueLabel.append(text(formatValue(value))); svg.append(valueLabel);
     }
@@ -697,7 +768,7 @@ function renderLoadedLineChart(container, rows, options) {
           points:overlaySegment.join(' '), fill:'none', stroke:overlay.color,
           'stroke-width':overlay.width || 2.4, 'stroke-dasharray':overlay.dash || 'none',
           'stroke-linejoin':'round', 'stroke-linecap':'round', opacity:.92,
-          class:'loaded-overlay-line'
+          class:'loaded-overlay-line', 'data-series':overlay.label
         }));
       }
       overlaySegment = [];
@@ -711,7 +782,7 @@ function renderLoadedLineChart(container, rows, options) {
         cx:centerX(index), cy:overlayY(value), r:2.7,
         fill:rows[index].is_partial ? '#fff3df' : overlay.color,
         stroke:rows[index].is_partial ? palette.amber : '#fff', 'stroke-width':1,
-        class:'loaded-overlay-point'
+        class:'loaded-overlay-point', 'data-series':overlay.label
       });
       const title = svgNode('title');
       title.append(text(options.bucketTitle(rows[index]) + ' · ' + overlay.label + ': ' + overlayFormat(value)));
@@ -724,7 +795,8 @@ function renderLoadedLineChart(container, rows, options) {
     const trendLine = svgNode('line', {
       x1:centerX(trend.startIndex), y1:y(trend.startValue),
       x2:centerX(trend.endIndex), y2:y(trend.endValue),
-      stroke:palette.navy, 'stroke-width':2, 'stroke-dasharray':'7 5', opacity:.78
+      stroke:palette.navy, 'stroke-width':2, 'stroke-dasharray':'7 5', opacity:.78,
+      'data-series':'Linear trend'
     });
     const title = svgNode('title');
     title.append(text('Linear trend: ' + (trend.slope >= 0 ? '+' : '') + decimal(trend.slope) + ' per week'));
@@ -742,7 +814,7 @@ function renderLoadedLineChart(container, rows, options) {
           points:points.join(' '), fill:'none', stroke:reference.color,
           'stroke-width':2.2, 'stroke-dasharray':reference.dash || 'none',
           'stroke-linejoin':'round', 'stroke-linecap':'round', opacity:.9,
-          class:'loaded-reference-line loaded-reference-line-full-width'
+          class:'loaded-reference-line loaded-reference-line-full-width', 'data-series':reference.label
         });
         const title = svgNode('title');
         title.append(text(reference.label + ' · horizontal 13-week average-day reference'));
@@ -751,7 +823,8 @@ function renderLoadedLineChart(container, rows, options) {
           const labelValue = referencePoints[referencePoints.length - 1].value;
           const label = svgNode('text', {
             x:width - right - 2, y:Math.max(top + 11, y(labelValue) - 4),
-            'text-anchor':'end', fill:reference.color, class:'loaded-reference-label'
+            'text-anchor':'end', fill:reference.color, class:'loaded-reference-label',
+            'data-series':reference.label
           });
           label.append(text(reference.directLabel + ' ' + formatValue(labelValue) + (reference.directLabelSuffix || '')));
           svg.append(label);
@@ -767,7 +840,7 @@ function renderLoadedLineChart(container, rows, options) {
           points:referenceSegment.join(' '), fill:'none', stroke:reference.color,
           'stroke-width':2.2, 'stroke-dasharray':reference.dash || 'none',
           'stroke-linejoin':'round', 'stroke-linecap':'round', opacity:.9,
-          class:'loaded-reference-line'
+          class:'loaded-reference-line', 'data-series':reference.label
         });
       } else if (referenceSegment.length === 1) {
         const [pointX, pointY] = referenceSegment[0].split(',').map(Number);
@@ -776,7 +849,7 @@ function renderLoadedLineChart(container, rows, options) {
           x1:pointX - halfSegment, x2:pointX + halfSegment, y1:pointY, y2:pointY,
           stroke:reference.color, 'stroke-width':2.2,
           'stroke-dasharray':reference.dash || 'none', 'stroke-linecap':'round', opacity:.9,
-          class:'loaded-reference-line'
+          class:'loaded-reference-line', 'data-series':reference.label
         });
       }
       if (line) {
@@ -795,7 +868,8 @@ function renderLoadedLineChart(container, rows, options) {
       if (finalValue !== undefined) {
         const label = svgNode('text', {
           x:width - right - 2, y:Math.max(top + 11, y(finalValue) - 4),
-          'text-anchor':'end', fill:reference.color, class:'loaded-reference-label'
+          'text-anchor':'end', fill:reference.color, class:'loaded-reference-label',
+          'data-series':reference.label
         });
         label.append(text(reference.directLabel + ' ' + formatValue(finalValue) + (reference.directLabelSuffix || '')));
         svg.append(label);
@@ -803,14 +877,15 @@ function renderLoadedLineChart(container, rows, options) {
     }
   });
   const legend = [{label:options.label, color:options.color, line:!barChart}];
-  overlays.forEach(overlay => legend.push({label:overlay.label, color:overlay.color, line:true}));
-  if (trend) legend.push({label:'Linear trend', color:palette.navy, line:true});
-  references.forEach(reference => legend.push({label:reference.label, color:reference.color, line:true}));
+  overlays.forEach(overlay => legend.push({label:overlay.label, color:overlay.color, line:true, dash:overlay.dash, width:overlay.width}));
+  if (trend) legend.push({label:'Linear trend', color:palette.navy, line:true, dash:'7 5', width:2});
+  references.forEach(reference => legend.push({label:reference.label, color:reference.color, line:true, dash:reference.dash, width:2.2}));
   if (missedTarget.some(Boolean)) {
     const missedLabel = 'Missed ' + targetAssessmentLabel.charAt(0).toUpperCase() + targetAssessmentLabel.slice(1);
-    legend.push({label:missedLabel, color:palette.red, line:false});
+    legend.push({label:missedLabel, color:palette.red, line:false, series:null});
   }
   container.append(svg, chartLegend(legend));
+  bindSeriesHighlight(container);
 }
 
 function loadedHourlySummary(rows, options, performance) {
@@ -1563,34 +1638,37 @@ function renderLineChart(container, rows, series, asPercent = false) {
     const label = svgNode('text', {x: x(index), y: height - 12, 'text-anchor': 'middle', fill: palette.muted, 'font-size': 10});
     label.append(text(dateLabel(row.date))); svg.append(label);
   });
-  series.forEach(item => {
+  series.forEach((item, seriesIndex) => {
+    const marker = CHART_SERIES_MARKERS[seriesIndex % CHART_SERIES_MARKERS.length];
     const usable = rows.map((row, index) => ({value: item.value(row), index})).filter(point => point.value !== null && Number.isFinite(point.value));
     const points = usable.map(point => `${x(point.index)},${y(point.value)}`).join(' ');
-    svg.append(svgNode('polyline', {points, fill: 'none', stroke: item.color, 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round'}));
-    usable.forEach(point => svg.append(svgNode('circle', {cx: x(point.index), cy: y(point.value), r: 4, fill: item.color, stroke: '#fff', 'stroke-width': 1.5})));
+    svg.append(svgNode('polyline', {points, fill: 'none', stroke: item.color, 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-dasharray': item.dash || 'none', 'data-series': item.label}));
+    usable.forEach(point => {
+      const mark = chartMarker(marker, x(point.index), y(point.value), 4, item.color);
+      mark.setAttribute('data-series', item.label);
+      const title = svgNode('title'); title.append(text(`${dateLabel(rows[point.index].date)} · ${item.label}: ${asPercent ? (point.value * 100).toFixed(1) + '%' : Math.round(point.value).toLocaleString()}`));
+      mark.append(title); svg.append(mark);
+    });
   });
   const legend = document.createElement('div'); legend.className = 'chart-legend';
-  series.forEach(item => {
-    const key = document.createElement('span'); key.className = 'legend-key';
-    const swatch = document.createElement('span'); swatch.className = 'legend-swatch'; swatch.style.background = item.color;
-    key.append(swatch, text(item.label)); legend.append(key);
-  });
+  series.forEach((item, seriesIndex) => legend.append(chartLegendKey({label: item.label, color: item.color, line: true, dash: item.dash, width: 3, marker: CHART_SERIES_MARKERS[seriesIndex % CHART_SERIES_MARKERS.length]})));
   container.append(svg, legend);
+  bindSeriesHighlight(container);
 }
 
 function renderDaily(snapshot) {
   const active = snapshot.daily.filter(row => row.production_day);
   renderLineChart($('#throughput-chart'), active, [
-    {label:'Loaded', color:palette.teal, value:row => Number(row.parts_loaded)},
-    {label:'Painted', color:palette.blue, value:row => Number(row.paint_pieces_processed)},
-    {label:'EOL', color:palette.purple, value:row => Number(row.eol_inspected)},
-    {label:'Paint shipped', color:palette.red, value:row => Number(row.painted_parts_shipped)}
+    {label:'Loaded', color:CHART_SERIES_COLORS[0], value:row => Number(row.parts_loaded)},
+    {label:'Painted', color:CHART_SERIES_COLORS[1], value:row => Number(row.paint_pieces_processed)},
+    {label:'EOL', color:CHART_SERIES_COLORS[2], value:row => Number(row.eol_inspected)},
+    {label:'Paint shipped', color:CHART_SERIES_COLORS[3], value:row => Number(row.painted_parts_shipped)}
   ]);
   renderLineChart($('#quality-chart'), active, [
-    {label:'Repaint PPY', color:palette.teal, value:row => yieldRatio(row.ppy_approved, row.paint_decision_pieces)},
-    {label:'Reject PPY', color:palette.red, value:row => yieldRatio(row.reject_ppy_approved, row.reject_ppy_total)},
-    {label:'Repaint FTY', color:palette.blue, value:row => yieldRatio(row.paint_fty_approved, row.paint_fty_total)},
-    {label:'Reject FTY', color:palette.purple, value:row => yieldRatio(row.reject_fty_approved, row.reject_fty_total)}
+    {label:'Repaint PPY', color:CHART_SERIES_COLORS[0], value:row => yieldRatio(row.ppy_approved, row.paint_decision_pieces)},
+    {label:'Reject PPY', color:CHART_SERIES_COLORS[1], value:row => yieldRatio(row.reject_ppy_approved, row.reject_ppy_total)},
+    {label:'Repaint FTY', color:CHART_SERIES_COLORS[2], value:row => yieldRatio(row.paint_fty_approved, row.paint_fty_total)},
+    {label:'Reject FTY', color:CHART_SERIES_COLORS[3], value:row => yieldRatio(row.reject_fty_approved, row.reject_fty_total)}
   ], true);
   renderTable($('#daily-table'), [
     {label:'Day', value:row => `${row.date}${row.production_day ? '' : ' · No production'}`},

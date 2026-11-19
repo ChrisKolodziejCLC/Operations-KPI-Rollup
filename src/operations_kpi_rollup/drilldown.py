@@ -21,7 +21,7 @@ from .restricted import build_restricted_snapshot
 from .restricted_web import RestrictedRefreshError, RestrictedState
 
 
-DRILLDOWN_VERSION = "0.37.0-painter-ids-trends"
+DRILLDOWN_VERSION = "0.38.0-chart-clarity"
 _DISABLED_VALUES = {"0", "false", "no", "off"}
 
 
