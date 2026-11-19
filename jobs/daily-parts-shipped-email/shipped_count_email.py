@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Daily Parts Shipped - GP.
 
-Runs the BRAK procedure dbo.usp_QPTS_SendWeeklyShippedCountEmail for the shipped count by day, reads the trailers loaded and the
-trailers departed for the same days (the same definitions the Operations KPI wallboard uses), builds the email, checks the numbers,
-and sends it through the FlowForge Alerts mailer. Replaces the Windows service on CLC07-OPS002.
+Takes the shipped count, trailers loaded and trailers departed for each day of the week from the Operations KPI dashboard's saved days
+(so the email always agrees with the dashboard), builds the email, checks the numbers, and sends it through the FlowForge Alerts mailer.
+Replaces the Windows service on CLC07-OPS002. The older way (the BRAK procedure dbo.usp_QPTS_SendWeeklyShippedCountEmail plus two read-only
+trailer queries) is still here behind --source sql, for a manual run if the dashboard is down.
 
   python3 shipped_count_email.py             live run (the seven recipients)
-  python3 shipped_count_email.py --dry-run   run the procedure and check it, send nothing
+  python3 shipped_count_email.py --dry-run   read and check the numbers, send nothing
   python3 shipped_count_email.py --test      one test email to the test recipient only
+  python3 shipped_count_email.py --source sql   (with any of the above) read BRAK directly instead of the dashboard
 
-Configuration comes from the environment (job.env); the SQL password comes from the systemd credential shipped-count-sql.
+Configuration comes from the environment (job.env). The dashboard source needs no password; --source sql uses the systemd credential shipped-count-sql.
 """
 import argparse
 import datetime
@@ -28,12 +30,21 @@ EMAIL_PATTERN = re.compile(r"^[A-Za-z0-9._%+'-]+@creativeliquidcoatings\.com$")
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RETRY_WAITS = (60, 120)
 SUBJECT_PREFIX_FOR_NOTICES = "[FlowForge] "
+SUBJECT = "Daily Parts Shipped - GP"
+DEFAULT_DASHBOARD_URL = "http://127.0.0.1:5193"
+DASHBOARD_URL_PATTERN = re.compile(r"^http://(127\.0\.0\.1|localhost):\d{2,5}/?$")
+# The dashboard's day follows its own clock (KPI_TIMEZONE, Eastern). A saved day counts as a whole day only if it was saved at or after
+# 23:00 dashboard time on that day (its last automatic save is about 23:50) or later (someone refreshed that day afterwards).
+DASHBOARD_TIMEZONE = "America/Indiana/Indianapolis"
+DAY_COMPLETE_FROM_HOUR = 23
+DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 SUMMARY_LEAD = "FlowForge shipped count summary for"
 COLUMN_LABELS = ("Ship Date", "Day", "Shipped Count", "Trailers Loaded", "Trailers Departed")
 HEAD_STYLE = "padding:6px 10px;border:1px solid #cccccc;background:#f2f2f2;"
 CELL_STYLE = "padding:6px 10px;border:1px solid #cccccc;"
 FOOTNOTE = ("Trailers Loaded is the number of different trailers the shipped parts went out on that day (service parts are not counted). "
             "Trailers Departed is the number of trailers the drivers logged as leaving that day.")
+FOOTNOTE_DASHBOARD = "These are the Operations KPI dashboard's saved numbers for each day, so this email matches the dashboard. " + FOOTNOTE
 
 # The trailer counts use the same definitions as the Operations KPI wallboard (its "Loaded" and "Departed" trailers):
 #   loaded   = distinct (ship date, ship trailer) pairs on dbo.[EDI Data Table], service parts left out, blank trailer left out;
@@ -95,16 +106,25 @@ def validate_addresses(addresses, label):
     return addresses
 
 
-def load_config(environ):
+def load_config(environ, need_sql=True):
     def need(name):
         value = environ.get(name, "").strip()
         if not value:
             raise PermanentError("missing setting " + name)
         return value
+
+    def sql_setting(name):
+        return need(name) if need_sql else environ.get(name, "").strip()
+
+    dashboard_url = environ.get("SHIPPED_COUNT_DASHBOARD_URL", "").strip() or DEFAULT_DASHBOARD_URL
+    if not DASHBOARD_URL_PATTERN.match(dashboard_url):
+        raise PermanentError("SHIPPED_COUNT_DASHBOARD_URL must be a loopback address such as " + DEFAULT_DASHBOARD_URL)
+    host, instance = sql_setting("SHIPPED_COUNT_SERVER_HOST"), sql_setting("SHIPPED_COUNT_SERVER_INSTANCE")
     return {
-        "server": need("SHIPPED_COUNT_SERVER_HOST") + "\\" + need("SHIPPED_COUNT_SERVER_INSTANCE"),
-        "database": need("SHIPPED_COUNT_DATABASE"),
-        "user": need("SHIPPED_COUNT_USER"),
+        "server": host + "\\" + instance if host and instance else "",
+        "database": sql_setting("SHIPPED_COUNT_DATABASE"),
+        "user": sql_setting("SHIPPED_COUNT_USER"),
+        "dashboard_url": dashboard_url.rstrip("/"),
         "recipients": validate_addresses(split_addresses(need("SHIPPED_COUNT_RECIPIENTS")), "SHIPPED_COUNT_RECIPIENTS"),
         "test_recipient": validate_addresses(split_addresses(need("SHIPPED_COUNT_TEST_RECIPIENT")), "SHIPPED_COUNT_TEST_RECIPIENT")[:1],
         "failure_recipient": validate_addresses(split_addresses(need("SHIPPED_COUNT_FAILURE_RECIPIENT")), "SHIPPED_COUNT_FAILURE_RECIPIENT")[:1],
@@ -193,6 +213,77 @@ def merge_rows(daily, trailers):
     return rows
 
 
+def week_days(report_date):
+    """The ISO dates from the Monday of the week that contains report_date through report_date."""
+    last = datetime.date.fromisoformat(report_date)
+    first = last - datetime.timedelta(days=last.weekday())
+    return [(first + datetime.timedelta(days=offset)).isoformat() for offset in range((last - first).days + 1)]
+
+
+def http_get(base_url, path, timeout=30):
+    parts = urlparse(base_url)
+    try:
+        connection = http.client.HTTPConnection(parts.hostname, parts.port or 80, timeout=timeout)
+        try:
+            connection.request("GET", path)
+            response = connection.getresponse()
+            return response.status, response.read()
+        finally:
+            connection.close()
+    except (OSError, http.client.HTTPException) as error:
+        raise TransientError("the KPI dashboard is not reachable: " + str(error)[:200])
+
+
+def fetch_dashboard_day(base_url, day):
+    """The dashboard's saved snapshot for one day. A plain read: it never makes the dashboard refresh or save anything."""
+    status, body = http_get(base_url, "/api/snapshot?report_date=" + day)
+    if status == 404:
+        raise PermanentError("the KPI dashboard has no saved day for " + day)
+    if status != 200:
+        raise TransientError("the KPI dashboard answered HTTP %d for %s" % (status, day))
+    try:
+        return json.loads(body.decode("utf-8"))
+    except ValueError:
+        raise TransientError("the KPI dashboard answered with something that is not JSON for " + day)
+
+
+def day_from_snapshot(snapshot, day):
+    """One day's numbers from the dashboard's saved snapshot, after checking that it really is that whole day."""
+    if not isinstance(snapshot, dict) or snapshot.get("report_date") != day:
+        raise PermanentError("the KPI dashboard answered for a different day than " + day)
+    zone = ZoneInfo(DASHBOARD_TIMEZONE)
+    try:
+        saved_at = datetime.datetime.fromisoformat(str(snapshot.get("generated_at")))
+    except ValueError:
+        raise PermanentError("the KPI dashboard's saved %s has no readable save time" % day)
+    if saved_at.tzinfo is None:
+        saved_at = saved_at.replace(tzinfo=zone)
+    day_date = datetime.date.fromisoformat(day)
+    day_complete = datetime.datetime.combine(day_date, datetime.time(DAY_COMPLETE_FROM_HOUR), tzinfo=zone)
+    if saved_at < day_complete:
+        raise PermanentError("the KPI dashboard's saved %s was taken at %s, before that day was over"
+                             % (day, saved_at.astimezone(zone).strftime("%Y-%m-%d %H:%M")))
+    row = next((item for item in snapshot.get("daily") or [] if isinstance(item, dict) and item.get("date") == day), None)
+    if row is None:
+        raise PermanentError("the KPI dashboard's saved %s has no row for that day" % day)
+    values = {}
+    for name, key in (("shipped", "parts_shipped"), ("loaded", "trailers_prepared"), ("departed", "trailers_shipped")):
+        value = row.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise PermanentError("the KPI dashboard's %s for %s is not a whole number" % (key, day))
+        values[name] = value
+    return {"date": day, "day": DAY_NAMES[day_date.weekday()], "saved_at": str(snapshot["generated_at"]),
+            "shipped": values["shipped"], "loaded": values["loaded"], "departed": values["departed"]}
+
+
+def dashboard_week(cfg, report_date):
+    """(summary, rows) for the week up to report_date, straight from the dashboard's saved days."""
+    rows = [day_from_snapshot(fetch_dashboard_day(cfg["dashboard_url"], day), day) for day in week_days(report_date)]
+    summary = {"report_date": report_date, "previous_day_count": rows[-1]["shipped"],
+               "week_total_count": sum(row["shipped"] for row in rows), "subject": SUBJECT}
+    return summary, rows
+
+
 def check_result(result_sets, expected_date, skip_date_guard):
     """Validate what the procedure returned and return (summary dict, daily rows)."""
     if len(result_sets) < 2 or not result_sets[-1]:
@@ -230,7 +321,7 @@ def week_totals(summary, rows):
     return int(summary["week_total_count"]), sum(row["loaded"] for row in rows), sum(row["departed"] for row in rows)
 
 
-def build_html(summary, rows):
+def build_html(summary, rows, footnote=FOOTNOTE):
     """The email body: the same look as the old procedure email, with the two trailer columns added."""
     shipped_total, loaded_total, departed_total = week_totals(summary, rows)
 
@@ -254,12 +345,12 @@ def build_html(summary, rows):
     lines.append('<tr><td colspan="2" style="%s%s">Week Total</td>' % (CELL_STYLE, total_style)
                  + "".join(cell(value, total_style + right) for value in (shipped_total, loaded_total, departed_total)) + "</tr>")
     lines.append("</table>")
-    lines.append('<p style="font-size:9pt;color:#666666;">%s</p>' % escape(FOOTNOTE))
+    lines.append('<p style="font-size:9pt;color:#666666;">%s</p>' % escape(footnote))
     lines.append("</body></html>")
     return "".join(lines)
 
 
-def build_text(summary, rows):
+def build_text(summary, rows, footnote=FOOTNOTE):
     shipped_total, loaded_total, departed_total = week_totals(summary, rows)
     lines = [
         "%s %s." % (SUMMARY_LEAD, us_date(summary["report_date"])), "",
@@ -271,7 +362,7 @@ def build_text(summary, rows):
     for row in rows:
         lines.append("\t".join((us_date(row["date"]), row["day"], str(row["shipped"]), str(row["loaded"]), str(row["departed"]))))
     lines.append("Week Total\t\t%d\t%d\t%d" % (shipped_total, loaded_total, departed_total))
-    lines += ["", FOOTNOTE]
+    lines += ["", footnote]
     return "\r\n".join(lines) + "\r\n"
 
 
@@ -322,19 +413,30 @@ def failure_notice(cfg, message, expected_date):
                         cfg["failure_recipient"], "daily-parts-shipped-failure")
 
 
-def attempt(cfg, password, mode, report_date_override, now_utc):
+def attempt(cfg, password, mode, report_date_override, now_utc, source="dashboard"):
     expected = expected_report_date(now_utc, cfg["timezone"])
     live = mode == "live"
     recipients = cfg["recipients"] if live else cfg["test_recipient"]
-    result_sets = run_procedure(cfg, password, cfg["recipients"], report_date_override)
-    summary, daily = check_result(result_sets, expected, bool(report_date_override))
-    log("procedure_ok", report_date=summary["report_date"], previous_day=summary["previous_day_count"], week_total=summary["week_total_count"],
-        days=len(daily), subject=summary["subject"], mode=mode)
-    days = [item[0] for item in daily]
-    rows = merge_rows(daily, parse_trailer_counts(run_trailer_counts(cfg, password, days), days))
-    log("trailers_ok", table=[[row["date"], row["shipped"], row["loaded"], row["departed"]] for row in rows], columns="date,shipped,loaded,departed")
-    html_body = build_html(summary, rows)
-    text_body = build_text(summary, rows)
+    if source == "dashboard":
+        report_date = report_date_override or expected
+        if not DATE_PATTERN.match(report_date):
+            raise PermanentError("the report date must look like 2026-11-18")
+        summary, rows = dashboard_week(cfg, report_date)
+        footnote = FOOTNOTE_DASHBOARD
+        log("dashboard_ok", report_date=summary["report_date"], previous_day=summary["previous_day_count"], week_total=summary["week_total_count"],
+            days=len(rows), subject=summary["subject"], mode=mode, columns="date,shipped,loaded,departed,dashboard_saved_at",
+            table=[[row["date"], row["shipped"], row["loaded"], row["departed"], row["saved_at"]] for row in rows])
+    else:
+        result_sets = run_procedure(cfg, password, cfg["recipients"], report_date_override)
+        summary, daily = check_result(result_sets, expected, bool(report_date_override))
+        log("procedure_ok", report_date=summary["report_date"], previous_day=summary["previous_day_count"], week_total=summary["week_total_count"],
+            days=len(daily), subject=summary["subject"], mode=mode)
+        days = [item[0] for item in daily]
+        rows = merge_rows(daily, parse_trailer_counts(run_trailer_counts(cfg, password, days), days))
+        footnote = FOOTNOTE
+        log("trailers_ok", table=[[row["date"], row["shipped"], row["loaded"], row["departed"]] for row in rows], columns="date,shipped,loaded,departed")
+    html_body = build_html(summary, rows, footnote)
+    text_body = build_text(summary, rows, footnote)
     if mode == "dry-run":
         log("dry_run_done", would_send_to=len(cfg["recipients"]), body_chars=len(html_body))
         return summary
@@ -355,20 +457,25 @@ def main(argv=None):
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--dry-run", action="store_true")
     group.add_argument("--test", action="store_true")
-    parser.add_argument("--report-date", default="", help="YYYY-MM-DD; for tests only")
+    parser.add_argument("--report-date", default="", help="YYYY-MM-DD; with --dry-run or --test only")
+    parser.add_argument("--source", choices=("dashboard", "sql"), default="dashboard",
+                        help="dashboard (default): the KPI dashboard's saved days; sql: read BRAK directly")
     args = parser.parse_args(argv)
     mode = "dry-run" if args.dry_run else "test" if args.test else "live"
-    log("start", mode=mode, report_date_override=args.report_date or None)
+    log("start", mode=mode, source=args.source, report_date_override=args.report_date or None)
+    if args.report_date and mode == "live":
+        log("failed", reason="--report-date is only for --dry-run or --test; a live run always reports yesterday")
+        return 2
     try:
-        cfg = load_config(os.environ)
-        password = read_password(os.environ)
+        cfg = load_config(os.environ, need_sql=args.source == "sql")
+        password = read_password(os.environ) if args.source == "sql" else ""
     except PermanentError as error:
         log("failed", reason=str(error))
         return 1
     last_error = "unknown"
     for number in range(len(RETRY_WAITS) + 1):
         try:
-            attempt(cfg, password, mode, args.report_date, datetime.datetime.now(datetime.timezone.utc))
+            attempt(cfg, password, mode, args.report_date, datetime.datetime.now(datetime.timezone.utc), args.source)
             log("done", mode=mode, attempts=number + 1)
             return 0
         except TransientError as error:

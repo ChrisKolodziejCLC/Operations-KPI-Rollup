@@ -115,5 +115,5 @@ Then open `http://127.0.0.1:5193/`. Live GP-AI01 deployment details and rollback
 
 The early-morning shipped-count email (pieces shipped, trailers loaded and trailers departed by day) is a separate job on
 GP-AI01 and is not part of the wallboard service. Its source, units and tests are in
-[jobs/daily-parts-shipped-email](jobs/daily-parts-shipped-email/README.md). Its trailer numbers use the same definitions as
-the wallboard's Loaded and Departed trailers.
+[jobs/daily-parts-shipped-email](jobs/daily-parts-shipped-email/README.md). Its numbers, including the Loaded and Departed
+trailers, are the dashboard's own saved days, so the email always agrees with the dashboard.

@@ -55,6 +55,22 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(job.PermanentError):
             job.load_config(env)
 
+    def test_the_dashboard_address_defaults_to_the_local_one(self):
+        self.assertEqual(job.load_config(self.ENV)["dashboard_url"], "http://127.0.0.1:5193")
+        env = dict(self.ENV, SHIPPED_COUNT_DASHBOARD_URL="http://localhost:5193/")
+        self.assertEqual(job.load_config(env)["dashboard_url"], "http://localhost:5193")
+
+    def test_a_dashboard_address_off_this_machine_is_refused(self):
+        for bad in ("http://192.168.7.137:5193", "https://127.0.0.1:5193", "http://127.0.0.1.evil.example:5193", "http://127.0.0.1"):
+            with self.assertRaises(job.PermanentError):
+                job.load_config(dict(self.ENV, SHIPPED_COUNT_DASHBOARD_URL=bad))
+
+    def test_the_sql_settings_are_only_needed_for_the_sql_source(self):
+        env = {key: value for key, value in self.ENV.items() if "SERVER" not in key and key not in ("SHIPPED_COUNT_DATABASE", "SHIPPED_COUNT_USER")}
+        job.load_config(env, need_sql=False)
+        with self.assertRaises(job.PermanentError):
+            job.load_config(env)
+
 
 class CheckTests(unittest.TestCase):
     def test_good_result(self):
@@ -242,7 +258,7 @@ class AttemptTests(unittest.TestCase):
         job.post_to_mailer = lambda config, payload: sent.append(payload) or {"ProviderMessageId": "m1"}
         try:
             now = datetime.datetime(2026, 11, 19, 9, 0, tzinfo=datetime.timezone.utc)
-            job.attempt(cfg, "pw", mode, "", now)
+            job.attempt(cfg, "pw", mode, "", now, source="sql")
         finally:
             job.run_procedure, job.run_trailer_counts, job.post_to_mailer = originals
         return sent
@@ -268,6 +284,201 @@ class AttemptTests(unittest.TestCase):
     def test_a_bad_trailer_answer_stops_the_send(self):
         with self.assertRaises(job.PermanentError):
             self.run_attempt("live", trailers=trailer_sets()[:1])
+
+
+def saved_day(day, shipped, loaded, departed, saved_at=None):
+    """What the dashboard's /api/snapshot?report_date=<day> returns, cut down to what the job reads."""
+    return {"report_date": day, "generated_at": saved_at or day + "T23:54:42-05:00", "schema_version": 1,
+            "daily": [{"date": day, "parts_shipped": shipped, "trailers_prepared": loaded, "trailers_shipped": departed}]}
+
+
+# What the dashboard shows for the week: the saved Wednesday says 8 loaded (the tile Chris pasted), the saved Monday says 10.
+SAVED = {"2026-11-16": saved_day("2026-11-16", 407, 10, 5), "2026-11-17": saved_day("2026-11-17", 301, 5, 6, "2026-11-19T10:58:00-05:00"),
+         "2026-11-18": saved_day("2026-11-18", 528, 8, 6)}
+
+
+class WeekDaysTests(unittest.TestCase):
+    def test_a_thursday_report_date_gives_monday_to_thursday(self):
+        self.assertEqual(job.week_days("2026-11-19"), ["2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19"])
+
+    def test_a_sunday_report_date_gives_the_whole_week(self):
+        self.assertEqual(job.week_days("2026-11-22"), ["2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19", "2026-11-20", "2026-11-21", "2026-11-22"])
+
+    def test_a_monday_report_date_gives_just_that_monday(self):
+        self.assertEqual(job.week_days("2026-11-16"), ["2026-11-16"])
+
+
+class DashboardDayTests(unittest.TestCase):
+    def test_the_numbers_come_straight_from_the_saved_day(self):
+        row = job.day_from_snapshot(SAVED["2026-11-18"], "2026-11-18")
+        self.assertEqual((row["day"], row["shipped"], row["loaded"], row["departed"]), ("Wednesday", 528, 8, 6))
+        self.assertEqual(row["saved_at"], "2026-11-18T23:54:42-05:00")
+
+    def test_a_day_saved_later_is_fine(self):
+        row = job.day_from_snapshot(SAVED["2026-11-17"], "2026-11-17")
+        self.assertEqual(row["loaded"], 5)
+
+    def test_an_answer_for_another_day_is_refused(self):
+        with self.assertRaises(job.PermanentError):
+            job.day_from_snapshot(SAVED["2026-11-17"], "2026-11-18")
+
+    def test_a_day_saved_before_it_was_over_is_refused(self):
+        early = saved_day("2026-11-18", 300, 4, 3, "2026-11-18T15:10:00-05:00")
+        with self.assertRaises(job.PermanentError) as caught:
+            job.day_from_snapshot(early, "2026-11-18")
+        self.assertIn("before that day was over", str(caught.exception))
+
+    def test_the_cutoff_is_in_the_dashboard_time_zone(self):
+        # 22:30 Eastern is 21:30 Central; both are before 23:00 Eastern.
+        with self.assertRaises(job.PermanentError):
+            job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-18T22:30:00-05:00"), "2026-11-18")
+        job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-18T23:00:00-05:00"), "2026-11-18")
+        # 22:30 Central is 23:30 Eastern: late enough.
+        job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-18T22:30:00-06:00"), "2026-11-18")
+
+    def test_a_save_time_without_a_zone_counts_as_dashboard_time(self):
+        job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-18T23:54:42"), "2026-11-18")
+        with self.assertRaises(job.PermanentError):
+            job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-18T09:00:00"), "2026-11-18")
+
+    def test_an_unreadable_save_time_is_refused(self):
+        with self.assertRaises(job.PermanentError):
+            job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "last night"), "2026-11-18")
+
+    def test_a_missing_row_is_refused(self):
+        snapshot = saved_day("2026-11-18", 1, 1, 1)
+        snapshot["daily"] = []
+        with self.assertRaises(job.PermanentError):
+            job.day_from_snapshot(snapshot, "2026-11-18")
+
+    def test_numbers_that_are_not_whole_numbers_are_refused(self):
+        for bad in (None, -1, 2.5, "7", True):
+            for key in ("parts_shipped", "trailers_prepared", "trailers_shipped"):
+                snapshot = saved_day("2026-11-18", 528, 8, 6)
+                snapshot["daily"][0][key] = bad
+                with self.assertRaises(job.PermanentError):
+                    job.day_from_snapshot(snapshot, "2026-11-18")
+
+
+class DashboardFetchTests(unittest.TestCase):
+    def fetch_with(self, status, body):
+        original = job.http_get
+        job.http_get = lambda base, path, timeout=30: (status, body)
+        try:
+            return job.fetch_dashboard_day("http://127.0.0.1:5193", "2026-11-18")
+        finally:
+            job.http_get = original
+
+    def test_it_asks_for_the_saved_day_and_only_reads(self):
+        seen = []
+        original = job.http_get
+        job.http_get = lambda base, path, timeout=30: seen.append((base, path)) or (200, b'{"report_date": "2026-11-18"}')
+        try:
+            job.fetch_dashboard_day("http://127.0.0.1:5193", "2026-11-18")
+        finally:
+            job.http_get = original
+        self.assertEqual(seen, [("http://127.0.0.1:5193", "/api/snapshot?report_date=2026-11-18")])
+
+    def test_a_missing_day_is_a_permanent_problem(self):
+        with self.assertRaises(job.PermanentError):
+            self.fetch_with(404, b"")
+
+    def test_a_server_error_or_junk_is_worth_retrying(self):
+        with self.assertRaises(job.TransientError):
+            self.fetch_with(500, b"")
+        with self.assertRaises(job.TransientError):
+            self.fetch_with(200, b"<html>")
+
+    def test_an_unreachable_dashboard_is_worth_retrying(self):
+        with self.assertRaises(job.TransientError):
+            job.http_get("http://127.0.0.1:1", "/api/snapshot?report_date=2026-11-18", timeout=2)
+
+
+class DashboardAttemptTests(unittest.TestCase):
+    """The whole run from the dashboard's saved days, with the dashboard and the mailer replaced."""
+
+    def run_attempt(self, mode, saved=None, report_date=""):
+        cfg = job.load_config(ConfigTests.ENV)
+        saved = SAVED if saved is None else saved
+        sent = []
+        originals = (job.fetch_dashboard_day, job.post_to_mailer, job.run_procedure)
+
+        def fetch(base, day):
+            if day not in saved:
+                raise job.PermanentError("the KPI dashboard has no saved day for " + day)
+            return saved[day]
+        job.fetch_dashboard_day = fetch
+        job.post_to_mailer = lambda config, payload: sent.append(payload) or {"ProviderMessageId": "m1"}
+        job.run_procedure = lambda *args: self.fail("the dashboard source must not touch BRAK")
+        try:
+            now = datetime.datetime(2026, 11, 19, 9, 0, tzinfo=datetime.timezone.utc)  # 03:00 in Chicago, so yesterday is 11-18
+            job.attempt(cfg, "", mode, report_date, now)
+        finally:
+            job.fetch_dashboard_day, job.post_to_mailer, job.run_procedure = originals
+        return sent
+
+    def test_live_run_sends_the_dashboards_numbers_to_everyone(self):
+        sent = self.run_attempt("live")
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(len(sent[0]["To"]), 3)
+        self.assertEqual(sent[0]["Subject"], "Daily Parts Shipped - GP")
+        self.assertEqual(sent[0]["IdempotencyKey"], "daily-parts-shipped-gp:2026-11-18")
+        cells = re.findall(r"<td[^>]*>([^<]*)</td>", sent[0]["HtmlBody"])
+        self.assertEqual(cells[:5], ["11/16/2026", "Monday", "407", "10", "5"])
+        self.assertEqual(cells[10:15], ["11/18/2026", "Wednesday", "528", "8", "6"])
+        self.assertEqual(cells[15:], ["Week Total", "1236", "23", "17"])
+        self.assertIn("Previous day shipped count:</strong> 528", sent[0]["HtmlBody"])
+        self.assertIn("Week-to-date grand total:</strong> 1236", sent[0]["HtmlBody"])
+        self.assertIn("saved numbers", sent[0]["HtmlBody"])
+        self.assertIn("Week Total\t\t1236\t23\t17", sent[0]["PlainTextBody"])
+
+    def test_the_email_shows_what_the_dashboard_shows_not_a_live_recount(self):
+        # Wednesday's saved Loaded is 8 even though a live count today says 9: the email follows the dashboard.
+        sent = self.run_attempt("live")
+        self.assertIn(">8</td>", sent[0]["HtmlBody"])
+        self.assertNotIn(">9</td>", sent[0]["HtmlBody"])
+
+    def test_test_run_goes_to_the_test_recipient_only_and_is_marked(self):
+        sent = self.run_attempt("test")
+        self.assertEqual(sent[0]["To"], ["chriskolodziej@creativeliquidcoatings.com"])
+        self.assertTrue(sent[0]["Subject"].endswith("(TEST from the server)"))
+        self.assertIn("Test from the server", sent[0]["HtmlBody"])
+
+    def test_dry_run_sends_nothing(self):
+        self.assertEqual(self.run_attempt("dry-run"), [])
+
+    def test_a_missing_saved_day_stops_the_send(self):
+        saved = dict(SAVED)
+        del saved["2026-11-17"]
+        with self.assertRaises(job.PermanentError):
+            self.run_attempt("live", saved=saved)
+
+    def test_a_partial_day_stops_the_send(self):
+        saved = dict(SAVED)
+        saved["2026-11-18"] = saved_day("2026-11-18", 200, 3, 2, "2026-11-18T14:00:00-05:00")
+        with self.assertRaises(job.PermanentError):
+            self.run_attempt("live", saved=saved)
+
+    def test_a_report_date_override_is_used_for_checks(self):
+        saved = {"2026-11-16": saved_day("2026-11-16", 407, 10, 5), "2026-11-17": SAVED["2026-11-17"]}
+        sent = self.run_attempt("test", saved=saved, report_date="2026-11-17")
+        self.assertIn("FlowForge shipped count summary for <strong>11/17/2026</strong>.", sent[0]["HtmlBody"])
+
+
+class MainTests(unittest.TestCase):
+    def test_a_live_run_refuses_a_report_date(self):
+        self.assertEqual(job.main(["--report-date", "2026-11-10"]), 2)
+
+    def test_the_default_source_is_the_dashboard(self):
+        parser_args = []
+        original = job.load_config
+        job.load_config = lambda environ, need_sql=True: parser_args.append(need_sql) or (_ for _ in ()).throw(job.PermanentError("stop here"))
+        try:
+            self.assertEqual(job.main(["--dry-run"]), 1)
+            self.assertEqual(job.main(["--dry-run", "--source", "sql"]), 1)
+        finally:
+            job.load_config = original
+        self.assertEqual(parser_args, [False, True])
 
 
 if __name__ == "__main__":

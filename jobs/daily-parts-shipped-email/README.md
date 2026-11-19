@@ -2,7 +2,7 @@
 
 Sends the early-morning "Daily Parts Shipped - GP" email (pieces shipped, trailers loaded and trailers departed, by day
 for the week) from GP-AI01. It replaced a Windows service on Chris Kolodziej's PC (CLC07-OPS002), which needed that PC to be
-on and connected.
+on and connected. The numbers are the Operations KPI dashboard's own saved numbers, so the email always agrees with the dashboard.
 
 This job is separate from the wallboard service. It has its own release root, system user, systemd units and
 encrypted credential, and the wallboard keeps its "outbound mail: none" boundary. This is the only code in this
@@ -10,51 +10,70 @@ repository that sends mail.
 
 ## What it does
 
-1. Runs the BRAK procedure `dbo.usp_QPTS_SendWeeklyShippedCountEmail` (database `Production Tracking (Version 1.0.0)SQL`).
-   The procedure does not send anything. It returns the daily shipped counts for the week (Monday through yesterday)
-   and a summary row. Its shipped count is the number of `dbo.[EDI Data Table]` rows with a ship date. The job uses the
-   procedure's numbers and subject only. The procedure's own email text is not used any more.
-2. Reads the trailers loaded and the trailers departed for the same days with two read-only SELECTs (see Trailer counts).
-3. Checks what came back: summary row present, report date equals yesterday in Central time (so a wrong clock on BRAK
-   cannot send the wrong day), numbers are numbers, the daily rows add up to the week total, and the trailer counts fall
-   on the days shown.
-4. Builds the email itself (HTML and plain text, same look as the old procedure email plus the two trailer columns and a
-   short footnote). Wording and layout are changed in `build_html` and `build_text`, not in BRAK.
+1. Works out the report date: yesterday in Central time. The email week runs from the Monday of that week through the report date.
+2. For each of those days it reads the dashboard's saved day: `GET /api/snapshot?report_date=<day>` on the local dashboard
+   (`http://127.0.0.1:5193`). This is a plain read; it never makes the dashboard refresh or save anything. From that day's row
+   it takes three numbers: `parts_shipped`, `trailers_prepared` (shown as Trailers Loaded) and `trailers_shipped` (shown as
+   Trailers Departed).
+3. Checks each day: the dashboard answered for that day, the day was saved at or after 11 PM dashboard time (Eastern) on that
+   day or later (a whole day, not a mid-day save), and the three numbers are whole numbers. A day with no saved copy, or one saved
+   before the day was over, stops the send.
+4. Builds the email itself (HTML and plain text, the same look as the old procedure email plus the two trailer columns and a
+   short footnote). The previous-day number is the report date's row and the week total is the sum of the days shown.
+   Wording and layout are changed in `build_html` and `build_text`.
 5. Sends the email through the FlowForge Alerts mailer on GP-AI01 (`127.0.0.1:5096`, sender
    `flowforge-alerts@creativeliquidcoatings.com`). The mailer only accepts the configured subject prefixes and
    recipients in `creativeliquidcoatings.com`.
-6. If the run cannot finish, it retries after 60 and 120 seconds. After that it sends a short failure notice to the
-   configured failure recipient only, never to the list. The email is all or nothing: it does not go out with a column
-   missing.
+6. If the run cannot finish, it retries after 60 and 120 seconds when the problem may pass (the dashboard or the mailer not
+   reachable, an HTTP 5xx). After that, or straight away for a problem that will not pass (a missing or partial saved day), it sends a
+   short failure notice to the configured failure recipient only, never to the list. The email is all or nothing.
+
+### How the dashboard saves days
+
+The dashboard refreshes the current day every few minutes and keeps each refresh as an immutable saved file; the latest saved
+copy of a day is what it shows for that day. Its day follows its own clock (`KPI_TIMEZONE`, Eastern), so its last automatic save of a
+day is about 23:50 Eastern, an hour before BRAK's Central date rolls over. If someone refreshes a past day in the dashboard later,
+that day is saved again and the dashboard, and the next email, show the refreshed numbers. Changing how the dashboard saves days
+or what a day row contains changes this email, so check this job's tests when you do.
 
 ## Trailer counts
 
-The two trailer columns use the same definitions as the Operations KPI wallboard's trailer tile (its Loaded and Departed):
+The two trailer columns are the dashboard's Loaded and Departed trailers:
 
 - **Trailers Loaded**: the number of distinct (ship date, ship trailer) pairs on `dbo.[EDI Data Table]` for that day, with
-  service parts (`Model = Service`) and blank trailers left out. Wallboard field `trailers_prepared`; wallboard SQL in
-  `sql/2026-11-12-add-bv-quality-trailer-breakdowns.sql` (`TrailerContents`, `TrailerDaily`).
+  service parts (`Model = Service`) and blank trailers left out. Dashboard field `trailers_prepared`; SQL in
+  `sql/2026-11-12-add-bv-quality-trailer-breakdowns.sql` (`TrailerContents`, `TrailerDaily`). A trailer name typed two ways
+  counts as two trailers.
 - **Trailers Departed**: the number of `dbo.DriverLog` rows whose `TimeOut` falls on that day and whose `TrailerID` is not
-  blank. Wallboard field `trailers_shipped`; wallboard SQL in `sql/2026-11-13-driverlog-trailer-inspection-details.sql`
+  blank. Dashboard field `trailers_shipped`; SQL in `sql/2026-11-13-driverlog-trailer-inspection-details.sql`
   (`TrailerDepartureDaily`). The two counts are separate; they are not matched trailer by trailer.
 
-Both are in `TRAILER_SQL` in `shipped_count_email.py`: two SELECTs, `READ UNCOMMITTED`, no writes (a test checks that).
-The email week starts on Monday and the wallboard week starts on Sunday, so the job asks for its own list of days.
-If the wallboard's definitions change, change `TRAILER_SQL` and its tests to match.
+## Manual fallback: `--source sql`
+
+`--source sql` skips the dashboard and reads BRAK directly, the way the first version of this job did: it runs the procedure
+`dbo.usp_QPTS_SendWeeklyShippedCountEmail` for the shipped counts and two read-only SELECTs (`TRAILER_SQL`, `READ UNCOMMITTED`, no
+writes; a test checks that) for the trailer counts, as `GPAI01-RO`. Use it by hand if the dashboard is down. The numbers can differ
+slightly from the dashboard's saved days because they are counted live. If the dashboard's trailer definitions change, change
+`TRAILER_SQL` and its tests to match. The scheduled run does not use it.
 
 ## Run modes
 
     python3 shipped_count_email.py             live run, to the configured recipients
-    python3 shipped_count_email.py --dry-run   run the procedure and the checks, send nothing
+    python3 shipped_count_email.py --dry-run   read and check the numbers, send nothing
     python3 shipped_count_email.py --test      one email to the test recipient only, marked as a test
     python3 shipped_count_email.py --report-date 2026-11-18   with --dry-run or --test only, for checking another day
+    python3 shipped_count_email.py --source sql   with any of the above: read BRAK directly instead of the dashboard
+
+A live run refuses `--report-date` (it always reports yesterday).
 
 ## Configuration and secrets
 
 - Settings: `/etc/clc/shipped-count-email/job.env` on GP-AI01 (see `deploy/job.env.example`). The real recipient list
-  lives only there, not in Git.
-- SQL password: systemd credential `shipped-count-sql` (encrypted at `/etc/credstore.encrypted/clc-shipped-count-email/`).
-  It is read-only access as `GPAI01-RO`. Never put it in Git, a unit file, a change record or chat.
+  lives only there, not in Git. `SHIPPED_COUNT_DASHBOARD_URL` is optional (default `http://127.0.0.1:5193`, loopback only). The SQL
+  settings are only needed for `--source sql`.
+- SQL password (only for `--source sql`): systemd credential `shipped-count-sql` (encrypted at
+  `/etc/credstore.encrypted/clc-shipped-count-email/`). It is read-only access as `GPAI01-RO`. Never put it in Git, a unit file, a
+  change record or chat.
 
 ## Install layout on GP-AI01
 
@@ -68,7 +87,7 @@ If the wallboard's definitions change, change `TRAILER_SQL` and its tests to mat
 
     python3 -m unittest tests.test_daily_parts_shipped_email
 
-The tests need no database and no network.
+The tests need no database and no network (one test confirms that an unreachable address is reported as a retryable problem).
 
 ## Change records
 
