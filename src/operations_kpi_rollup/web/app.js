@@ -462,6 +462,7 @@ function renderCards(snapshot) {
     {label:'FUKA racks', value:current.fuka_racks_shipped},
     {label:'Fairing racks', value:current.fairing_racks_shipped}
   ], palette.amber));
+  container.append(processTimeCard(snapshot));
   markSelectableCards(container);
 }
 
@@ -1559,6 +1560,275 @@ function renderQualityCharts(snapshot, metric, options) {
   appendCommonChartNotes(content, weeklySection, weekly);
 }
 
+// ---------- process time (aggregate-only; the section is absent until the QPTS procedure is deployed) ----------
+const PROCESS_STAGE_COLORS = [CHART_SERIES_COLORS[0], CHART_SERIES_COLORS[4], CHART_SERIES_COLORS[1], CHART_SERIES_COLORS[2], CHART_SERIES_COLORS[3]];
+const PROCESS_POPULATION_LABELS = {standard: 'First-pass parts (repaints excluded)', repaint: 'Repaints only'};
+const PROCESS_METRICS = [
+  {key: 'average_minutes', label: 'Average'},
+  {key: 'median_minutes', label: 'Median'},
+  {key: 'p90_minutes', label: '90th percentile'}
+];
+let processMetricKey = 'average_minutes';
+
+function processMinutes(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
+  const minutes = Number(value);
+  return minutes >= 180 ? (minutes / 60).toFixed(1) + ' h' : Math.round(minutes) + ' min';
+}
+
+function processDayRows(section, population) {
+  const byDate = new Map();
+  section.daily.filter(row => row.population === population && row.date <= section.report_date).forEach(row => {
+    if (!byDate.has(row.date)) byDate.set(row.date, {date: row.date, stages: {}});
+    byDate.get(row.date).stages[row.stage] = row;
+  });
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function processWindowTotals(rows, stageKey) {
+  let weighted = 0, intervals = 0, negative = 0, long = 0;
+  rows.forEach(day => {
+    const row = day.stages[stageKey];
+    if (!row) return;
+    negative += Number(row.excluded_negative || 0);
+    long += Number(row.over_12_hours || 0);
+    if (row.average_minutes === null || row.intervals <= 0) return;
+    weighted += Number(row.average_minutes) * Number(row.intervals);
+    intervals += Number(row.intervals);
+  });
+  return {average: intervals ? weighted / intervals : null, intervals, negative, long};
+}
+
+function processTypicalMedian(rows, stageKey) {
+  const values = rows.map(day => day.stages[stageKey]).filter(row => row && row.median_minutes !== null && row.intervals > 0).map(row => Number(row.median_minutes)).sort((a, b) => a - b);
+  if (!values.length) return null;
+  const middle = Math.floor(values.length / 2);
+  return values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
+}
+
+// Multi-day waits would flatten every normal day, so the axis stops near the 92nd-percentile value
+// and clipped points are labelled with their true value.
+function processAxisLimit(values, standard, floor) {
+  const ordered = values.filter(value => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number).sort((a, b) => a - b);
+  const natural = Math.max(floor, ...ordered, standard || 0) * 1.1;
+  const reference = ordered.length ? ordered[Math.min(ordered.length - 1, Math.floor(ordered.length * 0.92))] : floor;
+  const cap = Math.max(floor * 2, reference * 1.5, (standard || 0) * 1.4);
+  return {maximum: Math.min(natural, cap), clipped: natural > cap};
+}
+
+function processTitle(node, message) {
+  const title = svgNode('title'); title.append(text(message)); node.append(title); return node;
+}
+
+function processDetail(row) {
+  if (!row) return 'no data';
+  return processMinutes(row.average_minutes) + ' average, ' + processMinutes(row.median_minutes) + ' median, ' + processMinutes(row.p90_minutes) + ' 90th percentile, ' + integer(row.intervals) + ' intervals';
+}
+
+function processAxis(svg, maximum, left, right, width, y, steps = 5) {
+  for (let index = 0; index <= steps; index += 1) {
+    const value = maximum * index / steps;
+    const yy = y(value);
+    svg.append(svgNode('line', {x1: left, x2: width - right, y1: yy, y2: yy, stroke: palette.grid, 'stroke-width': 1}));
+    const label = svgNode('text', {x: left - 8, y: yy + 4, 'text-anchor': 'end', fill: palette.muted, 'font-size': 10});
+    label.append(text(maximum >= 240 ? (value / 60).toFixed(value / 60 < 10 ? 1 : 0) + ' h' : Math.round(value) + ' min'));
+    svg.append(label);
+  }
+}
+
+function processDateLabels(svg, rows, x, height, bottomOffset = 14) {
+  const step = Math.max(1, Math.ceil(rows.length / 14));
+  rows.forEach((row, index) => {
+    if (index % step !== 0 && index !== rows.length - 1) return;
+    const label = svgNode('text', {x: x(index), y: height - bottomOffset, 'text-anchor': 'middle', fill: palette.muted, 'font-size': 10});
+    label.append(text(dateLabel(row.date))); svg.append(label);
+  });
+}
+
+function processEmpty(container, message) {
+  const empty = document.createElement('div'); empty.className = 'empty-state'; empty.append(text(message));
+  container.replaceChildren(empty);
+}
+
+function renderProcessStack(container, rows, population, section) {
+  const stackStages = section.stages.filter(stage => stage.order <= 5);
+  const totalStage = section.stages.find(stage => stage.order === 6);
+  const standard = (section.standards[population] || {})[totalStage.key];
+  const metric = processMetricKey;
+  const metricLabel = PROCESS_METRICS.find(item => item.key === metric).label;
+  const totalLabel = 'Total ' + metricLabel.toLowerCase();
+  if (rows.length < 2) { processEmpty(container, 'Not enough production-day data to chart.'); return; }
+  const width = 980, height = 340, left = 62, right = 18, top = 20, bottom = 56;
+  const stackTotals = rows.map(row => stackStages.reduce((sum, stage) => sum + Number((row.stages[stage.key] || {})[metric] || 0), 0));
+  const totalLine = rows.map(row => (row.stages[totalStage.key] || {})[metric]);
+  const limit = processAxisLimit([...stackTotals, ...totalLine], standard, 60);
+  const maximum = limit.maximum;
+  const x = index => left + (index + 0.5) * (width - left - right) / rows.length;
+  const y = value => top + (maximum - Math.min(value, maximum)) * (height - top - bottom) / maximum;
+  const barWidth = Math.max(4, Math.min(24, (width - left - right) / rows.length * 0.68));
+  const svg = svgNode('svg', {viewBox: '0 0 ' + width + ' ' + height, role: 'img', 'aria-label': PROCESS_POPULATION_LABELS[population] + ' daily average minutes by stage'});
+  processAxis(svg, maximum, left, right, width, y);
+  rows.forEach((row, index) => {
+    let cumulative = 0;
+    stackStages.forEach((stage, stageIndex) => {
+      const info = row.stages[stage.key];
+      const amount = Number((info || {})[metric] || 0);
+      if (amount <= 0) return;
+      if (cumulative >= maximum) { cumulative += amount; return; }
+      const rect = svgNode('rect', {x: x(index) - barWidth / 2, y: y(cumulative + amount), width: barWidth, height: Math.max(0.5, y(cumulative) - y(cumulative + amount)), fill: PROCESS_STAGE_COLORS[stageIndex], stroke: '#fff', 'stroke-width': 0.6, 'data-series': stage.short});
+      processTitle(rect, dateLabel(row.date) + ' · ' + stage.label + ': ' + processDetail(info));
+      svg.append(rect);
+      cumulative += amount;
+    });
+    if (stackTotals[index] > maximum) {
+      const flag = svgNode('text', {x: x(index), y: top - 5, 'text-anchor': 'middle', fill: palette.red, 'font-size': 9, 'font-weight': 700});
+      flag.append(text('▲ ' + processMinutes(stackTotals[index]))); svg.append(flag);
+    }
+  });
+  if (standard) {
+    svg.append(svgNode('line', {x1: left, x2: width - right, y1: y(standard), y2: y(standard), stroke: palette.red, 'stroke-width': 2.2, 'stroke-dasharray': '7 5', 'data-series': 'Standard total'}));
+    const label = svgNode('text', {x: left + 6, y: y(standard) - 6, 'text-anchor': 'start', fill: palette.red, 'font-size': 11, 'font-weight': 700, 'data-series': 'Standard total'});
+    label.append(text('Standard ' + processMinutes(standard))); svg.append(label);
+  }
+  const points = [];
+  rows.forEach((row, index) => { if (totalLine[index] !== null && totalLine[index] !== undefined) points.push([x(index), y(Number(totalLine[index])), index]); });
+  if (points.length > 1) svg.append(svgNode('polyline', {points: points.map(point => point[0] + ',' + point[1]).join(' '), fill: 'none', stroke: palette.navy, 'stroke-width': 2.6, 'stroke-linejoin': 'round', 'data-series': totalLabel}));
+  points.forEach(point => {
+    const mark = chartMarker('circle', point[0], point[1], 3.4, palette.navy);
+    mark.setAttribute('data-series', totalLabel);
+    processTitle(mark, dateLabel(rows[point[2]].date) + ' · ' + totalStage.label + ': ' + processDetail(rows[point[2]].stages[totalStage.key]));
+    svg.append(mark);
+  });
+  processDateLabels(svg, rows, x, height);
+  const legend = stackStages.map((stage, index) => ({label: stage.short, color: PROCESS_STAGE_COLORS[index], line: false}));
+  legend.push({label: totalLabel, color: palette.navy, line: true, width: 2.6, marker: 'circle'});
+  if (standard) legend.push({label: 'Standard total', color: palette.red, line: true, dash: '7 5', width: 2.2});
+  container.replaceChildren(svg, chartLegend(legend));
+  bindSeriesHighlight(container);
+}
+
+function renderProcessStageTrend(container, rows, stage, color, marker, population, section) {
+  const standard = (section.standards[population] || {})[stage.key];
+  const usable = rows.filter(row => row.stages[stage.key] && row.stages[stage.key].average_minutes !== null);
+  if (usable.length < 2) { processEmpty(container, 'Not enough data to chart.'); return; }
+  const width = 480, height = 210, left = 54, right = 12, top = 16, bottom = 40;
+  const values = usable.flatMap(row => [Number(row.stages[stage.key].average_minutes), row.stages[stage.key].median_minutes === null ? null : Number(row.stages[stage.key].median_minutes)]);
+  const limit = processAxisLimit(values, standard, 10);
+  const maximum = limit.maximum;
+  const x = index => left + index * (width - left - right) / Math.max(usable.length - 1, 1);
+  const y = value => top + (maximum - Math.min(value, maximum)) * (height - top - bottom) / maximum;
+  const svg = svgNode('svg', {viewBox: '0 0 ' + width + ' ' + height, role: 'img', 'aria-label': stage.label + ' daily average minutes'});
+  processAxis(svg, maximum, left, right, width, y, 4);
+  if (standard) svg.append(svgNode('line', {x1: left, x2: width - right, y1: y(standard), y2: y(standard), stroke: palette.red, 'stroke-width': 2, 'stroke-dasharray': '7 5', 'data-series': 'Standard'}));
+  const medianPoints = usable.map((row, index) => row.stages[stage.key].median_minutes === null ? null : x(index) + ',' + y(Number(row.stages[stage.key].median_minutes))).filter(Boolean);
+  if (medianPoints.length > 1) svg.append(svgNode('polyline', {points: medianPoints.join(' '), fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-dasharray': '3 4', opacity: 0.8, 'stroke-linejoin': 'round', 'data-series': 'Median'}));
+  svg.append(svgNode('polyline', {points: usable.map((row, index) => x(index) + ',' + y(Number(row.stages[stage.key].average_minutes))).join(' '), fill: 'none', stroke: color, 'stroke-width': 2.6, 'stroke-linejoin': 'round', 'data-series': 'Average'}));
+  usable.forEach((row, index) => {
+    const mark = chartMarker(marker, x(index), y(Number(row.stages[stage.key].average_minutes)), Number(row.stages[stage.key].average_minutes) > maximum ? 4.4 : 3.2, Number(row.stages[stage.key].average_minutes) > maximum ? palette.red : color);
+    mark.setAttribute('data-series', 'Average');
+    processTitle(mark, dateLabel(row.date) + ' · ' + stage.label + ': ' + processDetail(row.stages[stage.key]));
+    svg.append(mark);
+  });
+  processDateLabels(svg, usable, x, height, 12);
+  const legend = [{label: 'Average', color: color, line: true, width: 2.6, marker: marker}, {label: 'Median', color: color, line: true, dash: '3 4', width: 2}];
+  if (standard) legend.push({label: 'Standard', color: palette.red, line: true, dash: '7 5', width: 2});
+  container.replaceChildren(svg, chartLegend(legend));
+  bindSeriesHighlight(container);
+}
+
+function processFigure(title, subtitle) {
+  const figure = document.createElement('figure'); figure.className = 'loaded-chart-card';
+  const caption = document.createElement('figcaption'); caption.append(text(title));
+  if (subtitle) { const small = document.createElement('small'); small.append(text(subtitle)); caption.append(small); }
+  const chart = document.createElement('div'); chart.className = 'chart';
+  figure.append(caption, chart);
+  return {figure, chart};
+}
+
+function renderProcessSummary(table, rows, population, section) {
+  const standards = section.standards[population] || {};
+  const sumOfStages = section.stages.filter(stage => stage.order <= 5).reduce((sum, stage) => sum + (processWindowTotals(rows, stage.key).average || 0), 0);
+  const body = section.stages.map(stage => {
+    const totals = processWindowTotals(rows, stage.key);
+    const standard = standards[stage.key];
+    const share = stage.order <= 5 && sumOfStages > 0 && totals.average !== null ? percent(totals.average / sumOfStages) : '—';
+    const gap = standard && totals.average !== null ? (totals.average - standard >= 0 ? '+' : '−') + processMinutes(Math.abs(totals.average - standard)) : '—';
+    return [stage.label, processMinutes(totals.average), processMinutes(processTypicalMedian(rows, stage.key)), share, integer(totals.intervals), standard ? processMinutes(standard) : 'not set', gap, integer(totals.long)];
+  });
+  renderTable(table, ['Stage', 'Average', 'Typical daily median', 'Share of stages', 'Intervals', 'Standard', 'Average vs standard', 'Over 12 h'].map((label, index) => ({label, value: row => row[index]})), body);
+}
+
+function renderProcessTimeCharts(snapshot) {
+  const content = $('#metric-chart-content');
+  const section = snapshot.process_time;
+  if (!section || section.available === false) {
+    const placeholder = document.createElement('div'); placeholder.className = 'chart-placeholder';
+    placeholder.append(text(section ? section.reason : 'Process-time charts are not enabled yet; they need the QPTS process-time procedure.'));
+    content.replaceChildren(placeholder); return;
+  }
+  const blocks = [];
+  ['standard', 'repaint'].forEach(population => {
+    const rows = processDayRows(section, population);
+    const block = document.createElement('section'); block.className = 'process-block';
+    const heading = document.createElement('h3'); heading.append(text(PROCESS_POPULATION_LABELS[population]));
+    block.append(heading);
+    const metricLabel = PROCESS_METRICS.find(item => item.key === processMetricKey).label;
+    const stack = processFigure('Daily ' + metricLabel.toLowerCase() + ' minutes between scans', population === 'standard' ? 'Last 13 weeks, production days with scans' : 'Repaint loops only');
+    renderProcessStack(stack.chart, rows, population, section);
+    block.append(stack.figure);
+    const grid = document.createElement('div'); grid.className = 'process-trend-grid';
+    section.stages.filter(stage => stage.order <= 5).forEach((stage, index) => {
+      const figure = processFigure(stage.label, 'Average, median' + ((section.standards[population] || {})[stage.key] ? ', standard' : '') + '; red points are above the axis');
+      renderProcessStageTrend(figure.chart, rows, stage, PROCESS_STAGE_COLORS[index], CHART_SERIES_MARKERS[index], population, section);
+      grid.append(figure.figure);
+    });
+    block.append(grid);
+    const table = document.createElement('table'); table.className = 'process-summary';
+    renderProcessSummary(table, rows, population, section);
+    block.append(table);
+    const total = processWindowTotals(rows, 'total_load_to_final_approved');
+    let negative = 0, long = 0;
+    section.stages.forEach(stage => { const totals = processWindowTotals(rows, stage.key); negative += totals.negative; long += totals.long; });
+    const note = document.createElement('p'); note.className = 'process-note'; note.setAttribute('role', 'note');
+    note.append(text('Each interval is dated by the scan that ends it. Overnight and weekend waits are included, so days after a break run high; the hover text also shows the median and 90th percentile. The axis stops near the 92nd-percentile day so a few multi-day waits do not flatten the rest; clipped days are labelled with their true value. '
+      + integer(negative) + ' intervals ran backwards (scans out of order) and are left out; ' + integer(long) + ' intervals exceeded 12 hours and are counted. '
+      + 'Total average over the window: ' + processMinutes(total.average) + ' across ' + integer(total.intervals) + ' parts.'));
+    block.append(note);
+    blocks.push(block);
+  });
+  const toggle = document.createElement('div'); toggle.className = 'process-toggle'; toggle.setAttribute('role', 'group'); toggle.setAttribute('aria-label', 'Statistic shown in the daily columns');
+  const toggleLabel = document.createElement('span'); toggleLabel.append(text('Daily columns show'));
+  toggle.append(toggleLabel);
+  PROCESS_METRICS.forEach(item => {
+    const button = document.createElement('button'); button.type = 'button'; button.append(text(item.label));
+    button.setAttribute('aria-pressed', String(item.key === processMetricKey));
+    button.addEventListener('click', () => { processMetricKey = item.key; renderProcessTimeCharts(snapshot); });
+    toggle.append(button);
+  });
+  content.replaceChildren(toggle, ...blocks);
+}
+
+function processTimeCard(snapshot) {
+  const section = snapshot.process_time;
+  if (!section || section.available === false) {
+    return metricCard('Process time', '—', [section ? 'Process-time data unavailable' : 'Awaiting the QPTS process-time procedure'], palette.purple);
+  }
+  const latest = population => {
+    const rows = processDayRows(section, population).filter(row => (row.stages.total_load_to_final_approved || {}).average_minutes !== null && row.stages.total_load_to_final_approved !== undefined);
+    return rows.length ? rows[rows.length - 1] : null;
+  };
+  const standard = latest('standard'), repaint = latest('repaint');
+  return metricCard(
+    'Process time',
+    standard ? processMinutes(standard.stages.total_load_to_final_approved.average_minutes) : '—',
+    [
+      standard ? 'First-pass load to final · ' + dateLabel(standard.date) : 'No first-pass data yet',
+      'Repaints: ' + (repaint ? processMinutes(repaint.stages.total_load_to_final_approved.average_minutes) + ' · ' + dateLabel(repaint.date) : '—')
+    ],
+    palette.purple
+  );
+}
+
 function renderMetricCharts(snapshot) {
   $('#metric-chart-title').textContent = selectedChartLabel;
   const summary = $('#metric-chart-summary');
@@ -1591,6 +1861,10 @@ function renderMetricCharts(snapshot) {
       color:palette.green,
       lowerIsBetter:false
     }); return;
+  }
+  if (selectedChartKey === 'process-time') {
+    summary.textContent = 'Daily average minutes between the cart-load, booth, oven-in, oven-out, EOL-approval, and final-inspection scans, with repaints reported separately and excluded from the first-pass averages.';
+    renderProcessTimeCharts(snapshot); return;
   }
   summary.textContent = 'This tile is selectable; its chart contract is not enabled yet.';
   const placeholder = document.createElement('div'); placeholder.className = 'chart-placeholder';

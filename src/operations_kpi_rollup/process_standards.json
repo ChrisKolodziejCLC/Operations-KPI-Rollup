@@ -1,0 +1,19 @@
+{
+  "_note": "Standard minutes per stage. null means no standard has been supplied yet; the wallboard then draws no standard line for that stage.",
+  "standard": {
+    "load_to_booth": null,
+    "booth_to_oven_in": null,
+    "oven_in_to_oven_out": null,
+    "oven_out_to_eol_approved": null,
+    "eol_approved_to_final_approved": null,
+    "total_load_to_final_approved": null
+  },
+  "repaint": {
+    "load_to_booth": null,
+    "booth_to_oven_in": null,
+    "oven_in_to_oven_out": null,
+    "oven_out_to_eol_approved": null,
+    "eol_approved_to_final_approved": null,
+    "total_load_to_final_approved": null
+  }
+}

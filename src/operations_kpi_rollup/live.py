@@ -10,7 +10,8 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional
 from zoneinfo import ZoneInfo
 
 from .context import validate_snapshot
-from .odbc import execute_operations_rollup
+from .odbc import execute_operations_rollup, execute_process_times
+from .process_times import process_time_section, unavailable_section
 
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
@@ -1028,5 +1029,20 @@ def snapshot_from_rollup(
     return snapshot
 
 
+def _process_time_for_snapshot(report_date: date) -> Optional[Dict[str, Any]]:
+    """Process times are optional: unset hash means the feature is not deployed; a failure never blocks the wallboard."""
+    if not os.environ.get("KPI_PROCESS_TIME_PROCEDURE_HASH", "").strip():
+        return None
+    try:
+        return process_time_section(execute_process_times(report_date), report_date)
+    except Exception as error:  # noqa: BLE001 - the rest of the wallboard must keep working
+        return unavailable_section("The process-time procedure could not be read (" + error.__class__.__name__ + ").")
+
+
 def refresh_live_snapshot(report_date: date) -> Dict[str, Any]:
-    return snapshot_from_rollup(report_date, execute_operations_rollup(report_date))
+    snapshot = snapshot_from_rollup(report_date, execute_operations_rollup(report_date))
+    section = _process_time_for_snapshot(report_date)
+    if section is not None:
+        snapshot["process_time"] = section
+        validate_snapshot(snapshot)
+    return snapshot

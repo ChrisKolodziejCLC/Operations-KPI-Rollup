@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List
 
 from .metrics import enrich_metric_row, format_decimal, format_int, format_percent, safe_ratio
+from .process_times import validate_process_time_section
 
 
 REQUIRED_TOP_LEVEL = {
@@ -1142,6 +1143,8 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         report_daily = next(row for row in snapshot["daily"] if row.get("date") == snapshot["report_date"])
         if sum(int(row.get("pieces", 0)) for row in report_shipping) != int(report_daily.get("parts_shipped", 0)):
             raise ValueError("report-date shipping detail does not equal parts_shipped")
+    if "process_time" in snapshot:
+        validate_process_time_section(snapshot["process_time"])
 
 
 def _sort_by(rows: Iterable[Dict[str, Any]], key: str) -> List[Dict[str, Any]]:
