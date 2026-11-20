@@ -322,13 +322,13 @@ def test_drilldown_ui_shows_ids_plain_part_ids_and_trend_charts():
     assert "format: integer}" not in script.split("label: 'Part ID'")[1].split("\n")[0]
     for name in ("renderTrends", "renderPeriodStack", "renderPeriodLines", "periodKeys"):
         assert "function " + name + "(" in script
-    assert "renderTrends(snapshot);" in script
+    assert "renderTrends(view);" in script and "const view = namesOn ? namedSnapshot(snapshot) : snapshot;" in script
     assert "Last 13 weeks" in script and "'Monthly'" in script
     for container in ("painter-trends", "repaint-trends", "finesse-trends"):
         assert 'id="' + container + '"' in page
     assert "painter-history" not in page and "renderPainterHistory" not in script
     assert "row.painter)" not in script and "row.worker)" not in script
-    assert "Painter ID" in script and "Worker ID" in script
+    assert "personLabel('Painter')" in script and "personLabel('Worker')" in script and "kind + ' ID'" in script
 
 def _chart_kit(script):
     start = script.index("// <chart-kit>")

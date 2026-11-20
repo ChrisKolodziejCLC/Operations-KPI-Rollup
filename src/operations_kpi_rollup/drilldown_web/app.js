@@ -83,6 +83,100 @@ const palette = {
 const seriesColors = CHART_SERIES_COLORS;
 const EARLIEST_REPORT_DATE = '2026-09-08';
 let activeSnapshot = null;
+
+// Names view: shown only to a signed-in, allowlisted Windows session (the server decides). IDs stay the default
+// and names are looked up on demand for the IDs on screen; they are never stored in the snapshot or the browser.
+let namesAllowed = false;
+let namesOn = false;
+let rosterNames = {};
+let rosterAsked = {};
+const personLabel = (kind) => namesOn ? kind : kind + ' ID';
+
+function snapshotIds(snapshot) {
+  const ids = new Set();
+  (snapshot.painter_daily || []).forEach((row) => ids.add(String(row.painter_id)));
+  ((snapshot.repaint || {}).details || []).forEach((row) => ids.add(String(row.painter_id)));
+  ((snapshot.repaint || {}).contributions || []).forEach((row) => { if (row.dimension === 'painter') ids.add(String(row.label)); });
+  ((snapshot.finesse || {}).summary || []).forEach((row) => ids.add(String(row.worker_id)));
+  ((snapshot.finesse || {}).details || []).forEach((row) => ids.add(String(row.worker_id)));
+  ['Unassigned', 'null', 'undefined', ''].forEach((value) => ids.delete(value));
+  return Array.from(ids);
+}
+
+function namedSnapshot(snapshot) {
+  const shared = {};
+  Object.keys(rosterNames).forEach((id) => { shared[rosterNames[id]] = (shared[rosterNames[id]] || 0) + 1; });
+  // Two IDs that share a name keep their ID in brackets so the charts never merge two people.
+  const nameOf = (id) => {
+    const name = rosterNames[String(id)];
+    if (!name) return id;
+    return shared[name] > 1 ? name + ' (' + String(id) + ')' : name;
+  };
+  const view = JSON.parse(JSON.stringify(snapshot));
+  (view.painter_daily || []).forEach((row) => { row.painter_id = nameOf(row.painter_id); });
+  if (view.repaint) {
+    (view.repaint.details || []).forEach((row) => { row.painter_id = nameOf(row.painter_id); });
+    (view.repaint.contributions || []).forEach((row) => { if (row.dimension === 'painter') row.label = nameOf(row.label); });
+  }
+  if (view.finesse) {
+    (view.finesse.summary || []).forEach((row) => { row.worker_id = nameOf(row.worker_id); });
+    (view.finesse.details || []).forEach((row) => { row.worker_id = nameOf(row.worker_id); });
+  }
+  return view;
+}
+
+async function loadNames(snapshot) {
+  const missing = snapshotIds(snapshot).filter((id) => !rosterAsked[id]);
+  if (!missing.length) return;
+  const payload = await fetchJson('/api/roster?ids=' + encodeURIComponent(missing.join(',')));
+  missing.forEach((id) => { rosterAsked[id] = true; });
+  rosterNames = Object.assign({}, rosterNames, payload.people || {});
+}
+
+async function renderWithNames(snapshot) {
+  if (namesOn) {
+    try {
+      await loadNames(snapshot);
+    } catch (error) {
+      namesOn = false;
+      $('#names-toggle').checked = false;
+      sessionStorage.removeItem('kpi-names');
+      render(snapshot);
+      setStatus('Names could not be loaded (' + error.message + ') so IDs are shown.', true);
+      return;
+    }
+  }
+  render(snapshot);
+}
+
+async function setNames(on) {
+  if (busy || !activeSnapshot) { $('#names-toggle').checked = namesOn; return; }
+  namesOn = Boolean(on) && namesAllowed;
+  if (namesOn) sessionStorage.setItem('kpi-names', '1'); else sessionStorage.removeItem('kpi-names');
+  setBusy(true);
+  setStatus(namesOn ? 'Looking up names…' : 'Showing IDs…');
+  try {
+    await renderWithNames(activeSnapshot);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function initNames() {
+  try {
+    const session = await fetchJson('/api/session');
+    if (session && session.names_allowed) {
+      namesAllowed = true;
+      $('#names-toggle-label').hidden = false;
+      if (sessionStorage.getItem('kpi-names') === '1') {
+        namesOn = true;
+        $('#names-toggle').checked = true;
+      }
+    }
+  } catch (error) {
+    // The public wallboard port has no sign-in route, so names simply stay off there.
+  }
+}
 let busy = false;
 
 const $ = (selector) => document.querySelector(selector);
@@ -721,7 +815,7 @@ function renderPainter(snapshot) {
   renderPainterFty(chartRows);
   renderUnassignedNote('#painter-footnote', 'painters', unassignedCounts(allRows, 'painter_id', {pieces: 'pieces', carts: 'carts'}, snapshot.report_date), [{name: 'pieces', label: 'pieces', singular: 'piece'}, {name: 'carts', label: 'carts', singular: 'cart'}]);
   renderTable('#painter-table', [
-    {key: 'painter_id', label: 'Painter ID', format: plainId},
+    {key: 'painter_id', label: personLabel('Painter'), format: plainId},
     {key: 'booth', label: 'Booth', format: (value) => value ? 'Booth ' + integer(value) : 'Unknown'},
     {key: 'carts', label: 'Carts', format: integer},
     {key: 'pieces', label: 'Pieces', format: integer},
@@ -759,7 +853,7 @@ function renderRepaint(snapshot) {
     {key: 'part_number', label: 'Part number'},
     {key: 'sequence', label: 'Sequence'},
     {key: 'color', label: 'Color'},
-    {key: 'painter_id', label: 'Painter ID', format: plainId},
+    {key: 'painter_id', label: personLabel('Painter'), format: plainId},
     {key: 'booth', label: 'Booth', format: (value) => value ? 'Booth ' + integer(value) : 'Unknown'},
     {key: 'repaint_loop_count', label: 'Loops', format: integer},
     {key: 'defect', label: 'Defect'}
@@ -800,7 +894,7 @@ function renderFinesse(snapshot) {
     {key: 'part_number', label: 'Part number'},
     {key: 'sequence', label: 'Sequence'},
     {key: 'color', label: 'Color'},
-    {key: 'worker_id', label: 'Worker ID', format: plainId},
+    {key: 'worker_id', label: personLabel('Worker'), format: plainId},
     {key: 'outcome', label: 'Outcome'},
     {key: 'minutes_per_part', label: 'Min / part', format: (value) => decimal(value, 1)},
     {key: 'repaint_count', label: 'Repaint count', format: integer}
@@ -809,12 +903,13 @@ function renderFinesse(snapshot) {
 
 function render(snapshot) {
   activeSnapshot = snapshot;
+  const view = namesOn ? namedSnapshot(snapshot) : snapshot;
   $('#report-date').value = snapshot.report_date;
   $('#generated-at').textContent = 'Generated ' + new Date(snapshot.generated_at).toLocaleString();
-  renderPainter(snapshot);
-  renderRepaint(snapshot);
-  renderFinesse(snapshot);
-  renderTrends(snapshot);
+  renderPainter(view);
+  renderRepaint(view);
+  renderFinesse(view);
+  renderTrends(view);
   setStatus('Drill-down data loaded for ' + dateLabel(snapshot.report_date) + '.');
 }
 
@@ -850,7 +945,7 @@ async function loadDate(reportDate) {
       setStatus('Building drill-down data for ' + dateLabel(reportDate) + '…');
       snapshot = await requestRefresh(reportDate, false);
     }
-    render(snapshot);
+    await renderWithNames(snapshot);
   } catch (error) {
     setStatus(error.message, true);
   } finally {
@@ -865,7 +960,7 @@ async function refreshDate() {
   setStatus('Refreshing drill-down data…');
   try {
     const snapshot = await requestRefresh(reportDate, true);
-    render(snapshot);
+    await renderWithNames(snapshot);
   } catch (error) {
     setStatus(error.message, true);
   } finally {
@@ -874,6 +969,7 @@ async function refreshDate() {
 }
 
 async function start() {
+  await initNames();
   const dateInput = $('#report-date');
   dateInput.min = EARLIEST_REPORT_DATE;
   dateInput.max = localDateISO();
@@ -889,6 +985,7 @@ async function start() {
 
 $('#load-date').addEventListener('click', () => loadDate($('#report-date').value));
 $('#refresh').addEventListener('click', refreshDate);
+$('#names-toggle').addEventListener('change', (event) => setNames(event.target.checked));
 $('#previous-day').addEventListener('click', () => {
   const value = shiftDate($('#report-date').value, -1);
   $('#report-date').value = value < EARLIEST_REPORT_DATE ? EARLIEST_REPORT_DATE : value;

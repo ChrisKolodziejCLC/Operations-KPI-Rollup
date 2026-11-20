@@ -88,3 +88,6 @@ footer{display:flex;justify-content:space-between;gap:1rem;padding:1rem max(2rem
   .panel>summary small{text-align:left}.summary-grid{grid-template-columns:1fr 1fr}.chart-grid,.trend-grid{grid-template-columns:1fr}
   footer{flex-direction:column;padding:1rem}
 }
+.names-toggle{display:flex;align-items:center;gap:.45rem;color:var(--navy);font-weight:800;white-space:nowrap}
+.names-toggle[hidden]{display:none}
+.names-toggle input{min-height:auto;width:1.15rem;height:1.15rem}

@@ -361,6 +361,24 @@ def execute_quality_charts(report_date: date) -> List[Dict[str, object]]:
     return execute_result_sets(query, {0, 1, 2, 3}, credential_name)
 
 
+def execute_roster() -> List[Dict[str, object]]:
+    """Read the ID-to-name roster through its own hash-pinned, read-only procedure. Names are never stored."""
+    expected_hash = os.environ.get("KPI_ROSTER_PROCEDURE_HASH", "").strip().upper()
+    if not re.fullmatch(r"[0-9A-F]{64}", expected_hash):
+        raise OdbcError("KPI_ROSTER_PROCEDURE_HASH must pin the reviewed roster procedure.")
+    query = (
+        "SET NOCOUNT ON; "
+        "DECLARE @ObservedDefinitionHash varchar(64) = CONVERT(varchar(64), "
+        "HASHBYTES('SHA2_256', CONVERT(varbinary(max), COALESCE(OBJECT_DEFINITION("
+        "OBJECT_ID(N'dbo.usp_QPTS_GetOperationsPersonRoster')), N''))), 2); "
+        f"IF @ObservedDefinitionHash <> '{expected_hash}' "
+        "THROW 51005, 'The roster procedure differs from the reviewed contract.', 1; "
+        "EXEC dbo.usp_QPTS_GetOperationsPersonRoster;"
+    )
+    credential_name = os.environ.get("KPI_SQL_CREDENTIAL_NAME", "operations-kpi-qpts-ro")
+    return execute_result_sets(query, {0}, credential_name)
+
+
 def execute_restricted_rollup(report_date: date) -> List[Dict[str, object]]:
     """Fetch only the reviewed restricted drill-down result sets.
 

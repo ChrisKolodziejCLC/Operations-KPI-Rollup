@@ -4,15 +4,20 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import html
 import ipaddress
+import base64
 import json
 import mimetypes
 import os
 from pathlib import Path
+import ssl
+import sys
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
@@ -22,6 +27,17 @@ from .quality_charts import normalize_stored_quality_charts
 from .drilldown import DrilldownState, create_drilldown_state, disabled_event
 from .live import CURRENT_METHOD_VERSION, refresh_live_snapshot
 from .restricted_web import RestrictedRefreshError
+from .roster import RosterService, RosterUnavailable, clean_ids, roster_from_rows
+from .windows_auth import (
+    SESSION_COOKIE,
+    Allowlist,
+    AuthSettings,
+    NegotiateAcceptor,
+    SessionCodec,
+    parse_negotiate_header,
+    sam_of,
+    settings_from_env,
+)
 
 
 STATIC_ROOT = Path(__file__).parent / "web"
@@ -331,7 +347,7 @@ class AppServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPI/0.40.1"
+    server_version = "OperationsKPI/0.41.0"
     sys_version = ""
 
     @property
@@ -480,8 +496,180 @@ class Handler(BaseHTTPRequestHandler):
         print(json.dumps({"remote": self.client_address[0], "request": fmt % args}, separators=(",", ":")), flush=True)
 
 
+class AuthContext:
+    """What the sign-in listener needs: a ticket acceptor, the session codec, the allowlist, and an optional roster."""
+
+    def __init__(self, acceptor: Any, sessions: SessionCodec, allowlist: Allowlist, roster: Optional[RosterService]) -> None:
+        self.acceptor = acceptor
+        self.sessions = sessions
+        self.allowlist = allowlist
+        self.roster = roster
+
+
+class AuthServer(AppServer):
+    def __init__(self, address, handler, app_state: AppState, drilldown_state: Optional[DrilldownState], auth: AuthContext):
+        super().__init__(address, handler, app_state, drilldown_state)
+        self.auth = auth
+
+    def handle_error(self, request, client_address) -> None:  # noqa: D401 - keep failed TLS handshakes to one short line
+        error = sys.exc_info()[1]
+        print(json.dumps({"event": "auth-connection-error", "error": type(error).__name__}, separators=(",", ":")), flush=True)
+
+
+class AuthHandler(Handler):
+    """The same wallboard and drill-down, behind Windows sign-in. Only allowlisted identities get in."""
+
+    timeout = 30
+
+    def setup(self) -> None:
+        self._extra_headers: List[Tuple[str, str]] = []
+        super().setup()
+
+    def end_headers(self) -> None:
+        for name, value in self._extra_headers:
+            self.send_header(name, value)
+        super().end_headers()
+
+    @property
+    def auth(self) -> AuthContext:
+        return self.server.auth  # type: ignore[attr-defined]
+
+    def _page(self, status: int, title: str, message: str, headers: Tuple[Tuple[str, str], ...] = ()) -> None:
+        body = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>" + html.escape(title)
+                + "</title></head><body><h1>" + html.escape(title) + "</h1><p>" + html.escape(message) + "</p></body></html>").encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        for name, value in headers:
+            self.send_header(name, value)
+        self._security_headers("no-store", True)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _challenge(self, token: Optional[bytes] = None) -> None:
+        value = "Negotiate" + ((" " + base64.b64encode(token).decode("ascii")) if token else "")
+        self._page(
+            HTTPStatus.UNAUTHORIZED,
+            "Windows sign-in required",
+            "This page signs you in with your Windows account. If your browser asks for a password, use your CLC account. "
+            "If you were not asked and still see this message, open https://kpi.eliteenterprisesinc.com:5196/ from a CLC computer.",
+            (("WWW-Authenticate", value),),
+        )
+
+    def _forbidden(self, principal: str) -> None:
+        self._page(
+            HTTPStatus.FORBIDDEN,
+            "Not on the access list",
+            "You are signed in as " + sam_of(principal) + ", which is not on the short list for this site. Ask IT if you need access.",
+        )
+
+    def _cookie_principal(self) -> Optional[str]:
+        raw = self.headers.get("Cookie")
+        if not raw:
+            return None
+        try:
+            jar = SimpleCookie()
+            jar.load(raw)
+        except Exception:  # noqa: BLE001 - a malformed cookie is simply not a session
+            return None
+        morsel = jar.get(SESSION_COOKIE)
+        return self.auth.sessions.verify(morsel.value) if morsel else None
+
+    def _principal(self) -> Optional[str]:
+        """Return the allowlisted principal, or send the 401/403 response and return None."""
+
+        cached = self._cookie_principal()
+        if cached and self.auth.allowlist.allows(cached):
+            return cached
+        token = parse_negotiate_header(self.headers.get("Authorization", ""))
+        if token is None:
+            self._challenge()
+            return None
+        try:
+            principal, reply = self.auth.acceptor.accept(token)
+        except Exception as exc:  # noqa: BLE001 - a bad ticket is a failed sign-in, not a server error
+            print(json.dumps({"event": "auth-token-rejected", "error": type(exc).__name__}, separators=(",", ":")), flush=True)
+            self._challenge()
+            return None
+        if not principal:
+            self._challenge(reply)
+            return None
+        if not self.auth.allowlist.allows(principal):
+            print(json.dumps({"event": "auth-denied", "principal": sam_of(principal)}, separators=(",", ":")), flush=True)
+            self._forbidden(principal)
+            return None
+        self._extra_headers.append(("Set-Cookie", self.auth.sessions.cookie_header(principal)))
+        if reply:
+            self._extra_headers.append(("WWW-Authenticate", "Negotiate " + base64.b64encode(reply).decode("ascii")))
+        print(json.dumps({"event": "auth-session-start", "principal": sam_of(principal)}, separators=(",", ":")), flush=True)
+        return principal
+
+    def _roster(self, parsed, principal: str) -> None:
+        roster = self.auth.roster
+        if roster is None:
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Names are not configured on this server."}, True)
+            return
+        requested = clean_ids(",".join(parse_qs(parsed.query).get("ids", [])).split(","))
+        try:
+            people = roster.names_for(requested)
+        except RosterUnavailable as exc:
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(exc)}, True)
+            return
+        print(json.dumps({"event": "roster-served", "principal": sam_of(principal), "requested": len(requested), "returned": len(people)}, separators=(",", ":")), flush=True)
+        self._json(HTTPStatus.OK, {"people": people}, True)
+
+    def do_GET(self) -> None:  # noqa: N802
+        principal = self._principal()
+        if principal is None:
+            return
+        parsed = urlsplit(self.path)
+        if parsed.path == "/api/session":
+            self._json(HTTPStatus.OK, {"authenticated": True, "principal": sam_of(principal), "names_allowed": self.auth.roster is not None}, True)
+        elif parsed.path == "/api/roster":
+            self._roster(parsed, principal)
+        else:
+            super().do_GET()
+
+    def do_POST(self) -> None:  # noqa: N802
+        if self._principal() is None:
+            return
+        super().do_POST()
+
+
 def create_server(host: str, port: int, state: AppState, drilldown: Optional[DrilldownState] = None) -> AppServer:
     return AppServer((host, port), Handler, state, drilldown)
+
+
+def create_auth_server(
+    settings: AuthSettings,
+    state: AppState,
+    drilldown: Optional[DrilldownState] = None,
+    acceptor: Any = None,
+    roster: Optional[RosterService] = None,
+    tls: bool = True,
+) -> AuthServer:
+    allowlist = Allowlist(settings.allowlist)
+    if acceptor is None:
+        acceptor = NegotiateAcceptor(settings.keytab, settings.service_principal)
+    server = AuthServer((settings.bind_host, settings.port), AuthHandler, state, drilldown, AuthContext(acceptor, SessionCodec(), allowlist, roster))
+    if tls:
+        try:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
+            context.load_cert_chain(str(settings.tls_cert), str(settings.tls_key))
+            server.socket = context.wrap_socket(server.socket, server_side=True, do_handshake_on_connect=False)
+        except Exception:
+            server.server_close()
+            raise
+    return server
+
+
+def _roster_service() -> Optional[RosterService]:
+    if not os.environ.get("KPI_ROSTER_PROCEDURE_HASH", "").strip():
+        return None
+    from .odbc import execute_roster
+
+    return RosterService(lambda: roster_from_rows(execute_roster()))
 
 
 def main() -> int:
@@ -498,15 +686,29 @@ def main() -> int:
     host = os.environ.get("KPI_BIND_HOST", "127.0.0.1")
     port = int(os.environ.get("KPI_PORT", "5193"))
     server = create_server(host, port, state, drilldown)
+    # The sign-in listener is optional and can never take the aggregate wallboard down with it.
+    auth_server: Optional[AuthServer] = None
+    try:
+        auth_settings = settings_from_env()
+        if auth_settings is not None:
+            auth_server = create_auth_server(auth_settings, state, drilldown, roster=_roster_service())
+    except Exception as exc:  # noqa: BLE001
+        print(json.dumps({"event": "auth-listener-disabled", "error": type(exc).__name__ + ": " + str(exc)[:200]}, separators=(",", ":")), flush=True)
     state.start_auto_refresh()
     if drilldown is not None:
         drilldown.start_auto_refresh()
     print(json.dumps({"status": "starting", "host": host, "port": port, "mode": mode, "auto_refresh_seconds": state.auto_refresh_seconds if mode == "live" else None, "drilldown": drilldown is not None}), flush=True)
+    if auth_server is not None:
+        threading.Thread(target=auth_server.serve_forever, kwargs={"poll_interval": 0.5}, name="operations-kpi-auth-listener", daemon=True).start()
+        print(json.dumps({"event": "auth-listener-started", "host": auth_server.server_address[0], "port": auth_server.server_address[1], "allowlist_entries": auth_server.auth.allowlist.count, "names_configured": auth_server.auth.roster is not None}, separators=(",", ":")), flush=True)
     try:
         server.serve_forever(poll_interval=0.5)
     except KeyboardInterrupt:
         pass
     finally:
+        if auth_server is not None:
+            auth_server.shutdown()
+            auth_server.server_close()
         state.stop_auto_refresh()
         if drilldown is not None:
             drilldown.stop_auto_refresh()
