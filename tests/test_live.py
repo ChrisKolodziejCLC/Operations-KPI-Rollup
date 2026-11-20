@@ -411,11 +411,17 @@ def test_rollup_result_sets_become_valid_immutable_snapshot(monkeypatch):
         "Carts / Pieces loaded", "Carts / Pieces staged", "Carts / Pieces painted", "Repaint %", "Finesse Effectiveness"
     ]
     cards_by_label = {card["label"]: card for card in cards}
-    assert cards_by_label["Carts / Pieces loaded"]["value"] == "100 Total / 91 Unique"
+    assert cards_by_label["Carts / Pieces loaded"]["value"] == "40 Carts / 100 Pieces"
+    loaded_colors = snapshot["chart_series"]["loaded"]["selected_day"]["unique_colors"]
+    painted_colors = snapshot["chart_series"]["painted"]["selected_day"]["unique_colors"]
+    staged_colors = snapshot["chart_series"]["staged"]["selected_day"]["unique_colors"]
+    assert cards_by_label["Carts / Pieces loaded"]["unique_detail"] == f"91 Unique Parts · {loaded_colors} Unique Colors"
+    assert cards_by_label["Carts / Pieces staged"]["unique_detail"] == f"40 Unique Parts · {staged_colors} Unique Colors"
+    assert cards_by_label["Carts / Pieces painted"]["unique_detail"] == f"84 Unique Parts · {painted_colors} Unique Colors"
     assert cards_by_label["Carts / Pieces loaded"]["detail"] == "Carts 25 Prd / 5 BV / 10 Svc · Pieces 70 Prd / 5 BV / 25 Svc"
     assert cards_by_label["Carts / Pieces staged"]["value"] == "11 Carts / 40 Pieces"
     assert cards_by_label["Carts / Pieces staged"]["detail"] == "Carts 11 Prd / 0 BV / 0 Svc · Pieces 40 Prd / 0 BV / 0 Svc"
-    assert cards_by_label["Carts / Pieces painted"]["value"] == "96 Total / 84 Unique"
+    assert cards_by_label["Carts / Pieces painted"]["value"] == "35 Carts / 96 Pieces"
     assert cards_by_label["Carts / Pieces painted"]["detail"] == "Carts 20 Prd / 5 BV / 10 Svc · Pieces 65 Prd / 5 BV / 26 Svc"
     assert cards_by_label["Repaint %"]["value"] == "3.3%"
     assert cards_by_label["Repaint %"]["detail"] == "3 / 90 initial passes"
@@ -1060,9 +1066,11 @@ def test_v6_saved_snapshot_can_load_before_first_v7_refresh():
             row.pop("unique_pieces_processed")
     validate_snapshot(snapshot)
     cards = prepare_context(snapshot)["cards"]
-    assert cards[0]["value"] == "100 Total / — Unique"
+    assert cards[0]["value"] == "40 Carts / 100 Pieces"
+    assert "Unique Parts" not in cards[0]["unique_detail"]
     cards_by_label = {card["label"]: card for card in cards}
-    assert cards_by_label["Carts / Pieces painted"]["value"] == "96 Total / — Unique"
+    assert cards_by_label["Carts / Pieces painted"]["value"] == "35 Carts / 96 Pieces"
+    assert "Unique Parts" not in cards_by_label["Carts / Pieces painted"]["unique_detail"]
 
 
 def test_v7_saved_snapshot_can_load_before_first_v8_refresh():
@@ -1181,3 +1189,20 @@ def test_public_snapshot_rejects_any_restricted_employee_rows():
         assert str(error) == "The public rollup returned restricted employee detail."
     else:
         raise AssertionError("The public snapshot accepted restricted employee data")
+
+def test_report_html_and_text_carry_carts_pieces_unique_parts_and_colors(tmp_path):
+    from email import policy
+    from email.parser import BytesParser
+    from operations_kpi_rollup.render import build_report
+
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    outputs = build_report(snapshot, tmp_path)
+    html = outputs["html"].read_text(encoding="utf-8")
+    assert "40 Carts / 100 Pieces" in html and "35 Carts / 96 Pieces" in html and "11 Carts / 40 Pieces" in html
+    assert "91 Unique Parts" in html and "84 Unique Parts" in html and "40 Unique Parts" in html
+    assert " Unique Colors" in html and " Total / " not in html and "Unique Pieces" not in html
+    message = BytesParser(policy=policy.default).parsebytes(outputs["eml_preview"].read_bytes())
+    plain = message.get_body(preferencelist=("plain",)).get_content()
+    assert "Carts / Pieces loaded: 40 Carts / 100 Pieces (Carts 25 Prd / 5 BV / 10 Svc" in plain
+    assert "91 Unique Parts · " in plain and " Unique Colors" in plain

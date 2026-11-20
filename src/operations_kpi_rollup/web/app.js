@@ -248,11 +248,10 @@ function splitTotal(row) {
   return known.length ? known.reduce((sum, value) => sum + value, 0) : undefined;
 }
 
-// Variety lines under the counts: unique pieces, unique parts, then unique colors (a line stays out until its figure exists).
-function uniqueDetails(day, uniquePieces) {
+// Variety lines under the counts: unique parts (each part counted once however many times it looped through the process), then unique colors (a line stays out until its figure exists).
+function uniqueDetails(day, uniqueParts) {
   const lines = [];
-  if (uniquePieces !== undefined && uniquePieces !== null) lines.push(compactOptionalInteger(uniquePieces) + ' Unique Pieces');
-  if (day && day.unique_parts !== undefined && day.unique_parts !== null) lines.push(compactOptionalInteger(day.unique_parts) + ' Unique Parts');
+  if (uniqueParts !== undefined && uniqueParts !== null) lines.push(compactOptionalInteger(uniqueParts) + ' Unique Parts');
   if (day && day.unique_colors !== undefined && day.unique_colors !== null) lines.push(compactOptionalInteger(day.unique_colors) + ' Unique Colors');
   return lines;
 }
@@ -407,7 +406,7 @@ function renderCards(snapshot) {
   container.append(stagedMetricCard(current.staged_carts, current.staged_pieces, [
     {label:'Carts', production:current.production_staged_carts, bv:current.bv_staged_carts, service:current.service_staged_carts},
     {label:'Pieces', production:current.production_staged_pieces, bv:current.bv_staged_pieces, service:current.service_staged_pieces}
-  ], palette.green, uniqueDetails(snapshot.chart_series?.staged?.selected_day)));
+  ], palette.green, uniqueDetails(snapshot.chart_series?.staged?.selected_day, current.staged_pieces)));
   container.append(splitMetricCard('Carts / Pieces painted', current.paint_pieces_processed, [
     {label:'Carts', production:paintCarts.production, bv:paintCarts.bv, service:paintCarts.service},
     {label:'Pieces', production:paintPieces.production, bv:paintPieces.bv, service:paintPieces.service}

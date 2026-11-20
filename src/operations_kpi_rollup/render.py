@@ -27,7 +27,8 @@ def _plain_text(context: Dict[str, Any]) -> str:
         "",
     ]
     for card in context["cards"]:
-        lines.append(f"{card['label']}: {card['value']} ({card['detail']})")
+        unique = f" · {card['unique_detail']}" if card.get("unique_detail") else ""
+        lines.append(f"{card['label']}: {card['value']} ({card['detail']}{unique})")
     if context["data_quality_notes"]:
         lines.extend(["", "Data quality notes:"])
         lines.extend(f"- {note}" for note in context["data_quality_notes"])

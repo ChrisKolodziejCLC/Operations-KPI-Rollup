@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List
 
-from .metrics import enrich_metric_row, format_decimal, format_int, format_percent, safe_ratio
+from .metrics import as_decimal, enrich_metric_row, format_decimal, format_int, format_percent, safe_ratio
 from .process_times import validate_process_time_section
 from .quality_charts import validate_quality_charts_section
 
@@ -1161,15 +1161,34 @@ def _card(
     color: str,
     status: str = "",
     secondary_detail: str = "",
+    unique_detail: str = "",
 ) -> Dict[str, str]:
     return {
         "label": label,
         "value": value,
         "detail": detail,
         "secondary_detail": secondary_detail,
+        "unique_detail": unique_detail,
         "color": color,
         "status": status,
     }
+
+
+def _known_total(*values: Any) -> Any:
+    """Whole-number total of the known parts of a production / BV / service split; None when none is known."""
+    known = [int(as_decimal(value)) for value in values if value is not None]
+    return sum(known) if known else None
+
+
+def _unique_detail(snapshot: Dict[str, Any], metric: str, unique_parts: Any) -> str:
+    """Variety line under a card, worded as on the wallboard: unique parts (each part once however often it looped), then unique colors."""
+    selected = ((snapshot.get("chart_series") or {}).get(metric) or {}).get("selected_day") or {}
+    lines = []
+    if unique_parts is not None:
+        lines.append(f"{format_int(unique_parts)} Unique Parts")
+    if selected.get("unique_colors") is not None:
+        lines.append(f"{format_int(selected['unique_colors'])} Unique Colors")
+    return " · ".join(lines)
 
 
 def _load_split(row: Dict[str, Any]) -> tuple[Any, Any, Any]:
@@ -1332,21 +1351,24 @@ def prepare_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     cards = [
         _card(
             "Carts / Pieces loaded",
-            f"{format_int(current.get('parts_loaded'))} Total / {format_int(current['unique_pieces_loaded']) if 'unique_pieces_loaded' in current else '—'} Unique",
+            f"{format_int(_known_total(production_carts, bv_carts, service_carts))} Carts / {format_int(current.get('parts_loaded'))} Pieces",
             f"Carts {format_int(production_carts)} Prd / {format_int(bv_carts)} BV / {format_int(service_carts)} Svc · Pieces {format_int(production_loaded)} Prd / {format_int(bv_loaded)} BV / {format_int(service_loaded)} Svc",
             "#147d86",
+            unique_detail=_unique_detail(snapshot, "loaded", current.get("unique_pieces_loaded")),
         ),
         _card(
             "Carts / Pieces staged",
             f"{format_int(current.get('staged_carts'))} Carts / {format_int(current.get('staged_pieces'))} Pieces",
             f"Carts {format_int(current.get('production_staged_carts'))} Prd / {format_int(current.get('bv_staged_carts'))} BV / {format_int(current.get('service_staged_carts'))} Svc · Pieces {format_int(current.get('production_staged_pieces'))} Prd / {format_int(current.get('bv_staged_pieces'))} BV / {format_int(current.get('service_staged_pieces'))} Svc",
             "#38856d",
+            unique_detail=_unique_detail(snapshot, "staged", current.get("staged_pieces")),
         ),
         _card(
             "Carts / Pieces painted",
-            f"{format_int(current.get('paint_pieces_processed'))} Total / {format_int(current['unique_pieces_processed']) if 'unique_pieces_processed' in current else '—'} Unique",
+            f"{format_int(_known_total(production_paint_carts, bv_paint_carts, service_paint_carts))} Carts / {format_int(current.get('paint_pieces_processed'))} Pieces",
             f"Carts {format_int(production_paint_carts)} Prd / {format_int(bv_paint_carts)} BV / {format_int(service_paint_carts)} Svc · Pieces {format_int(production_paint_pieces)} Prd / {format_int(bv_paint_pieces)} BV / {format_int(service_paint_pieces)} Svc",
             "#2f6f9f",
+            unique_detail=_unique_detail(snapshot, "painted", current.get("unique_pieces_processed")),
         ),
         _card(
             "Repaint %",

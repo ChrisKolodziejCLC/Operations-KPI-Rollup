@@ -54,7 +54,10 @@
                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;border:1px solid #d7e2e8;border-top:4px solid {{ card.color }};">
                       <tr><td style="padding:10px 11px 2px 11px;font-size:10px;line-height:13px;text-transform:uppercase;color:#627d98;">{{ card.label }}{% if card.status %} · {{ card.status }}{% endif %}</td></tr>
                       <tr><td style="padding:0 11px;font-size:22px;line-height:27px;font-weight:700;color:#102a43;">{{ card.value }}</td></tr>
-                      <tr><td style="padding:2px 11px 10px 11px;font-size:10px;line-height:14px;color:#627d98;">{{ card.detail }}</td></tr>
+                      <tr><td style="padding:2px 11px {% if card.unique_detail %}2px{% else %}10px{% endif %} 11px;font-size:10px;line-height:14px;color:#627d98;">{{ card.detail }}</td></tr>
+                      {% if card.unique_detail %}
+                      <tr><td style="padding:0 11px 10px 11px;font-size:10px;line-height:14px;font-weight:700;color:#334e68;">{{ card.unique_detail }}</td></tr>
+                      {% endif %}
                     </table>
                   </td>
                   {% endfor %}

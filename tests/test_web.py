@@ -759,16 +759,17 @@ def test_live_state_runs_one_server_owned_initial_refresh(tmp_path, monkeypatch)
 
 def test_wallboard_tiles_lead_with_carts_and_pieces_and_list_unique_figures_below():
     script = (Path(__file__).resolve().parents[1] / "src" / "operations_kpi_rollup" / "web" / "app.js").read_text(encoding="utf-8")
-    assert "function splitTotal(row) {" in script and "function uniqueDetails(day, uniquePieces) {" in script
+    assert "function splitTotal(row) {" in script and "function uniqueDetails(day, uniqueParts) {" in script
     assert "function splitMetricCard(label, total, rows, color, extraDetails = []) {" in script
     assert "Carts / " in script and "compactOptionalInteger(splitTotal(rows[0]))" in script and " Pieces" in script
     assert " Total / " not in script
-    # unique pieces first, unique parts next (once the figure exists), unique colors last
-    order = [script.index("' Unique Pieces'"), script.index("' Unique Parts'"), script.index("' Unique Colors'")]
+    # unique parts (each part once however often it looped) first, unique colors last; the old Unique Pieces wording is gone
+    assert "' Unique Pieces'" not in script and "day.unique_parts" not in script
+    order = [script.index("' Unique Parts'"), script.index("' Unique Colors'")]
     assert order == sorted(order)
     assert "uniqueDetails(snapshot.chart_series?.loaded?.selected_day, current.unique_pieces_loaded)" in script
     assert "uniqueDetails(snapshot.chart_series?.painted?.selected_day, current.unique_pieces_processed)" in script
-    assert "uniqueDetails(snapshot.chart_series?.staged?.selected_day)" in script
+    assert "uniqueDetails(snapshot.chart_series?.staged?.selected_day, current.staged_pieces)" in script
 
 
 def test_wallboard_tiles_are_five_across_and_three_down_in_the_requested_order():
