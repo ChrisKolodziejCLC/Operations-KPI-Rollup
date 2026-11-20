@@ -2054,7 +2054,7 @@ function renderProcessTimeCharts(snapshot) {
     let negative = 0, long = 0;
     section.stages.forEach(stage => { const totals = processWindowTotals(rows, stage.key); negative += totals.negative; long += totals.long; });
     const note = document.createElement('p'); note.className = 'process-note'; note.setAttribute('role', 'note');
-    note.append(text('Each interval is dated by the scan that ends it. Only time on days the plant is producing counts: a date with fewer than ' + integer(section.production_day_minimum_oven_exits) + ' oven exits (' + integer(section.skipped_days_in_window) + ' calendar dates in this window: weekends, holidays, shutdowns) is taken out of every interval, and a step interval that ends on such a date is left out (' + integer(section.step_intervals_off_production_days) + ' so far), while overnight waits between production days still count. The hover text also shows the median and 90th percentile. The axis stops near the 92nd-percentile day so a few long waits do not flatten the rest; clipped days are labelled with their true value. '
+    note.append(text('Each interval is dated by the scan that ends it. The clock runs only while the plant is scanning: each production day (a date with at least ' + integer(section.production_day_minimum_oven_exits) + ' oven exits) counts from its first scan to its last, and the time from the last scan of one work day to the first scan of the next is taken out of every interval, along with weekends, holidays, and shutdowns (' + integer(section.skipped_days_in_window) + ' calendar dates in this window). A step interval that ends on a non-production date is left out (' + integer(section.step_intervals_off_production_days) + ' so far). The hover text also shows the median and 90th percentile. The axis stops near the 92nd-percentile day so a few long waits do not flatten the rest; clipped days are labelled with their true value. '
       + integer(negative) + ' intervals ran backwards (scans out of order) and are left out; ' + integer(long) + ' intervals exceeded 12 hours and are counted. '
       + 'Total average over the window: ' + processMinutes(total.average) + ' across ' + integer(total.intervals) + ' parts.'));
     block.append(note);
@@ -2149,7 +2149,7 @@ function renderMetricCharts(snapshot) {
     renderYieldCharts(snapshot, selectedChartKey); return;
   }
   if (selectedChartKey === 'process-time') {
-    summary.textContent = 'Daily time between the cart-load, booth, oven-in, oven-out, EOL-approval, and final-inspection scans, counting only production days, with repaints reported separately and excluded from the first-pass numbers. Choose hours or minutes and average, median, or 90th percentile.';
+    summary.textContent = 'Daily time between the cart-load, booth, oven-in, oven-out, EOL-approval, and final-inspection scans, counting only the time the plant is scanning (overnight, weekends, and holidays are not counted), with repaints reported separately and excluded from the first-pass numbers. Choose hours or minutes and average, median, or 90th percentile.';
     renderProcessTimeCharts(snapshot); return;
   }
   summary.textContent = 'This tile is selectable; its chart contract is not enabled yet.';

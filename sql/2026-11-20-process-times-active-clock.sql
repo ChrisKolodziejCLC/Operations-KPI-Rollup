@@ -1,0 +1,374 @@
+/* Operations KPI process times: stop the clock overnight (v40 active clock)
+
+   Each production day's clock runs from its first scan of any kind to its last; the time between the last scan of one production day and the first scan of the next, and every non-production date, is removed from every interval.
+   Replaces dbo.usp_QPTS_GetOperationsProcessTimes inside one transaction (drop, create from the reviewed
+   text, grant EXECUTE and VIEW DEFINITION to the existing read-only dashboard login, verify the stored hash),
+   so a failure leaves the previous procedure in place. It refuses to run unless the live procedure is exactly
+   the expected current definition. Nothing else is touched.
+*/
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+
+DECLARE @CommitChange bit = 1;
+DECLARE @ExpectedCurrentHash varchar(64) = 'EB4A024B32C8D92894046555CD8D002D128F5DDE7FD6C9CD96A5428068C51476';
+DECLARE @ExpectedNewHash varchar(64) = '628A9A876C7BB12A816717BD4CED5ACF35BC6A949C31B2EF7E77057395586AA9';
+DECLARE @ProcedureName nvarchar(256) = N'dbo.usp_QPTS_GetOperationsProcessTimes';
+
+IF OBJECT_ID(@ProcedureName, N'P') IS NULL
+    THROW 54371, 'Process-time procedure is missing; refusing to continue.', 1;
+IF DATABASE_PRINCIPAL_ID(N'OperationsKpiRollup_RO') IS NULL
+    THROW 54372, 'The read-only dashboard principal OperationsKpiRollup_RO was not found.', 1;
+
+DECLARE @CurrentHash varchar(64) = CONVERT(varchar(64), HASHBYTES(
+    'SHA2_256',
+    CONVERT(varbinary(max), COALESCE(OBJECT_DEFINITION(OBJECT_ID(@ProcedureName, N'P')), N''))
+), 2);
+IF @CurrentHash <> @ExpectedCurrentHash
+    THROW 54373, 'Process-time procedure differs from the expected current definition; refusing to replace it.', 1;
+
+DECLARE @ReviewedDefinition nvarchar(max) = N'/*
+    Read-only process-time rollup for the Operations KPI wallboard.
+
+    For every paint-scope part (Origin F, no Service model) the item history is cut into
+    loops. A loop starts at a load_line event (first pass) or a load_line_repaint event
+    (repaint) and holds the first booth entry, oven entry, oven exit, end-of-line approval,
+    and final approval that follow it before the next loop starts. Each interval is dated
+    by the scan that ends it and reported per day as an average, median, and 90th percentile
+    in minutes. Intervals that run backwards (scans out of order) are counted in
+    excluded_negative and left out of the statistics. Repaint loops are reported separately
+    from first-pass loops so repaints never change the standard averages.
+
+    The clock runs only while the plant is scanning. A production day is a calendar date with at
+    least @MinimumOvenExitsForProductionDay oven-exit scans, and its clock runs from the first scan
+    of any kind that day (loaded, booth, oven in, oven out, end-of-line approved, final approved)
+    to the last. All other time is removed from every interval exactly: the time between the last
+    scan of one production day and the first scan of the next, and every weekend, holiday, or
+    shutdown date (a date with only a few scans is not a production day). An interval that ends on
+    a non-production date is left out of the daily statistics and counted in the metadata field
+    step_intervals_off_production_days. Intervals that run backwards stay excluded as before.
+
+    The window is 91 days ending on the report date and never reaches before the governed
+    event-history start of 2026-09-08.
+
+    This procedure does not write to QPTS data tables.
+*/
+CREATE   PROCEDURE dbo.usp_QPTS_GetOperationsProcessTimes
+    @ReportDateOverride date = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+
+    DECLARE @ReportDate date = COALESCE(@ReportDateOverride, CONVERT(date, GETDATE()));
+    DECLARE @HistoryStart date = CONVERT(date, ''20260908'', 112);
+    DECLARE @WindowStart date = DATEADD(day, -90, @ReportDate);
+    IF @WindowStart < @HistoryStart SET @WindowStart = @HistoryStart;
+    DECLARE @EventStart date = DATEADD(day, -21, @WindowStart);
+    IF @EventStart < @HistoryStart SET @EventStart = @HistoryStart;
+    DECLARE @WindowEndExclusive datetime2(0) = DATEADD(day, 1, CONVERT(datetime2(0), @ReportDate));
+    DECLARE @MinimumOvenExitsForProductionDay int = 20;
+
+    SELECT e.[Part ID] AS part_id
+    INTO #ProcessParts
+    FROM dbo.[EDI Data Table] AS e
+    WHERE e.[Part ID] IS NOT NULL
+    GROUP BY e.[Part ID]
+    HAVING MAX(CASE WHEN ISNULL(e.Model, N'''') = N''Service'' THEN 1 ELSE 0 END) = 0
+       AND MAX(CASE WHEN CONVERT(nvarchar(8), e.[Origin]) = N''F'' THEN 1 ELSE 0 END) = 1;
+
+    CREATE UNIQUE CLUSTERED INDEX IX_ProcessParts_Part ON #ProcessParts(part_id);
+
+    SELECT CONVERT(date, oo.TimeStamp_Out) AS production_day
+    INTO #ProductionDays
+    FROM dbo.tblCarts_Paint_Oven_Out AS oo
+    WHERE oo.TimeStamp_Out >= CONVERT(datetime2(0), @EventStart)
+      AND oo.TimeStamp_Out < @WindowEndExclusive
+    GROUP BY CONVERT(date, oo.TimeStamp_Out)
+    HAVING COUNT_BIG(*) >= @MinimumOvenExitsForProductionDay;
+
+    CREATE UNIQUE CLUSTERED INDEX IX_ProductionDays_Day ON #ProductionDays(production_day);
+
+    ;WITH Spine AS (
+        SELECT @EventStart AS day_date
+        UNION ALL
+        SELECT DATEADD(day, 1, s.day_date) FROM Spine AS s WHERE s.day_date < @ReportDate
+    )
+    SELECT
+        s.day_date,
+        CASE WHEN p.production_day IS NULL THEN 0 ELSE 1 END AS is_production_day,
+        SUM(CASE WHEN p.production_day IS NULL THEN 1 ELSE 0 END) OVER (
+            ORDER BY s.day_date
+            ROWS UNBOUNDED PRECEDING
+        ) AS idle_days_through
+    INTO #DayIndex
+    FROM Spine AS s
+    LEFT JOIN #ProductionDays AS p ON p.production_day = s.day_date
+    OPTION (MAXRECURSION 1000);
+
+    CREATE UNIQUE CLUSTERED INDEX IX_DayIndex_Day ON #DayIndex(day_date);
+
+    SELECT
+        h.id,
+        h.part_id,
+        CASE CONVERT(nvarchar(80), h.moment_category)
+            WHEN N''load_line'' THEN N''L''
+            WHEN N''load_line_repaint'' THEN N''LR''
+            WHEN N''paint_booth_entered'' THEN N''B''
+            WHEN N''paint_oven_entered'' THEN N''Oi''
+            WHEN N''paint_oven_exited'' THEN N''Oo''
+            WHEN N''end_of_line_approved'' THEN N''EA''
+            WHEN N''final_approved'' THEN N''F''
+        END AS step_code,
+        DATEADD(
+            millisecond,
+            DATEDIFF(millisecond, CONVERT(time(3), ''00:00:00''), CAST(h.moment_time AS time(3))),
+            CONVERT(datetime2(3), CONVERT(date, h.moment_date))
+        ) AS moment_at
+    INTO #ProcessEvents
+    FROM dbo.ritem_history_new AS h
+    INNER JOIN #ProcessParts AS p ON p.part_id = h.part_id
+    WHERE h.moment_date >= @EventStart
+      AND h.moment_date < @WindowEndExclusive
+      AND CONVERT(nvarchar(80), h.moment_category) IN (
+          N''load_line'',
+          N''load_line_repaint'',
+          N''paint_booth_entered'',
+          N''paint_oven_entered'',
+          N''paint_oven_exited'',
+          N''end_of_line_approved'',
+          N''final_approved''
+      );
+
+    CREATE INDEX IX_ProcessEvents_PartMoment ON #ProcessEvents(part_id, moment_at, id);
+
+    ;WITH Windows AS (
+        SELECT
+            CONVERT(date, e.moment_at) AS day_date,
+            MIN(e.moment_at) AS window_start,
+            MAX(e.moment_at) AS window_end
+        FROM #ProcessEvents AS e
+        INNER JOIN #ProductionDays AS p ON p.production_day = CONVERT(date, e.moment_at)
+        GROUP BY CONVERT(date, e.moment_at)
+    )
+    SELECT
+        w.day_date,
+        w.window_start,
+        w.window_end,
+        COALESCE(SUM(DATEDIFF(second, w.window_start, w.window_end)) OVER (
+            ORDER BY w.window_start
+            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+        ), 0) AS seconds_before
+    INTO #ActiveClock
+    FROM Windows AS w;
+
+    CREATE UNIQUE CLUSTERED INDEX IX_ActiveClock_Start ON #ActiveClock(window_start);
+
+    ;WITH Sequenced AS (
+        SELECT
+            e.id,
+            e.part_id,
+            e.step_code,
+            e.moment_at,
+            SUM(CASE WHEN e.step_code IN (N''L'', N''LR'') THEN 1 ELSE 0 END) OVER (
+                PARTITION BY e.part_id
+                ORDER BY e.moment_at, e.id
+                ROWS UNBOUNDED PRECEDING
+            ) AS loop_no
+        FROM #ProcessEvents AS e
+    )
+    SELECT
+        s.part_id,
+        s.loop_no,
+        MAX(CASE WHEN s.step_code = N''LR'' THEN 1 ELSE 0 END) AS is_repaint,
+        MIN(CASE WHEN s.step_code IN (N''L'', N''LR'') THEN s.moment_at END) AS loaded_at,
+        MIN(CASE WHEN s.step_code = N''B'' THEN s.moment_at END) AS booth_at,
+        MIN(CASE WHEN s.step_code = N''Oi'' THEN s.moment_at END) AS oven_in_at,
+        MIN(CASE WHEN s.step_code = N''Oo'' THEN s.moment_at END) AS oven_out_at,
+        MIN(CASE WHEN s.step_code = N''EA'' THEN s.moment_at END) AS eol_approved_at,
+        MIN(CASE WHEN s.step_code = N''F'' THEN s.moment_at END) AS final_approved_at
+    INTO #ProcessLoops
+    FROM Sequenced AS s
+    WHERE s.loop_no > 0
+    GROUP BY s.part_id, s.loop_no;
+
+    SELECT
+        CONVERT(date, x.ended_at) AS event_date,
+        CASE WHEN l.is_repaint = 1 THEN N''repaint'' ELSE N''standard'' END AS population,
+        x.stage_order,
+        x.stage,
+        CONVERT(decimal(14, 2),
+            CASE
+                WHEN x.ended_at < x.started_at THEN DATEDIFF(second, x.started_at, x.ended_at) / 60.0
+                ELSE (
+                    CASE WHEN ew.window_start IS NULL THEN 0
+                         ELSE ew.seconds_before + DATEDIFF(second, ew.window_start, CASE WHEN x.ended_at < ew.window_end THEN x.ended_at ELSE ew.window_end END)
+                    END
+                    - CASE WHEN sw.window_start IS NULL THEN 0
+                           ELSE sw.seconds_before + DATEDIFF(second, sw.window_start, CASE WHEN x.started_at < sw.window_end THEN x.started_at ELSE sw.window_end END)
+                      END
+                ) / 60.0
+            END
+        ) AS minutes,
+        CASE WHEN COALESCE(ed.is_production_day, 0) = 1 THEN 0 ELSE 1 END AS ended_off_production_day
+    INTO #ProcessIntervals
+    FROM #ProcessLoops AS l
+    CROSS APPLY (VALUES
+        (1, N''load_to_booth'', l.loaded_at, l.booth_at),
+        (2, N''booth_to_oven_in'', l.booth_at, l.oven_in_at),
+        (3, N''oven_in_to_oven_out'', l.oven_in_at, l.oven_out_at),
+        (4, N''oven_out_to_eol_approved'', l.oven_out_at, l.eol_approved_at),
+        (5, N''eol_approved_to_final_approved'', l.eol_approved_at, l.final_approved_at),
+        (6, N''total_load_to_final_approved'', l.loaded_at, l.final_approved_at)
+    ) AS x(stage_order, stage, started_at, ended_at)
+    OUTER APPLY (
+        SELECT TOP (1) w.window_start, w.window_end, w.seconds_before
+        FROM #ActiveClock AS w
+        WHERE w.window_start <= x.started_at
+        ORDER BY w.window_start DESC
+    ) AS sw
+    OUTER APPLY (
+        SELECT TOP (1) w.window_start, w.window_end, w.seconds_before
+        FROM #ActiveClock AS w
+        WHERE w.window_start <= x.ended_at
+        ORDER BY w.window_start DESC
+    ) AS ew
+    LEFT JOIN #DayIndex AS ed ON ed.day_date = CONVERT(date, x.ended_at)
+    WHERE x.started_at IS NOT NULL
+      AND x.ended_at IS NOT NULL
+      AND x.ended_at >= CONVERT(datetime2(3), @WindowStart)
+      AND x.ended_at < @WindowEndExclusive;
+
+    SELECT
+        @ReportDate AS report_date,
+        @WindowStart AS window_start,
+        @HistoryStart AS history_start,
+        N''operations-kpi-process-time-v4-active-clock'' AS method_version,
+        @MinimumOvenExitsForProductionDay AS production_day_minimum_oven_exits,
+        (SELECT COUNT(*) FROM #DayIndex WHERE is_production_day = 1 AND day_date >= @WindowStart) AS production_days_in_window,
+        (SELECT COUNT(*) FROM #DayIndex WHERE is_production_day = 0 AND day_date >= @WindowStart) AS skipped_days_in_window,
+        (SELECT COUNT_BIG(*) FROM #ProcessIntervals WHERE stage_order < 6 AND ended_off_production_day = 1) AS step_intervals_off_production_days,
+        (SELECT COUNT_BIG(*) FROM #ProcessEvents) AS events_scanned,
+        (SELECT COUNT_BIG(*) FROM #ProcessLoops) AS loops_scanned,
+        SYSDATETIME() AS generated_at;
+
+    ;WITH Ranked AS (
+        SELECT
+            i.event_date,
+            i.population,
+            i.stage_order,
+            i.stage,
+            i.minutes,
+            CASE WHEN i.minutes >= 0 THEN i.minutes END AS valid_minutes,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY CASE WHEN i.minutes >= 0 THEN i.minutes END) OVER (
+                PARTITION BY i.event_date, i.population, i.stage_order
+            ) AS median_minutes,
+            PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY CASE WHEN i.minutes >= 0 THEN i.minutes END) OVER (
+                PARTITION BY i.event_date, i.population, i.stage_order
+            ) AS p90_minutes
+        FROM #ProcessIntervals AS i
+        WHERE i.ended_off_production_day = 0
+    )
+    SELECT
+        r.event_date,
+        r.population,
+        r.stage_order,
+        r.stage,
+        SUM(CASE WHEN r.minutes >= 0 THEN 1 ELSE 0 END) AS intervals,
+        CONVERT(decimal(12, 1), AVG(r.valid_minutes)) AS average_minutes,
+        CONVERT(decimal(12, 1), MAX(r.median_minutes)) AS median_minutes,
+        CONVERT(decimal(12, 1), MAX(r.p90_minutes)) AS p90_minutes,
+        SUM(CASE WHEN r.minutes > 720 THEN 1 ELSE 0 END) AS over_12_hours,
+        SUM(CASE WHEN r.minutes < 0 THEN 1 ELSE 0 END) AS excluded_negative
+    FROM Ranked AS r
+    GROUP BY r.event_date, r.population, r.stage_order, r.stage
+    ORDER BY r.population, r.stage_order, r.event_date;
+
+    SELECT
+        d.event_date,
+        d.population,
+        SUM(d.loops_loaded) AS loops_loaded,
+        SUM(d.loops_finished) AS loops_finished,
+        SUM(d.loops_with_every_scan) AS loops_with_every_scan
+    FROM (
+        SELECT
+            CONVERT(date, l.loaded_at) AS event_date,
+            CASE WHEN l.is_repaint = 1 THEN N''repaint'' ELSE N''standard'' END AS population,
+            1 AS loops_loaded,
+            0 AS loops_finished,
+            0 AS loops_with_every_scan
+        FROM #ProcessLoops AS l
+        WHERE l.loaded_at >= CONVERT(datetime2(3), @WindowStart) AND l.loaded_at < @WindowEndExclusive
+          AND EXISTS (SELECT 1 FROM #DayIndex AS di WHERE di.day_date = CONVERT(date, l.loaded_at) AND di.is_production_day = 1)
+        UNION ALL
+        SELECT
+            CONVERT(date, l.final_approved_at),
+            CASE WHEN l.is_repaint = 1 THEN N''repaint'' ELSE N''standard'' END,
+            0,
+            1,
+            CASE
+                WHEN l.booth_at >= l.loaded_at AND l.oven_in_at >= l.booth_at AND l.oven_out_at >= l.oven_in_at
+                 AND l.eol_approved_at >= l.oven_out_at AND l.final_approved_at >= l.eol_approved_at THEN 1
+                ELSE 0
+            END
+        FROM #ProcessLoops AS l
+        WHERE l.final_approved_at >= CONVERT(datetime2(3), @WindowStart) AND l.final_approved_at < @WindowEndExclusive
+          AND EXISTS (SELECT 1 FROM #DayIndex AS di WHERE di.day_date = CONVERT(date, l.final_approved_at) AND di.is_production_day = 1)
+    ) AS d
+    GROUP BY d.event_date, d.population
+    ORDER BY d.population, d.event_date;
+
+    DROP TABLE #ProcessIntervals;
+    DROP TABLE #ProcessLoops;
+    DROP TABLE #ProcessEvents;
+    DROP TABLE #ActiveClock;
+    DROP TABLE #DayIndex;
+    DROP TABLE #ProductionDays;
+    DROP TABLE #ProcessParts;
+END;
+';
+DECLARE @ReviewedHash varchar(64) = CONVERT(varchar(64), HASHBYTES('SHA2_256', CONVERT(varbinary(max), @ReviewedDefinition)), 2);
+IF @ReviewedHash <> @ExpectedNewHash
+    THROW 54374, 'Process-time migration reviewed-definition hash mismatch.', 1;
+
+BEGIN TRY
+    IF @CommitChange = 1
+    BEGIN
+        BEGIN TRANSACTION;
+        DROP PROCEDURE dbo.usp_QPTS_GetOperationsProcessTimes;
+        EXEC sys.sp_executesql @ReviewedDefinition;
+        GRANT EXECUTE ON dbo.usp_QPTS_GetOperationsProcessTimes TO [OperationsKpiRollup_RO];
+        GRANT VIEW DEFINITION ON dbo.usp_QPTS_GetOperationsProcessTimes TO [OperationsKpiRollup_RO];
+        DECLARE @AppliedHash varchar(64) = CONVERT(varchar(64), HASHBYTES(
+            'SHA2_256',
+            CONVERT(varbinary(max), COALESCE(OBJECT_DEFINITION(OBJECT_ID(@ProcedureName, N'P')), N''))
+        ), 2);
+        IF @AppliedHash <> @ExpectedNewHash
+            THROW 54375, 'Process-time migration applied procedure hash mismatch.', 1;
+        DECLARE @GrantRows int = (
+            SELECT COUNT(*) FROM sys.database_permissions AS dp
+            WHERE dp.major_id = OBJECT_ID(@ProcedureName, N'P')
+              AND dp.grantee_principal_id = DATABASE_PRINCIPAL_ID(N'OperationsKpiRollup_RO')
+              AND dp.permission_name IN (N'EXECUTE', N'VIEW DEFINITION')
+              AND dp.state_desc = N'GRANT'
+        );
+        IF @GrantRows <> 2
+            THROW 54376, 'Process-time migration did not leave exactly the two expected grants.', 1;
+        COMMIT TRANSACTION;
+    END;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    THROW;
+END CATCH;
+
+DECLARE @FinalHash varchar(64) = CONVERT(varchar(64), HASHBYTES(
+    'SHA2_256',
+    CONVERT(varbinary(max), COALESCE(OBJECT_DEFINITION(OBJECT_ID(@ProcedureName, N'P')), N''))
+), 2);
+IF @CommitChange = 1 AND @FinalHash <> @ExpectedNewHash
+    THROW 54377, 'Process-time migration final procedure hash mismatch.', 1;
+
+SELECT
+    @CommitChange AS commit_change,
+    @ReviewedHash AS reviewed_candidate_hash,
+    @FinalHash AS final_hash;

@@ -12,7 +12,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
-METHOD_VERSION = "operations-kpi-process-time-v3-production-days-exact"
+METHOD_VERSION = "operations-kpi-process-time-v4-active-clock"
 POPULATIONS = ("standard", "repaint")
 
 STAGES = (

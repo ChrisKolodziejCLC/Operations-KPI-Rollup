@@ -10,13 +10,14 @@
     excluded_negative and left out of the statistics. Repaint loops are reported separately
     from first-pass loops so repaints never change the standard averages.
 
-    Only time on days the plant is producing counts. A production day is a calendar date with at
-    least @MinimumOvenExitsForProductionDay oven-exit scans. Time that falls on any other date
-    (weekends, holidays, shutdowns, and stray dates with only a few scans) is removed from each
-    interval exactly: every whole date between the two scans, and the rest of the starting date
-    when the starting scan itself was on a non-production date. An interval that ends on a
-    non-production date is left out of the daily statistics and counted in the metadata field
-    step_intervals_off_production_days. Overnight waits between production days still count.
+    The clock runs only while the plant is scanning. A production day is a calendar date with at
+    least @MinimumOvenExitsForProductionDay oven-exit scans, and its clock runs from the first scan
+    of any kind that day (loaded, booth, oven in, oven out, end-of-line approved, final approved)
+    to the last. All other time is removed from every interval exactly: the time between the last
+    scan of one production day and the first scan of the next, and every weekend, holiday, or
+    shutdown date (a date with only a few scans is not a production day). An interval that ends on
+    a non-production date is left out of the daily statistics and counted in the metadata field
+    step_intervals_off_production_days. Intervals that run backwards stay excluded as before.
 
     The window is 91 days ending on the report date and never reaches before the governed
     event-history start of 2026-09-08.
@@ -112,6 +113,28 @@ BEGIN
 
     CREATE INDEX IX_ProcessEvents_PartMoment ON #ProcessEvents(part_id, moment_at, id);
 
+    ;WITH Windows AS (
+        SELECT
+            CONVERT(date, e.moment_at) AS day_date,
+            MIN(e.moment_at) AS window_start,
+            MAX(e.moment_at) AS window_end
+        FROM #ProcessEvents AS e
+        INNER JOIN #ProductionDays AS p ON p.production_day = CONVERT(date, e.moment_at)
+        GROUP BY CONVERT(date, e.moment_at)
+    )
+    SELECT
+        w.day_date,
+        w.window_start,
+        w.window_end,
+        COALESCE(SUM(DATEDIFF(second, w.window_start, w.window_end)) OVER (
+            ORDER BY w.window_start
+            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+        ), 0) AS seconds_before
+    INTO #ActiveClock
+    FROM Windows AS w;
+
+    CREATE UNIQUE CLUSTERED INDEX IX_ActiveClock_Start ON #ActiveClock(window_start);
+
     ;WITH Sequenced AS (
         SELECT
             e.id,
@@ -146,17 +169,17 @@ BEGIN
         x.stage_order,
         x.stage,
         CONVERT(decimal(14, 2),
-            DATEDIFF(second, x.started_at, x.ended_at) / 60.0
-            - 1440.0 * CASE
-                WHEN CONVERT(date, x.ended_at) > CONVERT(date, x.started_at)
-                    THEN COALESCE(ei.idle_days_through, 0) - COALESCE(si.idle_days_through, 0)
-                ELSE 0
-              END
-            - CASE
-                WHEN CONVERT(date, x.ended_at) > CONVERT(date, x.started_at) AND COALESCE(si.is_production_day, 1) = 0
-                    THEN DATEDIFF(second, x.started_at, CONVERT(datetime2(3), DATEADD(day, 1, CONVERT(date, x.started_at)))) / 60.0
-                ELSE 0
-              END
+            CASE
+                WHEN x.ended_at < x.started_at THEN DATEDIFF(second, x.started_at, x.ended_at) / 60.0
+                ELSE (
+                    CASE WHEN ew.window_start IS NULL THEN 0
+                         ELSE ew.seconds_before + DATEDIFF(second, ew.window_start, CASE WHEN x.ended_at < ew.window_end THEN x.ended_at ELSE ew.window_end END)
+                    END
+                    - CASE WHEN sw.window_start IS NULL THEN 0
+                           ELSE sw.seconds_before + DATEDIFF(second, sw.window_start, CASE WHEN x.started_at < sw.window_end THEN x.started_at ELSE sw.window_end END)
+                      END
+                ) / 60.0
+            END
         ) AS minutes,
         CASE WHEN COALESCE(ed.is_production_day, 0) = 1 THEN 0 ELSE 1 END AS ended_off_production_day
     INTO #ProcessIntervals
@@ -169,8 +192,18 @@ BEGIN
         (5, N'eol_approved_to_final_approved', l.eol_approved_at, l.final_approved_at),
         (6, N'total_load_to_final_approved', l.loaded_at, l.final_approved_at)
     ) AS x(stage_order, stage, started_at, ended_at)
-    LEFT JOIN #DayIndex AS si ON si.day_date = CONVERT(date, x.started_at)
-    LEFT JOIN #DayIndex AS ei ON ei.day_date = DATEADD(day, -1, CONVERT(date, x.ended_at))
+    OUTER APPLY (
+        SELECT TOP (1) w.window_start, w.window_end, w.seconds_before
+        FROM #ActiveClock AS w
+        WHERE w.window_start <= x.started_at
+        ORDER BY w.window_start DESC
+    ) AS sw
+    OUTER APPLY (
+        SELECT TOP (1) w.window_start, w.window_end, w.seconds_before
+        FROM #ActiveClock AS w
+        WHERE w.window_start <= x.ended_at
+        ORDER BY w.window_start DESC
+    ) AS ew
     LEFT JOIN #DayIndex AS ed ON ed.day_date = CONVERT(date, x.ended_at)
     WHERE x.started_at IS NOT NULL
       AND x.ended_at IS NOT NULL
@@ -181,7 +214,7 @@ BEGIN
         @ReportDate AS report_date,
         @WindowStart AS window_start,
         @HistoryStart AS history_start,
-        N'operations-kpi-process-time-v3-production-days-exact' AS method_version,
+        N'operations-kpi-process-time-v4-active-clock' AS method_version,
         @MinimumOvenExitsForProductionDay AS production_day_minimum_oven_exits,
         (SELECT COUNT(*) FROM #DayIndex WHERE is_production_day = 1 AND day_date >= @WindowStart) AS production_days_in_window,
         (SELECT COUNT(*) FROM #DayIndex WHERE is_production_day = 0 AND day_date >= @WindowStart) AS skipped_days_in_window,
@@ -259,6 +292,7 @@ BEGIN
     DROP TABLE #ProcessIntervals;
     DROP TABLE #ProcessLoops;
     DROP TABLE #ProcessEvents;
+    DROP TABLE #ActiveClock;
     DROP TABLE #DayIndex;
     DROP TABLE #ProductionDays;
     DROP TABLE #ProcessParts;
