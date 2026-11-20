@@ -1845,8 +1845,10 @@ function processAxis(svg, maximum, left, right, width, y, steps = 5) {
 
 function processDateLabels(svg, rows, x, height, bottomOffset = 14) {
   const step = Math.max(1, Math.ceil(rows.length / 14));
+  const last = rows.length - 1;
   rows.forEach((row, index) => {
-    if (index % step !== 0 && index !== rows.length - 1) return;
+    const regular = index % step === 0 && last - index >= Math.ceil(step * 0.75);
+    if (!regular && index !== last) return;
     const label = svgNode('text', {x: x(index), y: height - bottomOffset, 'text-anchor': 'middle', fill: palette.muted, 'font-size': 10});
     label.append(text(dateLabel(row.date))); svg.append(label);
   });
@@ -1894,7 +1896,7 @@ function renderProcessStack(container, rows, population, section) {
   });
   if (standard) {
     svg.append(svgNode('line', {x1: left, x2: width - right, y1: y(standard), y2: y(standard), stroke: palette.red, 'stroke-width': 2.2, 'stroke-dasharray': '7 5', 'data-series': 'Standard total'}));
-    const label = svgNode('text', {x: left + 6, y: y(standard) - 6, 'text-anchor': 'start', fill: palette.red, 'font-size': 11, 'font-weight': 700, 'data-series': 'Standard total'});
+    const label = svgNode('text', {x: left + 6, y: y(standard) - 6, 'text-anchor': 'start', fill: palette.red, stroke: '#fff', 'stroke-width': 3, 'paint-order': 'stroke', 'stroke-linejoin': 'round', 'font-size': 11, 'font-weight': 700, 'data-series': 'Standard total'});
     label.append(text('Standard ' + processMinutes(standard))); svg.append(label);
   }
   const points = [];

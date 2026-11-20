@@ -8,6 +8,7 @@ the tile for that date because the procedure that produces it copies the rollup'
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
@@ -24,6 +25,11 @@ METRICS = (
 METRIC_KEYS = tuple(metric["key"] for metric in METRICS)
 STEPS = ("Receiving", "End of Line", "Final")
 
+# A defect description that is only a long run of digits is an unmapped raw code, never a defect name; it could be
+# a scanned identifier, so the public wallboard shows it as an unrecognized code. Real defect codes are short.
+UNRECOGNIZED_CODE = "Unrecognized code"
+_CODE_ONLY = re.compile(r"[0-9]{7,}")
+
 _SERIES_FIELDS = {"hourly", "weekly_13"}
 _ROW_FIELDS = {"bucket", "is_partial", "data_available", "represented_day", "quality_numerator", "quality_denominator", "pending_count", "rate_percent"}
 _WEEK_FIELDS = {"bucket", "bucket_end", "is_partial", "data_available", "represented_days", "quality_numerator", "quality_denominator", "pending_count", "rate_percent"}
@@ -32,6 +38,16 @@ _SECTION_FIELDS = {
     "available", "method_version", "report_date", "chart_start", "history_start", "fact_rows",
     "paint_passes_in_window", "series", "defects", "reason",
 }
+
+
+def safe_defect_description(value: Any) -> str:
+    """Return a defect description that is safe for the public wallboard."""
+    text = str(value).strip() if value is not None else ""
+    if not text:
+        return "Unspecified"
+    if _CODE_ONLY.fullmatch(text):
+        return UNRECOGNIZED_CODE
+    return text
 
 
 def _text_date(value: Any) -> str:
@@ -137,15 +153,11 @@ def quality_charts_section(
         daily = sorted(daily_by_metric[key], key=lambda row: row["bucket"])
         hourly = sorted(hourly_by_metric[key], key=lambda row: row["bucket"])
         series[key] = {"hourly": hourly, "weekly_13": _weekly_rows(report_date, daily)}
-    defects = [
-        {
-            "date": _text_date(row.get("bucket_start")),
-            "step": str(row.get("inspection_step") or "Unknown"),
-            "description": str(row.get("defect_description") or "Unspecified"),
-            "count": _integer(row.get("defect_count")),
-        }
-        for row in by_index.get(3, [])
-    ]
+    merged: Dict[Any, int] = {}
+    for row in by_index.get(3, []):
+        key = (_text_date(row.get("bucket_start")), str(row.get("inspection_step") or "Unknown"), safe_defect_description(row.get("defect_description")))
+        merged[key] = merged.get(key, 0) + _integer(row.get("defect_count"))
+    defects = [{"date": key[0], "step": key[1], "description": key[2], "count": count} for key, count in merged.items()]
     defects.sort(key=lambda row: (row["date"], row["step"], -row["count"], row["description"]))
     section = {
         "available": True,

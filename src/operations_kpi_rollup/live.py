@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from .context import validate_snapshot
 from .odbc import execute_operations_rollup, execute_process_times, execute_quality_charts
 from .process_times import process_time_section, unavailable_section
-from .quality_charts import quality_charts_section, unavailable_section as quality_charts_unavailable
+from .quality_charts import quality_charts_section, safe_defect_description, unavailable_section as quality_charts_unavailable
 
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
@@ -745,14 +745,23 @@ def snapshot_from_rollup(
     if indexed.get(8):
         raise ValueError("The public rollup returned restricted employee detail.")
     painters: List[Dict[str, Any]] = []
-    top_defects = [
-        {
-            "step": str(row.get("inspection_step") or "Unknown"),
-            "description": str(row.get("defect_description") or "Unspecified"),
-            "count": _integer(row.get("defect_count")),
-        }
-        for row in indexed.get(9, [])
-    ]
+    top_defects: List[Dict[str, Any]] = []
+    top_defect_merged = False
+    for row in indexed.get(9, []):
+        step = str(row.get("inspection_step") or "Unknown")
+        description = safe_defect_description(row.get("defect_description"))
+        count = _integer(row.get("defect_count"))
+        existing = next((item for item in top_defects if item["step"] == step and item["description"] == description), None)
+        if existing is None:
+            top_defects.append({"step": step, "description": description, "count": count})
+        else:
+            existing["count"] += count
+            top_defect_merged = True
+    if top_defect_merged:
+        step_order: Dict[str, int] = {}
+        for item in top_defects:
+            step_order.setdefault(item["step"], len(step_order))
+        top_defects.sort(key=lambda item: (step_order[item["step"]], -item["count"], item["description"]))
     shipping = [
         {
             "date": _date_text(row.get("report_date")),
@@ -927,7 +936,7 @@ def snapshot_from_rollup(
         painted_performance_model,
     )
     history_start = _date_text(metadata.get("history_start")) if metadata.get("history_start") else "2026-09-08"
-    painter_note = "Employee-level painter detail is available only in the identity-gated restricted drill-down."
+    painter_note = "This public wallboard carries no employee names or IDs; employee-level detail lives only in the drill-down."
     snapshot: Dict[str, Any] = {
         "schema_version": "operations-kpi-snapshot/v1",
         "report_date": report_date.isoformat(),

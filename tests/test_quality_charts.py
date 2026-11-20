@@ -13,6 +13,8 @@ import pytest
 from operations_kpi_rollup import live, odbc
 from operations_kpi_rollup.quality_charts import (
     METHOD_VERSION,
+    UNRECOGNIZED_CODE,
+    safe_defect_description,
     METRIC_KEYS,
     normalize_stored_quality_charts,
     quality_charts_section,
@@ -257,3 +259,34 @@ def test_public_snapshot_section_never_carries_identifiers():
     walk(section)
     banned = {"part_id", "part", "cart_id", "painter", "worker", "worker_id", "employee", "employee_id", "user_name", "name", "serial"}
     assert not (keys & banned)
+
+
+def test_unmapped_raw_codes_are_shown_as_unrecognized_and_merged():
+    assert safe_defect_description("2029468521") == UNRECOGNIZED_CODE == "Unrecognized code"
+    assert safe_defect_description(" 1234567 ") == UNRECOGNIZED_CODE
+    assert safe_defect_description("123456") == "123456"
+    assert safe_defect_description("Dirt 2029468") == "Dirt 2029468"
+    assert safe_defect_description("") == "Unspecified" and safe_defect_description(None) == "Unspecified"
+    rows = [
+        {"bucket_start": "2026-11-19", "inspection_step": "Final", "defect_description": "2029468521", "defect_count": 1},
+        {"bucket_start": "2026-11-19", "inspection_step": "Final", "defect_description": "9988776655", "defect_count": 2},
+        {"bucket_start": "2026-11-19", "inspection_step": "Final", "defect_description": "Scratch", "defect_count": 3},
+        {"bucket_start": "2026-11-18", "inspection_step": "Final", "defect_description": "2029468521", "defect_count": 4},
+    ]
+    section = quality_charts_section(_result_sets(rows), REPORT_DATE, datetime(2026, 11, 19, 11, 30))
+    assert section["defects"] == [
+        {"date": "2026-11-18", "step": "Final", "description": "Unrecognized code", "count": 4},
+        {"date": "2026-11-19", "step": "Final", "description": "Scratch", "count": 3},
+        {"date": "2026-11-19", "step": "Final", "description": "Unrecognized code", "count": 3},
+    ]
+    validate_quality_charts_section(section)
+
+
+def test_wallboard_polish_is_wired():
+    script = (SRC / "web" / "app.js").read_text(encoding="utf-8")
+    assert "const regular = index % step === 0 && last - index >= Math.ceil(step * 0.75);" in script
+    assert "if (!regular && index !== last) return;" in script
+    assert "stroke: '#fff', 'stroke-width': 3, 'paint-order': 'stroke', 'stroke-linejoin': 'round', 'font-size': 11" in script
+    live_source = (SRC / "live.py").read_text(encoding="utf-8")
+    assert "identity-gated" not in live_source and "restricted drill-down" not in live_source
+    assert "This public wallboard carries no employee names or IDs; employee-level detail lives only in the drill-down." in live_source

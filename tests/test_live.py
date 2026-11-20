@@ -596,6 +596,28 @@ def test_historical_cross_result_drift_remains_strict():
         raise AssertionError("historical cross-result drift was accepted")
 
 
+def test_public_top_defects_hide_unmapped_raw_codes_and_merge_them():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    sets = result_sets()
+    for item in sets:
+        if item["index"] == 9:
+            item["rows"] = [
+                {"inspection_step": "End of Line", "defect_description": "Dirt", "defect_count": "7"},
+                {"inspection_step": "Final", "defect_description": "2029468521", "defect_count": "1"},
+                {"inspection_step": "Final", "defect_description": "Scratch", "defect_count": "3"},
+                {"inspection_step": "Final", "defect_description": "1234567890", "defect_count": "4"},
+            ]
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), sets, generated_at=generated)
+    assert snapshot["top_defects"] == [
+        {"step": "End of Line", "description": "Dirt", "count": 7},
+        {"step": "Final", "description": "Unrecognized code", "count": 5},
+        {"step": "Final", "description": "Scratch", "count": 3},
+    ]
+    assert "2029468521" not in repr(snapshot) and "1234567890" not in repr(snapshot)
+    assert snapshot["data_quality_notes"][-1] == "This public wallboard carries no employee names or IDs; employee-level detail lives only in the drill-down."
+    validate_snapshot(snapshot)
+
+
 def test_v24_rejects_inconsistent_painted_demand_average():
     generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
     snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
