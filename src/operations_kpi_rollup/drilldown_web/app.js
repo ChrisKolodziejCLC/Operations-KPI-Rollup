@@ -176,6 +176,16 @@ async function initNames() {
   } catch (error) {
     // The public wallboard port has no sign-in route, so names simply stay off there.
   }
+  offerNamesSignIn();
+}
+
+// Where names are not available (the open wallboard port) point the short list at the Windows sign-in page;
+// the link's address lives in index.html and stays hidden on the sign-in site itself.
+function offerNamesSignIn() {
+  const link = $('#names-signin-link');
+  if (!link || namesAllowed) return;
+  const signIn = new URL(link.getAttribute('href'));
+  if (signIn.origin !== location.origin) link.hidden = false;
 }
 let busy = false;
 

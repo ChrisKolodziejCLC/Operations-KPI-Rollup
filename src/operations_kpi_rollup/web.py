@@ -44,6 +44,10 @@ STATIC_ROOT = Path(__file__).parent / "web"
 DRILLDOWN_STATIC_ROOT = Path(__file__).parent / "drilldown_web"
 DRILLDOWN_ASSETS = {"/drilldown/app.js": "app.js", "/drilldown/styles.css": "styles.css"}
 EARLIEST_SUPPORTED_DATE = date(2026, 9, 8)
+# Offered on the sign-in pages so nobody dead-ends: the open wallboard shows worker IDs, not names.
+OPEN_VIEW_LINKS: Tuple[Tuple[str, str], ...] = (
+    ("http://kpi.eliteenterprisesinc.com:5193/", "Open the wallboard without signing in (worker IDs, no names)"),
+)
 
 
 class RefreshError(RuntimeError):
@@ -534,9 +538,12 @@ class AuthHandler(Handler):
     def auth(self) -> AuthContext:
         return self.server.auth  # type: ignore[attr-defined]
 
-    def _page(self, status: int, title: str, message: str, headers: Tuple[Tuple[str, str], ...] = ()) -> None:
+    def _page(self, status: int, title: str, message: str, headers: Tuple[Tuple[str, str], ...] = (),
+              links: Tuple[Tuple[str, str], ...] = ()) -> None:
+        extra = "".join("<p><a href=\"" + html.escape(url, quote=True) + "\">" + html.escape(label) + "</a></p>" for url, label in links)
         body = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>" + html.escape(title)
-                + "</title></head><body><h1>" + html.escape(title) + "</h1><p>" + html.escape(message) + "</p></body></html>").encode("utf-8")
+                + "</title></head><body><h1>" + html.escape(title) + "</h1><p>" + html.escape(message) + "</p>" + extra
+                + "</body></html>").encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -554,6 +561,7 @@ class AuthHandler(Handler):
             "This page signs you in with your Windows account. If your browser asks for a password, use your CLC account. "
             "If you were not asked and still see this message, open https://kpi.eliteenterprisesinc.com:5196/ from a CLC computer.",
             (("WWW-Authenticate", value),),
+            OPEN_VIEW_LINKS,
         )
 
     def _forbidden(self, principal: str) -> None:
@@ -561,6 +569,7 @@ class AuthHandler(Handler):
             HTTPStatus.FORBIDDEN,
             "Not on the access list",
             "You are signed in as " + sam_of(principal) + ", which is not on the short list for this site. Ask IT if you need access.",
+            links=OPEN_VIEW_LINKS,
         )
 
     def _cookie_principal(self) -> Optional[str]:

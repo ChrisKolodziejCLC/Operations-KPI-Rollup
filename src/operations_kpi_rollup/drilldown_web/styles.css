@@ -16,6 +16,7 @@ h1{font-size:clamp(1.9rem,4vw,3.25rem);line-height:1;margin:0;letter-spacing:-.0
 .pilot-badge{display:inline-flex;padding:.35rem .65rem;border:1px solid #7dcfd1;border-radius:999px;color:#b7efec;font-size:.68rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
 .back-link{color:#b7efec;font-size:.82rem;font-weight:800;text-decoration:none}
 .back-link:hover,.back-link:focus{text-decoration:underline}
+.back-link[hidden]{display:none}
 main{max-width:1440px;margin:0 auto;padding:1.4rem 2rem 3rem}
 .control-bar{display:grid;grid-template-columns:minmax(160px,190px) auto auto auto 1fr;gap:.8rem;align-items:end;padding:1rem 1.1rem;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow)}
 label{display:block;margin-bottom:.35rem;color:var(--muted);font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em}

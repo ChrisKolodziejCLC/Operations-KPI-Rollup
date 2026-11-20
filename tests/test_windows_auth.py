@@ -159,6 +159,7 @@ def test_unauthenticated_requests_get_a_negotiate_challenge_and_no_data(tmp_path
             status, headers, body = running.get(path)
             assert status == 401 and headers["www-authenticate"] == "Negotiate", path
             assert b"Windows sign-in required" in body and b"report_date" not in body
+            assert b'<a href="http://kpi.eliteenterprisesinc.com:5193/">Open the wallboard without signing in (worker IDs, no names)</a>' in body
             assert headers["cache-control"] == "no-store" and headers["x-robots-tag"].startswith("noindex")
         status, headers, body = running.get("/", {"Authorization": "Basic Zm9vOmJhcg=="})
         assert status == 401
@@ -190,6 +191,7 @@ def test_signed_in_but_not_allowlisted_is_forbidden_without_a_session(tmp_path):
     try:
         status, headers, body = running.get("/api/snapshot", negotiate(b"denied"))
         assert status == 403 and b"somebody" in body and b"report_date" not in body
+        assert b'<a href="http://kpi.eliteenterprisesinc.com:5193/">Open the wallboard without signing in (worker IDs, no names)</a>' in body
         assert "set-cookie" not in headers and "www-authenticate" not in headers
     finally:
         running.close()
@@ -346,6 +348,10 @@ def test_drilldown_names_toggle_is_hidden_by_default_and_wired_to_the_signin_rou
         assert field in script
     assert "$('#names-toggle').addEventListener('change'" in script and "await initNames();" in script
     assert ".names-toggle[hidden]{display:none}" in styles
+    # people who are not on the short list can reach the sign-in page from the open drill-down; it stays hidden on the sign-in site
+    assert 'id="names-signin-link" class="back-link" href="https://kpi.eliteenterprisesinc.com:5196/drilldown/" hidden' in page
+    assert "function offerNamesSignIn()" in script and "signIn.origin !== location.origin" in script and "  offerNamesSignIn();\n}" in script
+    assert ".back-link[hidden]{display:none}" in styles
     # the snapshot served to everyone stays free of names
     assert "contains_named_people" not in script
 
