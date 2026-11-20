@@ -242,13 +242,28 @@ function metricCard(label, value, detail, color) {
   return card;
 }
 
-function splitMetricCard(label, total, unique, rows, color, extraDetails = []) {
+// Total of a Prd / BV / Svc split; unknown when none of the three is known.
+function splitTotal(row) {
+  const known = [row.production, row.bv, row.service].map(Number).filter(Number.isFinite);
+  return known.length ? known.reduce((sum, value) => sum + value, 0) : undefined;
+}
+
+// Variety lines under the counts: unique pieces, unique parts, then unique colors (a line stays out until its figure exists).
+function uniqueDetails(day, uniquePieces) {
+  const lines = [];
+  if (uniquePieces !== undefined && uniquePieces !== null) lines.push(compactOptionalInteger(uniquePieces) + ' Unique Pieces');
+  if (day && day.unique_parts !== undefined && day.unique_parts !== null) lines.push(compactOptionalInteger(day.unique_parts) + ' Unique Parts');
+  if (day && day.unique_colors !== undefined && day.unique_colors !== null) lines.push(compactOptionalInteger(day.unique_colors) + ' Unique Colors');
+  return lines;
+}
+
+function splitMetricCard(label, total, rows, color, extraDetails = []) {
   const card = document.createElement('article');
   card.className = 'metric-card split-count-card';
   card.style.setProperty('--accent', color);
   const labelNode = document.createElement('span'); labelNode.append(text(label));
   const totalNode = document.createElement('strong'); totalNode.className = 'metric-split-total';
-  totalNode.append(text(`${integer(total)} Total / ${unique === undefined ? '—' : integer(unique)} Unique`));
+  totalNode.append(text(`${compactOptionalInteger(splitTotal(rows[0]))} Carts / ${compactOptionalInteger(total)} Pieces`));
   const list = document.createElement('div'); list.className = 'metric-split-list';
   rows.forEach(row => {
     const line = document.createElement('div'); line.className = 'metric-split-row';
@@ -364,8 +379,6 @@ function renderCards(snapshot) {
   const carts = cartSplit(current);
   const paintCarts = paintCartSplit(current);
   const paintPieces = paintPieceSplit(current);
-  const loadedColors = snapshot.chart_series?.loaded?.selected_day?.unique_colors;
-  const paintedColors = snapshot.chart_series?.painted?.selected_day?.unique_colors;
   const shippedDetail = shippedPieceDetail(snapshot);
   const hasPaintFinesse = current.paint_fty_repair_count !== undefined;
   const hasReceivingFinesse = current.finesse_repair_count !== undefined;
@@ -387,18 +400,18 @@ function renderCards(snapshot) {
     ['Pieces shipped', integer(current.parts_shipped), shippedDetail, palette.red]
   ];
   const container = $('#cards'); container.replaceChildren();
-  container.append(splitMetricCard('Carts / Pieces loaded', current.parts_loaded, current.unique_pieces_loaded, [
+  container.append(splitMetricCard('Carts / Pieces loaded', current.parts_loaded, [
     {label:'Carts', production:carts.production, bv:carts.bv, service:carts.service},
     {label:'Pieces', production:loaded.production, bv:loaded.bv, service:loaded.service}
-  ], palette.teal, loadedColors === undefined ? [] : [compactOptionalInteger(loadedColors) + ' Unique Colors']));
+  ], palette.teal, uniqueDetails(snapshot.chart_series?.loaded?.selected_day, current.unique_pieces_loaded)));
   container.append(stagedMetricCard(current.staged_carts, current.staged_pieces, [
     {label:'Carts', production:current.production_staged_carts, bv:current.bv_staged_carts, service:current.service_staged_carts},
     {label:'Pieces', production:current.production_staged_pieces, bv:current.bv_staged_pieces, service:current.service_staged_pieces}
-  ], palette.green));
-  container.append(splitMetricCard('Carts / Pieces painted', current.paint_pieces_processed, current.unique_pieces_processed, [
+  ], palette.green, uniqueDetails(snapshot.chart_series?.staged?.selected_day)));
+  container.append(splitMetricCard('Carts / Pieces painted', current.paint_pieces_processed, [
     {label:'Carts', production:paintCarts.production, bv:paintCarts.bv, service:paintCarts.service},
     {label:'Pieces', production:paintPieces.production, bv:paintPieces.bv, service:paintPieces.service}
-  ], palette.blue, paintedColors === undefined ? [] : [compactOptionalInteger(paintedColors) + ' Unique Colors']));
+  ], palette.blue, uniqueDetails(snapshot.chart_series?.painted?.selected_day, current.unique_pieces_processed)));
   container.append(metricCard(
     'Repaint %',
     percent(ratio(current.paint_fty_repaint_count, current.paint_fty_total)),
@@ -463,6 +476,14 @@ function renderCards(snapshot) {
     {label:'Fairing racks', value:current.fairing_racks_shipped}
   ], palette.amber));
   container.append(processTimeCard(snapshot));
+  // Five tiles across and three down: volumes and the process on top, quality in the middle, inspection and shipping below.
+  const tileOrder = ['Carts / Pieces loaded', 'Carts / Pieces staged', 'Carts / Pieces painted', 'Repaint %', 'Process time',
+    'Finesse Effectiveness', 'PPY (Paint Process Yield)', 'FTY (First Time Yield)', 'Complete assy sets', 'Assembled bumpers',
+    'Receiving FTY', 'Final FTY', 'Preliminary OEE', 'Pieces shipped', 'Trailers'];
+  const tileLabel = card => ((card.querySelector(':scope > span') || {}).textContent || '').trim();
+  const tilesByLabel = new Map([...container.children].map(card => [tileLabel(card), card]));
+  tileOrder.forEach(label => { if (tilesByLabel.has(label)) { container.append(tilesByLabel.get(label)); tilesByLabel.delete(label); } });
+  tilesByLabel.forEach(card => container.append(card));
   markSelectableCards(container);
 }
 
@@ -1601,7 +1622,11 @@ const YIELD_TILES = {
   }
 };
 
-function yieldHourlySummary(rows, metric) {
+function yieldMarkText(value) {
+  return (Number.isInteger(value) ? String(value) : decimal(value)) + '%';
+}
+
+function yieldHourlySummary(rows, metric, marks = {}) {
   const measured = rows.filter(row => row.data_available && Number(row.quality_denominator || 0) > 0);
   const numerator = measured.reduce((sum, row) => sum + Number(row.quality_numerator || 0), 0);
   const denominator = measured.reduce((sum, row) => sum + Number(row.quality_denominator || 0), 0);
@@ -1611,9 +1636,14 @@ function yieldHourlySummary(rows, metric) {
     .map(row => ({row, value:Number(row.rate_percent)})).filter(item => Number.isFinite(item.value));
   const best = steady.reduce((value, item) => (!value || item.value > value.value) ? item : value, null);
   const worst = steady.reduce((value, item) => (!value || item.value < value.value) ? item : value, null);
+  const targetMark = Number.isFinite(Number(marks.target)) && marks.target !== null ? Number(marks.target) : null;
+  const goalMark = Number.isFinite(Number(marks.goal)) && marks.goal !== null ? Number(marks.goal) : null;
+  const atTarget = targetMark === null ? 0 : measured.filter(row => Number(row.rate_percent) >= targetMark).length;
   const last = metric.pending
     ? {label:'Waiting', value:integer(pending), detail:'Decision still open'}
-    : {label:'Target / goal', value:'Not set', detail:'Ask to add one'};
+    : targetMark === null
+      ? {label:'Target / goal', value:'Not set', detail:'Ask to add one'}
+      : {label:'Hours at target', value:integer(atTarget) + ' of ' + integer(measured.length), detail:'Target ' + yieldMarkText(targetMark) + (goalMark === null ? '' : ' · Goal ' + yieldMarkText(goalMark))};
   return chartSummaryPanel(metric.label + ' selected-day hourly summary', [
     {label:'Day weighted rate', value:weighted === null ? 'No Data' : decimal(weighted) + '%', detail:integer(numerator) + ' / ' + integer(denominator)},
     {label:'Counted', value:integer(denominator), detail:metric.unit + ' in measured hours'},
@@ -1711,7 +1741,7 @@ function renderYieldCharts(snapshot, tileKey) {
     const marks = (section.targets || {})[metric.key] || {};
     const markValue = field => marks[field] === null || marks[field] === undefined || !Number.isFinite(Number(marks[field])) ? null : Number(marks[field]);
     const targetMark = markValue('target_percent'), goalMark = markValue('goal_percent');
-    const markText = value => (Number.isInteger(value) ? String(value) : decimal(value)) + '%';
+    const markText = yieldMarkText;
     const markReferences = spanFullWidth => [
       ...(targetMark === null ? [] : [{value:targetMark, label:'Target ' + markText(targetMark), color:palette.amber, spanFullWidth, tooltip:'Target ' + markText(targetMark)}]),
       ...(goalMark === null ? [] : [{value:goalMark, label:'Goal ' + markText(goalMark), color:palette.red, spanFullWidth, tooltip:'Goal ' + markText(goalMark)}])
@@ -1722,7 +1752,7 @@ function renderYieldCharts(snapshot, tileKey) {
       bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
       references:[...markReferences(false), {value:weightedQualityPercent(series.hourly), label:'Daily weighted average', color:palette.navy, dash:'2 3', directLabel:'Daily avg'}],
       targetAssessment:markAssessment,
-      summaryBuilder:rows => yieldHourlySummary(rows, metric)
+      summaryBuilder:rows => yieldHourlySummary(rows, metric, {target:targetMark, goal:goalMark})
     })));
     group.grid.append(loadedChartCard(metric.label + ' · 13 weeks', 'Sunday–Saturday', series.weekly_13, Object.assign({}, base, {
       trend:true, omitNull:true, chartType:'bar', ariaLabel:'Thirteen-week weighted ' + metric.label + ' with trend',

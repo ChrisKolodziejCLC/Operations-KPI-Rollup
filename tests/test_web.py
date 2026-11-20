@@ -375,7 +375,8 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "splitMetricCard('Carts / Pieces loaded', current.parts_loaded" in javascript
             assert "labelNode.append(text('Carts / Pieces staged'))" in javascript
             assert "splitMetricCard('Carts / Pieces painted', current.paint_pieces_processed" in javascript
-            assert "unique === undefined ? '—' : integer(unique)" in javascript
+            assert "compactOptionalInteger(splitTotal(rows[0]))" in javascript
+            assert "uniqueDetails(snapshot.chart_series?.loaded?.selected_day, current.unique_pieces_loaded)" in javascript
             assert "metric-split-total" in javascript
             assert "values.push(`${integer(row.n71)} N71-6164`)" not in javascript
             assert "stagedMetricCard(current.staged_carts, current.staged_pieces" in javascript
@@ -565,8 +566,8 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert ".metric-card .metric-detail-row" in styles
             assert ".shipping-legend{" in styles
             assert "font-variant-numeric:tabular-nums" in styles
-            assert ".cards{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))" in styles
-            assert "body.wallboard .cards{grid-template-columns:repeat(7,minmax(0,1fr))}" in styles
+            assert ".cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))" in styles
+            assert "body.wallboard .cards{grid-template-columns:repeat(5,minmax(0,1fr))}" in styles
             assert ".inspection-detail-row{display:grid;grid-template-columns:minmax(0,1fr) auto" in styles
             assert ".metric-card .inspection-detail-counts{grid-column:1/-1;justify-self:end" in styles
             assert ".trailer-count-card{grid-column:span 1}" in styles
@@ -754,3 +755,41 @@ def test_live_state_runs_one_server_owned_initial_refresh(tmp_path, monkeypatch)
         assert state.health()["auto_refresh_running"] is True
     finally:
         state.stop_auto_refresh()
+
+
+def test_wallboard_tiles_lead_with_carts_and_pieces_and_list_unique_figures_below():
+    script = (Path(__file__).resolve().parents[1] / "src" / "operations_kpi_rollup" / "web" / "app.js").read_text(encoding="utf-8")
+    assert "function splitTotal(row) {" in script and "function uniqueDetails(day, uniquePieces) {" in script
+    assert "function splitMetricCard(label, total, rows, color, extraDetails = []) {" in script
+    assert "Carts / " in script and "compactOptionalInteger(splitTotal(rows[0]))" in script and " Pieces" in script
+    assert " Total / " not in script
+    # unique pieces first, unique parts next (once the figure exists), unique colors last
+    order = [script.index("' Unique Pieces'"), script.index("' Unique Parts'"), script.index("' Unique Colors'")]
+    assert order == sorted(order)
+    assert "uniqueDetails(snapshot.chart_series?.loaded?.selected_day, current.unique_pieces_loaded)" in script
+    assert "uniqueDetails(snapshot.chart_series?.painted?.selected_day, current.unique_pieces_processed)" in script
+    assert "uniqueDetails(snapshot.chart_series?.staged?.selected_day)" in script
+
+
+def test_wallboard_tiles_are_five_across_and_three_down_in_the_requested_order():
+    root = Path(__file__).resolve().parents[1] / "src" / "operations_kpi_rollup" / "web"
+    script = (root / "app.js").read_text(encoding="utf-8")
+    labels = [
+        "Carts / Pieces loaded", "Carts / Pieces staged", "Carts / Pieces painted", "Repaint %", "Process time",
+        "Finesse Effectiveness", "PPY (Paint Process Yield)", "FTY (First Time Yield)", "Complete assy sets", "Assembled bumpers",
+        "Receiving FTY", "Final FTY", "Preliminary OEE", "Pieces shipped", "Trailers",
+    ]
+    expected = "const tileOrder = [" + ", ".join("'" + label + "'" for label in labels) + "];"
+    flattened = " ".join(part.strip() for part in script[script.index("const tileOrder = ["):script.index("];", script.index("const tileOrder = [")) + 2].split("\n"))
+    assert flattened == expected
+    assert len(labels) == 15 and len(set(labels)) == 15
+    styles = (root / "styles.css").read_text(encoding="utf-8")
+    assert "repeat(7," not in styles.split("@media")[0]
+    assert styles.count("repeat(5,minmax(0,1fr))") == 2
+
+
+def test_hourly_summary_counts_hours_at_target_once_a_target_exists():
+    script = (Path(__file__).resolve().parents[1] / "src" / "operations_kpi_rollup" / "web" / "app.js").read_text(encoding="utf-8")
+    assert "label:'Hours at target'" in script and "function yieldMarkText(value) {" in script
+    assert "yieldHourlySummary(rows, metric, {target:targetMark, goal:goalMark})" in script
+    assert "label:'Target / goal', value:'Not set'" in script  # still the fallback when no target is configured
