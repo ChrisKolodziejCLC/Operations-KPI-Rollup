@@ -10,8 +10,9 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional
 from zoneinfo import ZoneInfo
 
 from .context import validate_snapshot
-from .odbc import execute_operations_rollup, execute_process_times
+from .odbc import execute_operations_rollup, execute_process_times, execute_quality_charts
 from .process_times import process_time_section, unavailable_section
+from .quality_charts import quality_charts_section, unavailable_section as quality_charts_unavailable
 
 
 DATE_WRAPPER = re.compile(r"^/Date\((\d+)(?:[+-]\d+)?\)/$")
@@ -1039,10 +1040,31 @@ def _process_time_for_snapshot(report_date: date) -> Optional[Dict[str, Any]]:
         return unavailable_section("The process-time procedure could not be read (" + error.__class__.__name__ + ").")
 
 
+def _quality_charts_for_snapshot(report_date: date, generated_at: Optional[datetime]) -> Optional[Dict[str, Any]]:
+    """Quality charts are optional: unset hash means the feature is not deployed; a failure never blocks the wallboard."""
+    if not os.environ.get("KPI_QUALITY_CHARTS_PROCEDURE_HASH", "").strip():
+        return None
+    try:
+        return quality_charts_section(execute_quality_charts(report_date), report_date, generated_at)
+    except Exception as error:  # noqa: BLE001 - the rest of the wallboard must keep working
+        return quality_charts_unavailable("The quality-chart procedure could not be read (" + error.__class__.__name__ + ").")
+
+
 def refresh_live_snapshot(report_date: date) -> Dict[str, Any]:
     snapshot = snapshot_from_rollup(report_date, execute_operations_rollup(report_date))
+    changed = False
     section = _process_time_for_snapshot(report_date)
     if section is not None:
         snapshot["process_time"] = section
+        changed = True
+    try:
+        generated_at = datetime.fromisoformat(str(snapshot.get("generated_at")))
+    except ValueError:
+        generated_at = None
+    charts = _quality_charts_for_snapshot(report_date, generated_at)
+    if charts is not None:
+        snapshot["quality_charts"] = charts
+        changed = True
+    if changed:
         validate_snapshot(snapshot)
     return snapshot

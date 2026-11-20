@@ -490,7 +490,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "targetAssessmentLabel" in javascript
             assert "value:periodAverage === null ? 'No Data' : decimal(periodAverage)" in javascript
             assert "value:latest ? decimal(latest[options.averageField]) : 'No Data'" in javascript
-            assert javascript.count("chartType:'bar'") == 7
+            assert javascript.count("chartType:'bar'") == 8
             assert "line:!barChart" in javascript
             assert "loadedLinearTrend" in javascript
             assert "13-week daily averages" in javascript
@@ -519,7 +519,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert javascript.count("value:performance.model.target_") == 8
             assert javascript.count("value:performance.model.goal_") == 4
             assert "class:'loaded-reference-line'" in javascript
-            assert javascript.count("spanFullWidth:true") == 14
+            assert javascript.count("spanFullWidth:true") == 15
             assert "loaded-reference-line-full-width" in javascript
             assert "points = [left + ',' + y(referencePoints[0].value)]" in javascript
             assert "points.push((width - right) + ',' + y(referencePoints[referencePoints.length - 1].value))" in javascript
@@ -531,7 +531,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "loadedWeeklySummary" in javascript
             assert "options.omitNull" in javascript
             assert "omitNull:true, verticalLabels:true, chartType:'bar'" in javascript
-            assert javascript.count("verticalLabels:true, showTick:() => true") == 5
+            assert javascript.count("verticalLabels:true, showTick:() => true") == 6
             assert "Unavailable weeks before the September 8 history boundary are omitted, not zero." in javascript
             assert "field:'unique_pieces_loaded'" not in javascript
             assert "Hourly · selected report day" in javascript

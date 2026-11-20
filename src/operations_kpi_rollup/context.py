@@ -3,6 +3,7 @@ from typing import Any, Dict, Iterable, List
 
 from .metrics import enrich_metric_row, format_decimal, format_int, format_percent, safe_ratio
 from .process_times import validate_process_time_section
+from .quality_charts import validate_quality_charts_section
 
 
 REQUIRED_TOP_LEVEL = {
@@ -1145,6 +1146,8 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
             raise ValueError("report-date shipping detail does not equal parts_shipped")
     if "process_time" in snapshot:
         validate_process_time_section(snapshot["process_time"])
+    if "quality_charts" in snapshot:
+        validate_quality_charts_section(snapshot["quality_charts"])
 
 
 def _sort_by(rows: Iterable[Dict[str, Any]], key: str) -> List[Dict[str, Any]]:

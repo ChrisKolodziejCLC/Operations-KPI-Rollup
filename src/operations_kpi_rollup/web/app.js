@@ -643,7 +643,8 @@ function renderLoadedLineChart(container, rows, options) {
     ...reference.values.filter(value => value !== null && Number.isFinite(value))
   ));
   if (trend) finiteValues.push(Math.max(0, trend.startValue), Math.max(0, trend.endValue));
-  const maximum = loadedWholeNumberScaleMaximum(finiteValues);
+  const maximum = Number.isFinite(Number(options.axisMaximum)) && Number(options.axisMaximum) > 0
+    ? Number(options.axisMaximum) : loadedWholeNumberScaleMaximum(finiteValues);
   const y = value => top + (maximum - Math.max(0, value)) * plotHeight / maximum;
   const secondaryValues = overlays.filter(overlay => overlay.axis === 'secondary')
     .flatMap(overlay => overlay.values)
@@ -1560,6 +1561,190 @@ function renderQualityCharts(snapshot, metric, options) {
   appendCommonChartNotes(content, weeklySection, weekly);
 }
 
+// ---------- yield charts: PPY, FTY, Receiving FTY, Final FTY (aggregate-only; the section is absent until the QPTS procedure is deployed) ----------
+const YIELD_TILES = {
+  'ppy-paint-process-yield': {
+    step: 'End of Line',
+    summary: 'Hourly and 13-week Paint Process Yield on both bases with the end-of-line rejection reasons behind it. The repaint basis is the large number on the tile. Every value is the same calculation as the tile for that date; no interim target or goal is set yet.',
+    metrics: [
+      {key: 'ppy_repaint', label: 'PPY · repaint basis', color: palette.teal, unit: 'passes', pending: true,
+        definition: 'Passes not repainted and not waiting for a decision ÷ all passes, grouped by oven-exit time'},
+      {key: 'ppy_reject', label: 'PPY · reject basis', color: palette.navy, unit: 'passes', pending: true,
+        definition: 'Passes approved at end of line ÷ all passes, grouped by oven-exit time'}
+    ]
+  },
+  'fty-first-time-yield': {
+    step: 'End of Line',
+    summary: 'Hourly and 13-week First Time Yield (initial passes only) on both bases with the end-of-line rejection reasons behind it. The repaint basis is the large number on the tile. Every value is the same calculation as the tile for that date; no interim target or goal is set yet.',
+    metrics: [
+      {key: 'fty_repaint', label: 'FTY · repaint basis', color: palette.green, unit: 'initial passes', pending: true,
+        definition: 'Initial passes not repainted and not waiting for a decision ÷ initial passes, grouped by oven-exit time'},
+      {key: 'fty_reject', label: 'FTY · reject basis', color: palette.navy, unit: 'initial passes', pending: true,
+        definition: 'Initial passes approved at end of line ÷ initial passes, grouped by oven-exit time'}
+    ]
+  },
+  'receiving-fty': {
+    step: 'Receiving',
+    summary: 'Hourly and 13-week Receiving First Time Yield with the receiving rejection reasons behind it. Each part counts once, at its first receiving decision. Every value is the same calculation as the tile for that date; no interim target or goal is set yet.',
+    metrics: [
+      {key: 'receiving', label: 'Receiving FTY', color: palette.teal, unit: 'parts', pending: false,
+        definition: 'Parts approved at their first receiving decision ÷ parts with a first receiving decision'}
+    ]
+  },
+  'final-fty': {
+    step: 'Final',
+    summary: 'Hourly and 13-week Final First Time Yield with the final-inspection rejection reasons behind it. Each part counts once, at its first final decision. Every value is the same calculation as the tile for that date; no interim target or goal is set yet.',
+    metrics: [
+      {key: 'final', label: 'Final FTY', color: palette.green, unit: 'parts', pending: false,
+        definition: 'Parts approved at their first final decision ÷ parts with a first final decision'}
+    ]
+  }
+};
+
+function yieldHourlySummary(rows, metric) {
+  const measured = rows.filter(row => row.data_available && Number(row.quality_denominator || 0) > 0);
+  const numerator = measured.reduce((sum, row) => sum + Number(row.quality_numerator || 0), 0);
+  const denominator = measured.reduce((sum, row) => sum + Number(row.quality_denominator || 0), 0);
+  const pending = measured.reduce((sum, row) => sum + Number(row.pending_count || 0), 0);
+  const weighted = denominator > 0 ? numerator * 100 / denominator : null;
+  const steady = measured.filter(row => Number(row.quality_denominator || 0) >= 5)
+    .map(row => ({row, value:Number(row.rate_percent)})).filter(item => Number.isFinite(item.value));
+  const best = steady.reduce((value, item) => (!value || item.value > value.value) ? item : value, null);
+  const worst = steady.reduce((value, item) => (!value || item.value < value.value) ? item : value, null);
+  const last = metric.pending
+    ? {label:'Waiting', value:integer(pending), detail:'Decision still open'}
+    : {label:'Target / goal', value:'Not set', detail:'Ask to add one'};
+  return chartSummaryPanel(metric.label + ' selected-day hourly summary', [
+    {label:'Day weighted rate', value:weighted === null ? 'No Data' : decimal(weighted) + '%', detail:integer(numerator) + ' / ' + integer(denominator)},
+    {label:'Counted', value:integer(denominator), detail:metric.unit + ' in measured hours'},
+    {label:'Measured hours', value:integer(measured.length), detail:'Hours with a denominator'},
+    {label:'Best hour', value:best ? decimal(best.value) + '%' : 'No Data', detail:best ? hourBucketLabel(best.row.bucket) + ' bucket · 5+ ' + metric.unit : 'Needs 5+ ' + metric.unit + ' in an hour'},
+    {label:'Worst hour', value:worst ? decimal(worst.value) + '%' : 'No Data', detail:worst ? hourBucketLabel(worst.row.bucket) + ' bucket · 5+ ' + metric.unit : 'Needs 5+ ' + metric.unit + ' in an hour'},
+    last
+  ]);
+}
+
+function yieldWeeklySummary(rows, metric) {
+  const completed = rows.filter(row => row.data_available && !row.is_partial && Number(row.quality_denominator || 0) > 0);
+  const numerator = completed.reduce((sum, row) => sum + Number(row.quality_numerator || 0), 0);
+  const denominator = completed.reduce((sum, row) => sum + Number(row.quality_denominator || 0), 0);
+  const weighted = denominator > 0 ? numerator * 100 / denominator : null;
+  const ordered = completed.map(row => ({row, value:Number(row.rate_percent)})).filter(item => Number.isFinite(item.value));
+  const best = ordered.reduce((value, item) => (!value || item.value > value.value) ? item : value, null);
+  const worst = ordered.reduce((value, item) => (!value || item.value < value.value) ? item : value, null);
+  const latest = completed.length ? completed[completed.length - 1] : null;
+  const trend = loadedLinearTrend(rows, 'rate_percent');
+  const trendValue = !trend ? 'No Data' : Math.abs(trend.slope) < .05 ? 'Flat' : trend.slope > 0 ? 'Improving' : 'Declining';
+  const days = completed.reduce((sum, row) => sum + Number(row.represented_days || 0), 0);
+  return chartSummaryPanel(metric.label + ' 13-week summary', [
+    {label:'Period weighted rate', value:weighted === null ? 'No Data' : decimal(weighted) + '%', detail:integer(numerator) + ' / ' + integer(denominator)},
+    {label:'Latest full week', value:latest ? decimal(latest.rate_percent) + '%' : 'No Data', detail:latest ? dateLabel(latest.bucket) + ' · ' + latest.represented_days + ' days' : 'No completed week'},
+    {label:'Trend', value:trendValue, detail:trend ? (trend.slope >= 0 ? '+' : '') + decimal(trend.slope) + ' points/week' : 'Need two completed weeks'},
+    {label:'Best full week', value:best ? decimal(best.value) + '%' : 'No Data', detail:best ? dateLabel(best.row.bucket) : 'No completed week'},
+    {label:'Worst full week', value:worst ? decimal(worst.value) + '%' : 'No Data', detail:worst ? dateLabel(worst.row.bucket) : 'No completed week'},
+    {label:'Days counted', value:integer(days), detail:'Production days in full weeks'}
+  ]);
+}
+
+function paretoTotals(defects, step, startDate, endDate) {
+  const totals = new Map();
+  (defects || []).forEach(row => {
+    if (row.step !== step || row.date < startDate || row.date > endDate) return;
+    totals.set(row.description, (totals.get(row.description) || 0) + Number(row.count || 0));
+  });
+  const rows = [...totals.entries()].map(entry => ({description: entry[0], count: entry[1]}))
+    .sort((a, b) => b.count - a.count || a.description.localeCompare(b.description));
+  return {rows, total: rows.reduce((sum, row) => sum + row.count, 0)};
+}
+
+function paretoCard(title, note, data, limit) {
+  const figure = document.createElement('figure'); figure.className = 'pareto-card';
+  const caption = document.createElement('figcaption');
+  const heading = document.createElement('span'); heading.append(text(title));
+  const detail = document.createElement('small'); detail.append(text(note));
+  caption.append(heading, detail); figure.append(caption);
+  if (!data.total) {
+    const empty = document.createElement('div'); empty.className = 'pareto-empty';
+    empty.append(text('No rejections recorded in this period.')); figure.append(empty); return figure;
+  }
+  const shown = data.rows.slice(0, limit), remainder = data.rows.slice(limit);
+  const rows = shown.slice();
+  if (remainder.length) rows.push({description: 'All other (' + remainder.length + ' types)', count: remainder.reduce((sum, row) => sum + row.count, 0), other: true});
+  const largest = Math.max(...rows.map(row => row.count), 1);
+  const list = document.createElement('ol'); list.className = 'pareto-list';
+  let running = 0;
+  rows.forEach(row => {
+    running += row.count;
+    const item = document.createElement('li'); item.className = 'pareto-row' + (row.other ? ' pareto-other' : '');
+    const label = document.createElement('span'); label.className = 'pareto-label'; label.title = row.description; label.append(text(row.description));
+    const track = document.createElement('span'); track.className = 'pareto-track';
+    const bar = document.createElement('i'); bar.style.width = (row.count * 100 / largest).toFixed(1) + '%'; track.append(bar);
+    const count = document.createElement('span'); count.className = 'pareto-count'; count.append(text(integer(row.count) + ' · ' + decimal(row.count * 100 / data.total) + '%'));
+    const cumulative = document.createElement('span'); cumulative.className = 'pareto-cumulative'; cumulative.append(text(decimal(running * 100 / data.total) + '% cum.'));
+    item.append(label, track, count, cumulative); list.append(item);
+  });
+  const total = document.createElement('p'); total.className = 'pareto-total';
+  total.append(text(integer(data.total) + ' rejection records · ' + integer(data.rows.length) + ' defect types'));
+  figure.append(list, total);
+  return figure;
+}
+
+function renderYieldCharts(snapshot, tileKey) {
+  const content = $('#metric-chart-content'); content.replaceChildren();
+  const tile = YIELD_TILES[tileKey], section = snapshot.quality_charts;
+  const placeholder = message => {
+    const empty = document.createElement('div'); empty.className = 'chart-placeholder';
+    empty.append(text(message)); content.append(empty);
+  };
+  if (!section) { placeholder('This saved snapshot predates the quality charts. Load or refresh this date to build them.'); return; }
+  if (section.available === false) { placeholder(section.reason || 'The quality charts are not available right now.'); return; }
+  const reportDay = fullDateLabel(snapshot.report_date);
+  let partialWeek = false, earlyWeeks = false;
+  tile.metrics.forEach(metric => {
+    const series = section.series?.[metric.key];
+    if (!series) return;
+    const group = metricChartSection(metric.label, metric.definition);
+    const base = {
+      field:'rate_percent', label:metric.label, color:metric.color, formatValue:percentagePoint, verticalLabels:true, showTick:() => true,
+      axisMaximum:100, tooltipSuffix:row => ' · ' + integer(row.quality_numerator) + ' / ' + integer(row.quality_denominator)
+    };
+    group.grid.append(loadedChartCard(metric.label + ' by hour', reportDay, series.hourly, Object.assign({}, base, {
+      trend:false, ariaLabel:'Hourly ' + metric.label + ' for ' + reportDay,
+      bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
+      references:[{value:weightedQualityPercent(series.hourly), label:'Daily weighted average', color:palette.navy, dash:'2 3', directLabel:'Daily avg'}],
+      summaryBuilder:rows => yieldHourlySummary(rows, metric)
+    })));
+    group.grid.append(loadedChartCard(metric.label + ' · 13 weeks', 'Sunday–Saturday', series.weekly_13, Object.assign({}, base, {
+      trend:true, omitNull:true, chartType:'bar', ariaLabel:'Thirteen-week weighted ' + metric.label + ' with trend',
+      bucketLabel:row => dateLabel(row.bucket), bucketTitle:row => fullDateLabel(row.bucket) + ' through ' + fullDateLabel(row.bucket_end),
+      references:[{value:weightedQualityPercent(series.weekly_13.filter(row => !row.is_partial)), label:'13-week weighted average', color:palette.navy, dash:'2 3', spanFullWidth:true}],
+      summaryBuilder:rows => yieldWeeklySummary(rows, metric)
+    })));
+    content.append(group.section);
+    if (series.weekly_13.some(row => row.is_partial)) partialWeek = true;
+    if (series.weekly_13.some(row => !row.data_available)) earlyWeeks = true;
+  });
+  const reasons = metricChartSection(tile.step + ' rejection reasons', 'Defect description recorded at the ' + tile.step.toLowerCase() + ' inspection · counted per rejection decision, most frequent first');
+  const dayData = paretoTotals(section.defects, tile.step, snapshot.report_date, snapshot.report_date);
+  const windowStart = section.history_start > section.chart_start ? section.history_start : section.chart_start;
+  const windowData = paretoTotals(section.defects, tile.step, windowStart, snapshot.report_date);
+  reasons.grid.append(
+    paretoCard('Selected day', reportDay, dayData, 10),
+    paretoCard('13 weeks', dateLabel(windowStart) + ' – ' + dateLabel(snapshot.report_date), windowData, 12)
+  );
+  if (partialWeek) {
+    const note = document.createElement('span'); note.className = 'chart-partial-note';
+    note.append(text('The selected week is partial and is displayed but excluded from the trendline.'));
+    reasons.section.append(note);
+  }
+  if (earlyWeeks) {
+    const unavailable = document.createElement('span'); unavailable.className = 'chart-unavailable-note';
+    unavailable.append(text('Unavailable weeks before the September 8 history boundary are omitted, not zero.'));
+    reasons.section.append(unavailable);
+  }
+  content.append(reasons.section);
+}
+
 // ---------- process time (aggregate-only; the section is absent until the QPTS procedure is deployed) ----------
 const PROCESS_STAGE_COLORS = [CHART_SERIES_COLORS[0], CHART_SERIES_COLORS[4], CHART_SERIES_COLORS[1], CHART_SERIES_COLORS[2], CHART_SERIES_COLORS[3]];
 const PROCESS_POPULATION_LABELS = {standard: 'First-pass parts (repaints excluded)', repaint: 'Repaints only'};
@@ -1897,6 +2082,10 @@ function renderMetricCharts(snapshot) {
       color:palette.green,
       lowerIsBetter:false
     }); return;
+  }
+  if (YIELD_TILES[selectedChartKey]) {
+    summary.textContent = YIELD_TILES[selectedChartKey].summary;
+    renderYieldCharts(snapshot, selectedChartKey); return;
   }
   if (selectedChartKey === 'process-time') {
     summary.textContent = 'Daily time between the cart-load, booth, oven-in, oven-out, EOL-approval, and final-inspection scans, counting only production days, with repaints reported separately and excluded from the first-pass numbers. Choose hours or minutes and average, median, or 90th percentile.';

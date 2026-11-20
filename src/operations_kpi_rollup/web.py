@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from .context import validate_snapshot
 from .process_times import normalize_stored_process_time
+from .quality_charts import normalize_stored_quality_charts
 from .drilldown import DrilldownState, create_drilldown_state, disabled_event
 from .live import CURRENT_METHOD_VERSION, refresh_live_snapshot
 from .restricted_web import RestrictedRefreshError
@@ -90,6 +91,7 @@ class AppState:
         if source and source.is_file():
             snapshot = json.loads(source.read_text(encoding="utf-8"))
             normalize_stored_process_time(snapshot)
+            normalize_stored_quality_charts(snapshot)
             validate_snapshot(snapshot)
             self._remember(snapshot)
 
@@ -107,6 +109,7 @@ class AppState:
         try:
             snapshot = json.loads(source.read_text(encoding="utf-8"))
             normalize_stored_process_time(snapshot)
+            normalize_stored_quality_charts(snapshot)
             validate_snapshot(snapshot)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise RefreshError(f"The saved {date_text} snapshot is invalid.") from exc
@@ -243,6 +246,7 @@ class AppState:
                     raise RefreshError("The fixture snapshot is unavailable.")
                 snapshot = json.loads(self.fixture_path.read_text(encoding="utf-8"))
                 normalize_stored_process_time(snapshot)
+                normalize_stored_quality_charts(snapshot)
                 validate_snapshot(snapshot)
                 if snapshot["report_date"] != report_date.isoformat():
                     raise RefreshError("Fixture mode can only rebuild its recorded report date.")
@@ -327,7 +331,7 @@ class AppServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPI/0.39.1"
+    server_version = "OperationsKPI/0.40.0"
     sys_version = ""
 
     @property

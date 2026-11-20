@@ -220,3 +220,17 @@ body.wallboard .metric-card .dual-yield-detail{font-size:.68rem}
 .process-toggle button{padding:.3rem .7rem;border:1px solid #b6c7d0;border-radius:4px;background:#fff;color:var(--navy);font:inherit;font-weight:700;cursor:pointer}
 .process-toggle button[aria-pressed="true"]{background:var(--navy);border-color:var(--navy);color:#fff}
 .process-toggle-gap{margin-left:1.4rem}
+
+.pareto-card{min-width:0;margin:0;padding:.8rem;border:1px solid #e1e9ed;background:#fbfcfd}
+.pareto-card figcaption{display:flex;justify-content:space-between;gap:.8rem;align-items:baseline;margin:0 .25rem .55rem;color:var(--navy);font-size:.88rem;font-weight:800}
+.pareto-card figcaption small{color:var(--muted);font-size:.68rem;font-weight:600;text-align:right}
+.pareto-list{list-style:none;margin:0;padding:0;display:grid;gap:.32rem}
+.pareto-row{display:grid;grid-template-columns:minmax(6.5rem,12rem) minmax(3.5rem,1fr) 5.8rem 4.8rem;gap:.5rem;align-items:center;color:var(--navy);font-size:.76rem}
+.pareto-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pareto-track{display:block;height:.9rem;background:#e8eff2}
+.pareto-track i{display:block;height:100%;background:var(--amber)}
+.pareto-other .pareto-track i{background:#9fb1bd}
+.pareto-count{text-align:right;font-weight:800}
+.pareto-cumulative{text-align:right;color:var(--muted);font-size:.68rem}
+.pareto-total{margin:.65rem .25rem 0;color:var(--muted);font-size:.68rem}
+.pareto-empty{padding:1.2rem .25rem;color:var(--muted);font-size:.8rem}
