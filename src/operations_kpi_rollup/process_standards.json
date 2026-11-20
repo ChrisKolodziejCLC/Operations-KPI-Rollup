@@ -1,5 +1,5 @@
 {
-  "_note": "Standard minutes per measured step for one part passing through on its own (Chris Kolodziej, 2026-11-19 18:29 EST). A null means no standard. The loading step itself (5 min) is not scan-measured.",
+  "_note": "Alone-in-line minutes per measured step: the time for one part passing through with nothing in front of it (Chris Kolodziej, 2026-11-19 18:29 EST). They are a floor, not an expectation: with the line full a cart also waits behind the carts ahead (12 staged carts x 15 min = 180 min before the booth; Chris, 22:30 EST). A null means no value. The loading step itself (5 min) is not scan-measured.",
   "standard": {
     "load_to_booth": 3,
     "booth_to_oven_in": 15,

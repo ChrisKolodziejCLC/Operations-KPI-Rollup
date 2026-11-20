@@ -8,11 +8,14 @@ the tile for that date because the procedure that produces it copies the rollup'
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 METHOD_VERSION = "operations-kpi-quality-charts-v1"
+TARGETS_PATH = Path(__file__).with_name("quality_targets.json")
 
 METRICS = (
     {"key": "ppy_repaint", "tile": "ppy", "label": "PPY · repaint basis"},
@@ -36,7 +39,7 @@ _WEEK_FIELDS = {"bucket", "bucket_end", "is_partial", "data_available", "represe
 _DEFECT_FIELDS = {"date", "step", "description", "count"}
 _SECTION_FIELDS = {
     "available", "method_version", "report_date", "chart_start", "history_start", "fact_rows",
-    "paint_passes_in_window", "series", "defects", "reason",
+    "paint_passes_in_window", "series", "defects", "targets", "reason",
 }
 
 
@@ -68,6 +71,45 @@ def _sunday_start(value: date) -> date:
     return value - timedelta(days=(value.weekday() + 1) % 7)
 
 
+def load_targets(path: Path = TARGETS_PATH) -> Dict[str, Dict[str, Optional[float]]]:
+    """Return the target and goal percentage for every yield metric; a missing file or value means no mark."""
+    marks: Dict[str, Dict[str, Optional[float]]] = {
+        key: {"target_percent": None, "goal_percent": None} for key in METRIC_KEYS
+    }
+    try:
+        stored = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return marks
+    if not isinstance(stored, dict):
+        return marks
+    for key in METRIC_KEYS:
+        entry = stored.get(key)
+        if not isinstance(entry, dict):
+            continue
+        for field in ("target_percent", "goal_percent"):
+            value = entry.get(field)
+            if value is not None and not isinstance(value, bool) and isinstance(value, (int, float)):
+                marks[key][field] = round(float(value), 1)
+    validate_targets(marks)
+    return marks
+
+
+def validate_targets(marks: Mapping[str, Any]) -> None:
+    if set(marks) != set(METRIC_KEYS):
+        raise ValueError("quality_charts targets must cover every metric")
+    for key in METRIC_KEYS:
+        entry = marks[key]
+        if set(entry) != {"target_percent", "goal_percent"}:
+            raise ValueError("quality_charts targets have unexpected fields")
+        for field in ("target_percent", "goal_percent"):
+            value = entry[field]
+            if value is not None and not 0 < value <= 100:
+                raise ValueError("quality_charts targets must be null or between 0 and 100")
+        if entry["target_percent"] is not None and entry["goal_percent"] is not None \
+                and entry["goal_percent"] < entry["target_percent"]:
+            raise ValueError("quality_charts goal must not be below its target")
+
+
 def unavailable_section(reason: str) -> Dict[str, Any]:
     return {"available": False, "method_version": METHOD_VERSION, "reason": reason}
 
@@ -79,6 +121,9 @@ def normalize_stored_quality_charts(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         snapshot["quality_charts"] = unavailable_section(
             "This saved day was produced with an earlier quality-chart method; refresh it to recompute."
         )
+    elif isinstance(section, dict) and section.get("available") is not False and "targets" not in section:
+        # Targets and goals are current settings, not history: saved days show today's marks.
+        section["targets"] = load_targets()
     return snapshot
 
 
@@ -169,6 +214,7 @@ def quality_charts_section(
         "paint_passes_in_window": _integer(meta.get("paint_passes_in_window")),
         "series": series,
         "defects": defects,
+        "targets": load_targets(),
     }
     validate_quality_charts_section(section)
     return section
@@ -216,6 +262,8 @@ def validate_quality_charts_section(section: Mapping[str, Any]) -> None:
         return
     date.fromisoformat(str(section["report_date"]))
     date.fromisoformat(str(section["chart_start"]))
+    if "targets" in section:
+        validate_targets(section["targets"])
     series = section["series"]
     if set(series) != set(METRIC_KEYS):
         raise ValueError("quality_charts must carry every metric series")

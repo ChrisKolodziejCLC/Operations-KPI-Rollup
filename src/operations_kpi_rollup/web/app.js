@@ -819,7 +819,7 @@ function renderLoadedLineChart(container, rows, options) {
           class:'loaded-reference-line loaded-reference-line-full-width', 'data-series':reference.label
         });
         const title = svgNode('title');
-        title.append(text(reference.label + ' · horizontal 13-week average-day reference'));
+        title.append(text(reference.tooltip || (reference.label + ' · horizontal 13-week average-day reference')));
         line.append(title); svg.append(line);
         if (reference.directLabel) {
           const labelValue = referencePoints[referencePoints.length - 1].value;
@@ -1565,7 +1565,7 @@ function renderQualityCharts(snapshot, metric, options) {
 const YIELD_TILES = {
   'ppy-paint-process-yield': {
     step: 'End of Line',
-    summary: 'Hourly and 13-week Paint Process Yield on both bases with the end-of-line rejection reasons behind it. The repaint basis is the large number on the tile. Every value is the same calculation as the tile for that date; no interim target or goal is set yet.',
+    summary: 'Hourly and 13-week Paint Process Yield on both bases with the end-of-line rejection reasons behind it. The repaint basis is the large number on the tile. Every value is the same calculation as the tile for that date. The amber line is the target and the red line the goal; points and bars below the target show in red.',
     metrics: [
       {key: 'ppy_repaint', label: 'PPY · repaint basis', color: palette.teal, unit: 'passes', pending: true,
         definition: 'Passes not repainted and not waiting for a decision ÷ all passes, grouped by oven-exit time'},
@@ -1575,7 +1575,7 @@ const YIELD_TILES = {
   },
   'fty-first-time-yield': {
     step: 'End of Line',
-    summary: 'Hourly and 13-week First Time Yield (initial passes only) on both bases with the end-of-line rejection reasons behind it. The repaint basis is the large number on the tile. Every value is the same calculation as the tile for that date; no interim target or goal is set yet.',
+    summary: 'Hourly and 13-week First Time Yield (initial passes only) on both bases with the end-of-line rejection reasons behind it. The repaint basis is the large number on the tile. Every value is the same calculation as the tile for that date. The amber line is the target and the red line the goal; points and bars below the target show in red.',
     metrics: [
       {key: 'fty_repaint', label: 'FTY · repaint basis', color: palette.green, unit: 'initial passes', pending: true,
         definition: 'Initial passes not repainted and not waiting for a decision ÷ initial passes, grouped by oven-exit time'},
@@ -1585,7 +1585,7 @@ const YIELD_TILES = {
   },
   'receiving-fty': {
     step: 'Receiving',
-    summary: 'Hourly and 13-week Receiving First Time Yield with the receiving rejection reasons behind it. Each part counts once, at its first receiving decision. Every value is the same calculation as the tile for that date; no interim target or goal is set yet.',
+    summary: 'Hourly and 13-week Receiving First Time Yield with the receiving rejection reasons behind it. Each part counts once, at its first receiving decision. Every value is the same calculation as the tile for that date. The amber line is the target and the red line the goal; points and bars below the target show in red.',
     metrics: [
       {key: 'receiving', label: 'Receiving FTY', color: palette.teal, unit: 'parts', pending: false,
         definition: 'Parts approved at their first receiving decision ÷ parts with a first receiving decision'}
@@ -1593,7 +1593,7 @@ const YIELD_TILES = {
   },
   'final-fty': {
     step: 'Final',
-    summary: 'Hourly and 13-week Final First Time Yield with the final-inspection rejection reasons behind it. Each part counts once, at its first final decision. Every value is the same calculation as the tile for that date; no interim target or goal is set yet.',
+    summary: 'Hourly and 13-week Final First Time Yield with the final-inspection rejection reasons behind it. Each part counts once, at its first final decision. Every value is the same calculation as the tile for that date. The amber line is the target and the red line the goal; points and bars below the target show in red.',
     metrics: [
       {key: 'final', label: 'Final FTY', color: palette.green, unit: 'parts', pending: false,
         definition: 'Parts approved at their first final decision ÷ parts with a first final decision'}
@@ -1708,16 +1708,27 @@ function renderYieldCharts(snapshot, tileKey) {
       field:'rate_percent', label:metric.label, color:metric.color, formatValue:percentagePoint, verticalLabels:true, showTick:() => true,
       axisMaximum:100, tooltipSuffix:row => ' · ' + integer(row.quality_numerator) + ' / ' + integer(row.quality_denominator)
     };
+    const marks = (section.targets || {})[metric.key] || {};
+    const markValue = field => marks[field] === null || marks[field] === undefined || !Number.isFinite(Number(marks[field])) ? null : Number(marks[field]);
+    const targetMark = markValue('target_percent'), goalMark = markValue('goal_percent');
+    const markText = value => (Number.isInteger(value) ? String(value) : decimal(value)) + '%';
+    const markReferences = spanFullWidth => [
+      ...(targetMark === null ? [] : [{value:targetMark, label:'Target ' + markText(targetMark), color:palette.amber, spanFullWidth, tooltip:'Target ' + markText(targetMark)}]),
+      ...(goalMark === null ? [] : [{value:goalMark, label:'Goal ' + markText(goalMark), color:palette.red, spanFullWidth, tooltip:'Goal ' + markText(goalMark)}])
+    ];
+    const markAssessment = targetMark === null ? null : {value:targetMark, lowerIsBetter:false, label:'target', scorePredicate:row => Number(row.quality_denominator || 0) > 0};
     group.grid.append(loadedChartCard(metric.label + ' by hour', reportDay, series.hourly, Object.assign({}, base, {
       trend:false, ariaLabel:'Hourly ' + metric.label + ' for ' + reportDay,
       bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
-      references:[{value:weightedQualityPercent(series.hourly), label:'Daily weighted average', color:palette.navy, dash:'2 3', directLabel:'Daily avg'}],
+      references:[...markReferences(false), {value:weightedQualityPercent(series.hourly), label:'Daily weighted average', color:palette.navy, dash:'2 3', directLabel:'Daily avg'}],
+      targetAssessment:markAssessment,
       summaryBuilder:rows => yieldHourlySummary(rows, metric)
     })));
     group.grid.append(loadedChartCard(metric.label + ' · 13 weeks', 'Sunday–Saturday', series.weekly_13, Object.assign({}, base, {
       trend:true, omitNull:true, chartType:'bar', ariaLabel:'Thirteen-week weighted ' + metric.label + ' with trend',
       bucketLabel:row => dateLabel(row.bucket), bucketTitle:row => fullDateLabel(row.bucket) + ' through ' + fullDateLabel(row.bucket_end),
-      references:[{value:weightedQualityPercent(series.weekly_13.filter(row => !row.is_partial)), label:'13-week weighted average', color:palette.navy, dash:'2 3', spanFullWidth:true}],
+      references:[...markReferences(true), {value:weightedQualityPercent(series.weekly_13.filter(row => !row.is_partial)), label:'13-week weighted average', color:palette.navy, dash:'2 3', spanFullWidth:true}],
+      targetAssessment:markAssessment,
       summaryBuilder:rows => yieldWeeklySummary(rows, metric)
     })));
     content.append(group.section);
@@ -1859,6 +1870,17 @@ function processEmpty(container, message) {
   container.replaceChildren(empty);
 }
 
+// The standards are the time for one cart with nothing in front of it. With the line full, a newly loaded cart also waits for
+// the staged carts ahead of it, which the booth works through at its own step time: staged goal carts x booth minutes per cart.
+function processQueueExpectation(snapshot, population, section) {
+  const carts = Number(snapshot.chart_series?.staged?.performance_model?.goal_carts);
+  const boothMinutes = Number(((section.standards || {})[population] || {}).booth_to_oven_in);
+  if (!Number.isFinite(carts) || carts <= 0 || !Number.isFinite(boothMinutes) || boothMinutes <= 0) return null;
+  const minutes = carts * boothMinutes;
+  return {stageKey: 'load_to_booth', carts, boothMinutes, minutes,
+    label: 'Expected with ' + integer(carts) + ' staged carts × ' + integer(boothMinutes) + ' min (' + processMinutes(minutes) + ')'};
+}
+
 function renderProcessStack(container, rows, population, section) {
   const stackStages = section.stages.filter(stage => stage.order <= 5);
   const totalStage = section.stages.find(stage => stage.order === 6);
@@ -1895,9 +1917,9 @@ function renderProcessStack(container, rows, population, section) {
     }
   });
   if (standard) {
-    svg.append(svgNode('line', {x1: left, x2: width - right, y1: y(standard), y2: y(standard), stroke: palette.red, 'stroke-width': 2.2, 'stroke-dasharray': '7 5', 'data-series': 'Standard total'}));
-    const label = svgNode('text', {x: left + 6, y: y(standard) - 6, 'text-anchor': 'start', fill: palette.red, stroke: '#fff', 'stroke-width': 3, 'paint-order': 'stroke', 'stroke-linejoin': 'round', 'font-size': 11, 'font-weight': 700, 'data-series': 'Standard total'});
-    label.append(text('Standard ' + processMinutes(standard))); svg.append(label);
+    svg.append(svgNode('line', {x1: left, x2: width - right, y1: y(standard), y2: y(standard), stroke: palette.red, 'stroke-width': 2.2, 'stroke-dasharray': '7 5', 'data-series': 'Alone in line (no waiting)'}));
+    const label = svgNode('text', {x: left + 6, y: y(standard) - 6, 'text-anchor': 'start', fill: palette.red, stroke: '#fff', 'stroke-width': 3, 'paint-order': 'stroke', 'stroke-linejoin': 'round', 'font-size': 11, 'font-weight': 700, 'data-series': 'Alone in line (no waiting)'});
+    label.append(text('Alone in line ' + processMinutes(standard))); svg.append(label);
   }
   const points = [];
   rows.forEach((row, index) => { if (totalLine[index] !== null && totalLine[index] !== undefined) points.push([x(index), y(Number(totalLine[index])), index]); });
@@ -1911,24 +1933,25 @@ function renderProcessStack(container, rows, population, section) {
   processDateLabels(svg, rows, x, height);
   const legend = stackStages.map((stage, index) => ({label: stage.short, color: PROCESS_STAGE_COLORS[index], line: false}));
   legend.push({label: totalLabel, color: palette.navy, line: true, width: 2.6, marker: 'circle'});
-  if (standard) legend.push({label: 'Standard total', color: palette.red, line: true, dash: '7 5', width: 2.2});
+  if (standard) legend.push({label: 'Alone in line (no waiting)', color: palette.red, line: true, dash: '7 5', width: 2.2});
   container.replaceChildren(svg, chartLegend(legend));
   bindSeriesHighlight(container);
 }
 
-function renderProcessStageTrend(container, rows, stage, color, marker, population, section) {
+function renderProcessStageTrend(container, rows, stage, color, marker, population, section, queue = null) {
   const standard = (section.standards[population] || {})[stage.key];
   const usable = rows.filter(row => row.stages[stage.key] && row.stages[stage.key].average_minutes !== null);
   if (usable.length < 2) { processEmpty(container, 'Not enough data to chart.'); return; }
   const width = 480, height = 210, left = 54, right = 12, top = 16, bottom = 40;
   const values = usable.flatMap(row => [Number(row.stages[stage.key].average_minutes), row.stages[stage.key].median_minutes === null ? null : Number(row.stages[stage.key].median_minutes)]);
-  const limit = processAxisLimit(values, standard, 10);
+  const limit = processAxisLimit(values, Math.max(standard || 0, queue ? queue.minutes : 0) || null, 10);
   const maximum = limit.maximum;
   const x = index => left + index * (width - left - right) / Math.max(usable.length - 1, 1);
   const y = value => top + (maximum - Math.min(value, maximum)) * (height - top - bottom) / maximum;
   const svg = svgNode('svg', {viewBox: '0 0 ' + width + ' ' + height, role: 'img', 'aria-label': stage.label + ' daily average minutes'});
   processAxis(svg, maximum, left, right, width, y, 4);
-  if (standard) svg.append(svgNode('line', {x1: left, x2: width - right, y1: y(standard), y2: y(standard), stroke: palette.red, 'stroke-width': 2, 'stroke-dasharray': '7 5', 'data-series': 'Standard'}));
+  if (standard) svg.append(svgNode('line', {x1: left, x2: width - right, y1: y(standard), y2: y(standard), stroke: palette.red, 'stroke-width': 2, 'stroke-dasharray': '7 5', 'data-series': 'Alone in line'}));
+  if (queue) svg.append(processTitle(svgNode('line', {x1: left, x2: width - right, y1: y(queue.minutes), y2: y(queue.minutes), stroke: palette.green, 'stroke-width': 2, 'stroke-dasharray': '7 5', 'data-series': queue.label}), queue.label));
   const medianPoints = usable.map((row, index) => row.stages[stage.key].median_minutes === null ? null : x(index) + ',' + y(Number(row.stages[stage.key].median_minutes))).filter(Boolean);
   if (medianPoints.length > 1) svg.append(svgNode('polyline', {points: medianPoints.join(' '), fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-dasharray': '3 4', opacity: 0.8, 'stroke-linejoin': 'round', 'data-series': 'Median'}));
   svg.append(svgNode('polyline', {points: usable.map((row, index) => x(index) + ',' + y(Number(row.stages[stage.key].average_minutes))).join(' '), fill: 'none', stroke: color, 'stroke-width': 2.6, 'stroke-linejoin': 'round', 'data-series': 'Average'}));
@@ -1940,7 +1963,8 @@ function renderProcessStageTrend(container, rows, stage, color, marker, populati
   });
   processDateLabels(svg, usable, x, height, 12);
   const legend = [{label: 'Average', color: color, line: true, width: 2.6, marker: marker}, {label: 'Median', color: color, line: true, dash: '3 4', width: 2}];
-  if (standard) legend.push({label: 'Standard', color: palette.red, line: true, dash: '7 5', width: 2});
+  if (standard) legend.push({label: 'Alone in line', color: palette.red, line: true, dash: '7 5', width: 2});
+  if (queue) legend.push({label: queue.label, color: palette.green, line: true, dash: '7 5', width: 2});
   container.replaceChildren(svg, chartLegend(legend));
   bindSeriesHighlight(container);
 }
@@ -1964,7 +1988,7 @@ function renderProcessSummary(table, rows, population, section) {
     const gap = standard && totals.average !== null ? (totals.average - standard >= 0 ? '+' : '−') + processMinutes(Math.abs(totals.average - standard)) : '—';
     return [stage.label, processMinutes(totals.average), processMinutes(processTypicalMedian(rows, stage.key)), share, integer(totals.intervals), standard ? processMinutes(standard) : 'not set', gap, integer(totals.long)];
   });
-  renderTable(table, ['Stage', 'Average', 'Typical daily median', 'Share of stages', 'Intervals', 'Standard', 'Average vs standard', 'Over 12 h'].map((label, index) => ({label, value: row => row[index]})), body);
+  renderTable(table, ['Stage', 'Average', 'Typical daily median', 'Share of stages', 'Intervals', 'Alone in line', 'Average minus alone in line', 'Over 12 h'].map((label, index) => ({label, value: row => row[index]})), body);
 }
 
 function renderProcessTimeCharts(snapshot) {
@@ -1978,6 +2002,7 @@ function renderProcessTimeCharts(snapshot) {
   const blocks = [];
   ['standard', 'repaint'].forEach(population => {
     const rows = processDayRows(section, population);
+    const queue = processQueueExpectation(snapshot, population, section);
     const block = document.createElement('section'); block.className = 'process-block';
     const heading = document.createElement('h3'); heading.append(text(PROCESS_POPULATION_LABELS[population]));
     block.append(heading);
@@ -1987,8 +2012,8 @@ function renderProcessTimeCharts(snapshot) {
     block.append(stack.figure);
     const grid = document.createElement('div'); grid.className = 'process-trend-grid';
     section.stages.filter(stage => stage.order <= 5).forEach((stage, index) => {
-      const figure = processFigure(stage.label, 'Average, median' + ((section.standards[population] || {})[stage.key] ? ', standard' : '') + '; red points are above the axis');
-      renderProcessStageTrend(figure.chart, rows, stage, PROCESS_STAGE_COLORS[index], CHART_SERIES_MARKERS[index], population, section);
+      const figure = processFigure(stage.label, 'Average, median' + ((section.standards[population] || {})[stage.key] ? ', alone in line' : '') + (queue && stage.key === queue.stageKey ? ', expected at the staged goal' : '') + '; red points are above the axis');
+      renderProcessStageTrend(figure.chart, rows, stage, PROCESS_STAGE_COLORS[index], CHART_SERIES_MARKERS[index], population, section, queue && stage.key === queue.stageKey ? queue : null);
       grid.append(figure.figure);
     });
     block.append(grid);
@@ -2026,7 +2051,11 @@ function renderProcessTimeCharts(snapshot) {
     });
     toggle.append(button);
   });
-  content.replaceChildren(toggle, ...blocks);
+  const queueNote = processQueueExpectation(snapshot, 'standard', section);
+  const explain = document.createElement('p'); explain.className = 'process-note'; explain.setAttribute('role', 'note');
+  explain.append(text('These are elapsed times, so they include waiting behind the carts ahead in the line. The red "Alone in line" marks are the times for one cart with nothing in front of it: a floor, not an expectation.'
+    + (queueNote ? ' With the line at its ' + integer(queueNote.carts) + '-cart staged goal, a newly loaded cart waits ' + integer(queueNote.carts) + ' × ' + integer(queueNote.boothMinutes) + ' min = ' + processMinutes(queueNote.minutes) + ' before the booth; the green line on the loaded-to-booth chart marks that.' : '')));
+  content.replaceChildren(toggle, explain, ...blocks);
 }
 
 function processTimeCard(snapshot) {

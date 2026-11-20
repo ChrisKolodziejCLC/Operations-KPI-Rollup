@@ -1,0 +1,9 @@
+{
+  "_note": "Goal and target percentages for the yield charts (Chris Kolodziej, 2026-11-19 22:30 EST). The target is the nearer mark and the goal the long-term mark. Each value applies to every basis of its metric: PPY and FTY use the same marks on the repaint and reject bases. A null means no mark.",
+  "ppy_repaint": {"target_percent": 75, "goal_percent": 85},
+  "ppy_reject": {"target_percent": 75, "goal_percent": 85},
+  "fty_repaint": {"target_percent": 75, "goal_percent": 85},
+  "fty_reject": {"target_percent": 75, "goal_percent": 85},
+  "receiving": {"target_percent": 90, "goal_percent": 95},
+  "final": {"target_percent": 95, "goal_percent": 100}
+}

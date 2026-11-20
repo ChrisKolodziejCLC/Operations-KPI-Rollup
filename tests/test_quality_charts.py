@@ -290,3 +290,79 @@ def test_wallboard_polish_is_wired():
     live_source = (SRC / "live.py").read_text(encoding="utf-8")
     assert "identity-gated" not in live_source and "restricted drill-down" not in live_source
     assert "This public wallboard carries no employee names or IDs; employee-level detail lives only in the drill-down." in live_source
+
+
+def test_targets_and_goals_are_chris_numbers_and_ride_in_the_section():
+    from operations_kpi_rollup.quality_charts import load_targets
+
+    marks = load_targets()
+    assert set(marks) == set(METRIC_KEYS)
+    for key in ("ppy_repaint", "ppy_reject", "fty_repaint", "fty_reject"):
+        assert marks[key] == {"target_percent": 75.0, "goal_percent": 85.0}
+    assert marks["receiving"] == {"target_percent": 90.0, "goal_percent": 95.0}
+    assert marks["final"] == {"target_percent": 95.0, "goal_percent": 100.0}
+    assert _section()["targets"] == marks
+
+
+def test_target_loader_is_strict_and_a_missing_file_means_no_marks(tmp_path):
+    import json
+
+    import pytest
+
+    from operations_kpi_rollup.quality_charts import load_targets
+
+    assert load_targets(tmp_path / "absent.json") == {key: {"target_percent": None, "goal_percent": None} for key in METRIC_KEYS}
+    broken = tmp_path / "broken.json"
+    broken.write_text("{not json", encoding="utf-8")
+    assert load_targets(broken)["final"] == {"target_percent": None, "goal_percent": None}
+    reversed_marks = tmp_path / "reversed.json"
+    reversed_marks.write_text(json.dumps({"final": {"target_percent": 95, "goal_percent": 90}}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_targets(reversed_marks)
+    out_of_range = tmp_path / "range.json"
+    out_of_range.write_text(json.dumps({"receiving": {"target_percent": 0, "goal_percent": 120}}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_targets(out_of_range)
+    partial = tmp_path / "partial.json"
+    partial.write_text(json.dumps({"receiving": {"target_percent": 88}, "bogus": {"target_percent": 1}}), encoding="utf-8")
+    assert load_targets(partial)["receiving"] == {"target_percent": 88.0, "goal_percent": None}
+
+
+def test_section_validation_rejects_bad_targets_and_saved_days_get_the_current_marks():
+    import copy
+
+    import pytest
+
+    from operations_kpi_rollup.quality_charts import load_targets, normalize_stored_quality_charts, validate_quality_charts_section
+
+    section = _section()
+    validate_quality_charts_section(section)
+    bad = copy.deepcopy(section)
+    bad["targets"]["final"]["goal_percent"] = 50.0
+    with pytest.raises(ValueError):
+        validate_quality_charts_section(bad)
+    bad = copy.deepcopy(section)
+    bad["targets"].pop("receiving")
+    with pytest.raises(ValueError):
+        validate_quality_charts_section(bad)
+    saved = copy.deepcopy(section)
+    saved.pop("targets")
+    validate_quality_charts_section(saved)
+    normalized = normalize_stored_quality_charts({"quality_charts": saved})
+    assert normalized["quality_charts"]["targets"] == load_targets()
+    earlier = copy.deepcopy(section)
+    earlier["method_version"] = "operations-kpi-quality-charts-v0"
+    assert "targets" not in normalize_stored_quality_charts({"quality_charts": earlier})["quality_charts"]
+    assert normalize_stored_quality_charts({"other": 1}) == {"other": 1}
+
+
+def test_wallboard_draws_target_and_goal_lines_on_the_yield_charts():
+    script = (SRC / "web" / "app.js").read_text(encoding="utf-8")
+    assert "const marks = (section.targets || {})[metric.key] || {};" in script
+    assert "'Target ' + markText(targetMark)" in script and "'Goal ' + markText(goalMark)" in script
+    assert "color:palette.amber" in script and "color:palette.red" in script
+    assert "references:[...markReferences(false)," in script and "references:[...markReferences(true)," in script
+    assert script.count("targetAssessment:markAssessment") == 2
+    assert "reference.tooltip || (reference.label" in script
+    assert "no interim target or goal is set yet" not in script
+    assert "The amber line is the target and the red line the goal" in script

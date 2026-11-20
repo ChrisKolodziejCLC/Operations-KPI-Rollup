@@ -211,3 +211,26 @@ def test_saved_snapshots_from_an_earlier_process_time_method_still_load(tmp_path
     current = _fixture_snapshot()
     current["process_time"] = unavailable_section("current method placeholder")
     assert normalize_stored_process_time(current)["process_time"]["reason"] == "current method placeholder"
+
+
+def test_process_view_calls_the_standards_alone_in_line_and_marks_the_queue_expectation():
+    script = (SRC / "web" / "app.js").read_text(encoding="utf-8")
+    assert "'Standard total'" not in script and "Average vs standard" not in script
+    for text in ("Alone in line (no waiting)", "'Alone in line '", "Average minus alone in line", "a floor, not an expectation"):
+        assert text in script
+    assert "function processQueueExpectation(snapshot, population, section) {" in script
+    assert "snapshot.chart_series?.staged?.performance_model?.goal_carts" in script and "booth_to_oven_in" in script
+    assert "const minutes = carts * boothMinutes;" in script
+    assert "'Expected with ' + integer(carts) + ' staged carts" in script
+    assert "queue && stage.key === queue.stageKey ? queue : null" in script
+    assert "content.replaceChildren(toggle, explain, ...blocks);" in script
+    assert "Math.max(standard || 0, queue ? queue.minutes : 0) || null" in script
+
+
+def test_standards_file_describes_a_floor_and_the_staged_queue_example():
+    import json
+
+    stored = json.loads((SRC / "process_standards.json").read_text(encoding="utf-8"))
+    note = stored["_note"]
+    assert "floor, not an expectation" in note and "12 staged carts x 15 min = 180 min" in note
+    assert stored["standard"]["booth_to_oven_in"] == 15 and stored["standard"]["total_load_to_final_approved"] == 63
