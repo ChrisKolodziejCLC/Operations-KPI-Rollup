@@ -12,6 +12,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
+from .assembly_details import validate_assembly_details_section
 from .business_time import business_now
 from .odbc import execute_restricted_rollup
 
@@ -298,6 +299,11 @@ def validate_restricted_snapshot(snapshot: Mapping[str, Any]) -> None:
         for row in value:
             if isinstance(row, Mapping) and _NAME_KEYS & row.keys():
                 raise RestrictedContractError("The drill-down snapshot must carry employee IDs, not names.")
+    if "assembly" in snapshot:
+        try:
+            validate_assembly_details_section(snapshot["assembly"])
+        except (ValueError, KeyError, TypeError) as exc:
+            raise RestrictedContractError("The assembly section is invalid: " + str(exc)[:160]) from exc
 
 
 def refresh_restricted_snapshot(report_date: date) -> Dict[str, Any]:

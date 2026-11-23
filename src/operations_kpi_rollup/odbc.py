@@ -381,6 +381,26 @@ def execute_assembly_charts(report_date: date) -> List[Dict[str, object]]:
     return execute_result_sets(query, {0, 1, 2}, credential_name)
 
 
+def execute_assembly_details(report_date: date) -> List[Dict[str, object]]:
+    """Read the assembly counts by operator and workstation through their own hash-pinned, read-only procedure."""
+    iso_date = report_date.isoformat()
+    expected_hash = os.environ.get("KPI_ASSEMBLY_DETAILS_PROCEDURE_HASH", "").strip().upper()
+    if not re.fullmatch(r"[0-9A-F]{64}", expected_hash):
+        raise OdbcError("KPI_ASSEMBLY_DETAILS_PROCEDURE_HASH must pin the reviewed assembly-details procedure.")
+    query = (
+        "SET NOCOUNT ON; "
+        "DECLARE @ObservedDefinitionHash varchar(64) = CONVERT(varchar(64), "
+        "HASHBYTES('SHA2_256', CONVERT(varbinary(max), COALESCE(OBJECT_DEFINITION("
+        "OBJECT_ID(N'dbo.usp_QPTS_GetOperationsAssemblyDetails')), N''))), 2); "
+        f"IF @ObservedDefinitionHash <> '{expected_hash}' "
+        "THROW 51007, 'The assembly-details procedure differs from the reviewed contract.', 1; "
+        "EXEC dbo.usp_QPTS_GetOperationsAssemblyDetails "
+        f"@ReportDateOverride = '{iso_date}';"
+    )
+    credential_name = os.environ.get("KPI_SQL_CREDENTIAL_NAME", "operations-kpi-qpts-ro")
+    return execute_result_sets(query, {0, 1, 2}, credential_name)
+
+
 def execute_roster() -> List[Dict[str, object]]:
     """Read the ID-to-name roster through its own hash-pinned, read-only procedure. Names are never stored."""
     expected_hash = os.environ.get("KPI_ROSTER_PROCEDURE_HASH", "").strip().upper()

@@ -16,8 +16,9 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .odbc import execute_standard_drilldown
-from .restricted import build_restricted_snapshot
+from .assembly_details import assembly_details_section, unavailable_section as assembly_details_unavailable
+from .odbc import execute_assembly_details, execute_standard_drilldown
+from .restricted import build_restricted_snapshot, validate_restricted_snapshot
 from .restricted_web import RestrictedRefreshError, RestrictedState
 
 
@@ -27,6 +28,16 @@ _DISABLED_VALUES = {"0", "false", "no", "off"}
 
 class DrilldownRefreshError(RestrictedRefreshError):
     """Raised for bounded, user-presentable drill-down refresh problems."""
+
+
+def _assembly_details_for_snapshot(report_date: date) -> Optional[Dict[str, Any]]:
+    """Assembly counts are optional: an unset hash means the feature is not deployed; a failure never blocks the drill-down."""
+    if not os.environ.get("KPI_ASSEMBLY_DETAILS_PROCEDURE_HASH", "").strip():
+        return None
+    try:
+        return assembly_details_section(execute_assembly_details(report_date), report_date)
+    except Exception as error:  # noqa: BLE001 - the rest of the drill-down must keep working
+        return assembly_details_unavailable("The assembly-details procedure could not be read (" + error.__class__.__name__ + ").")
 
 
 class DrilldownState(RestrictedState):
@@ -49,7 +60,12 @@ class DrilldownState(RestrictedState):
         super().__init__(mode, snapshot_dir, fixture_path)
 
     def _fetch_live(self, report_date: date) -> Dict[str, Any]:
-        return build_restricted_snapshot(report_date, execute_standard_drilldown(report_date))
+        snapshot = build_restricted_snapshot(report_date, execute_standard_drilldown(report_date))
+        assembly = _assembly_details_for_snapshot(report_date)
+        if assembly is not None:
+            snapshot["assembly"] = assembly
+            validate_restricted_snapshot(snapshot)
+        return snapshot
 
     def _incompatible_snapshot(self, path: Path, exc: BaseException) -> None:
         # Cache files from an older contract (for example the named v1 snapshots) are discarded

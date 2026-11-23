@@ -24,6 +24,7 @@ from .business_time import business_clock_fields, business_now, business_timezon
 from .context import validate_snapshot
 from .process_times import normalize_stored_process_time
 from .assembly_charts import normalize_stored_assembly_charts
+from .assembly_details import redact_assembly_operators
 from .quality_charts import normalize_stored_quality_charts
 from .drilldown import DrilldownState, create_drilldown_state, disabled_event
 from .live import CURRENT_METHOD_VERSION, refresh_live_snapshot
@@ -354,6 +355,8 @@ class AppServer(ThreadingHTTPServer):
 class Handler(BaseHTTPRequestHandler):
     server_version = "OperationsKPI/0.46.0"
     sys_version = ""
+    # The open wallboard port never serves operator logins; the Windows sign-in listener (AuthHandler) does.
+    signed_in = False
 
     @property
     def state(self) -> AppState:
@@ -410,6 +413,8 @@ class Handler(BaseHTTPRequestHandler):
             values = parse_qs(parsed.query).get("report_date", [])
             requested_date = date.fromisoformat(values[0]) if values else None
             snapshot = drilldown.snapshot(requested_date)
+            if snapshot and not self.signed_in:
+                snapshot = redact_assembly_operators(snapshot)
             self._json(
                 HTTPStatus.OK if snapshot else HTTPStatus.NOT_FOUND,
                 snapshot or {"error": "No drill-down snapshot is available for that date yet. Use Refresh data to build it."},
@@ -525,6 +530,7 @@ class AuthHandler(Handler):
     """The same wallboard and drill-down, behind Windows sign-in. Only allowlisted identities get in."""
 
     timeout = 30
+    signed_in = True
 
     def setup(self) -> None:
         self._extra_headers: List[Tuple[str, str]] = []
