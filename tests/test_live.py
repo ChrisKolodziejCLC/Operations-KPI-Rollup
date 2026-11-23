@@ -1206,3 +1206,67 @@ def test_report_html_and_text_carry_carts_pieces_unique_parts_and_colors(tmp_pat
     plain = message.get_body(preferencelist=("plain",)).get_content()
     assert "Carts / Pieces loaded: 40 Carts / 100 Pieces (Carts 25 Prd / 5 BV / 10 Svc" in plain
     assert "91 Unique Parts · " in plain and " Unique Colors" in plain
+
+
+
+def _paint_repairs_outside_the_three_families(sets, amount=1):
+    for result_set in sets:
+        for row in result_set["rows"]:
+            if "paint_fty_repair_count" in row:
+                row["paint_fty_repair_count"] = str(int(row["paint_fty_repair_count"]) + amount)
+            if row.get("metric_key") == "finesse" and int(row.get("quality_denominator") or 0) > 0:
+                # the finesse chart counts every repair too, so it moves with the daily result
+                row["quality_numerator"] = str(int(row["quality_numerator"]) + amount)
+    return sets
+
+
+def test_paint_repair_outside_the_three_families_is_carried_as_an_other_bucket():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    # a service part with an initial-pass Repair is in the total but in none of FUKA, Bumpers or Fairings
+    snapshot = snapshot_from_rollup(
+        date(2026, 11, 11), _paint_repairs_outside_the_three_families(result_sets()), generated_at=generated
+    )
+    validate_snapshot(snapshot)
+    for collection in ("daily", "periods"):
+        for row in snapshot[collection]:
+            assert row["paint_fty_repair_count"] == 3
+            assert row["other_paint_fty_repair_count"] == 1
+    cards_by_label = {card["label"]: card for card in prepare_context(snapshot)["cards"]}
+    assert "1 Other Repaired" in cards_by_label["Finesse Effectiveness"]["detail"]
+    # without the extra repair the bucket is empty and no Other line is shown
+    plain = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    assert all(row["other_paint_fty_repair_count"] == 0 for row in plain["daily"] + plain["periods"])
+    plain_cards = {card["label"]: card for card in prepare_context(plain)["cards"]}
+    assert "Other Repaired" not in plain_cards["Finesse Effectiveness"]["detail"]
+
+
+def test_finesse_families_above_the_total_are_still_refused():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    sets = result_sets()
+    for result_set in sets:
+        for row in result_set["rows"]:
+            if "fuka_paint_fty_repair_count" in row:
+                row["fuka_paint_fty_repair_count"] = "3"
+    try:
+        validate_snapshot(snapshot_from_rollup(date(2026, 11, 11), sets, generated_at=generated))
+    except ValueError as error:
+        assert str(error) == "daily finesse family repair counts exceed paint_fty_repair_count"
+    else:
+        raise AssertionError("finesse families above the total were accepted")
+
+
+def test_saved_snapshot_without_the_other_bucket_keeps_the_old_equality():
+    generated = datetime(2026, 11, 12, 12, 30, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
+    snapshot = snapshot_from_rollup(date(2026, 11, 11), result_sets(), generated_at=generated)
+    for collection in ("daily", "periods"):
+        for row in snapshot[collection]:
+            row.pop("other_paint_fty_repair_count")
+    validate_snapshot(snapshot)
+    prepare_context(snapshot)
+    snapshot["daily"][-1]["fuka_paint_fty_repair_count"] = 2
+    try:
+        validate_snapshot(snapshot)
+    except ValueError as error:
+        assert str(error) == "daily finesse family repair counts do not equal paint_fty_repair_count"
+    else:
+        raise AssertionError("legacy finesse family mismatch was accepted")

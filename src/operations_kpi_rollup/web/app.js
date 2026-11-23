@@ -389,8 +389,9 @@ function renderCards(snapshot) {
     `${integer(Number(current.bumper_paint_fty_repair_count || 0) + Number(current.bumper_finesse_repair_count || 0))} Bumpers Repaired`,
     `${integer(Number(current.fairing_paint_fty_repair_count || 0) + Number(current.fairing_finesse_repair_count || 0))} Fairings Repaired`
   ] : ['Finesse detail unavailable'];
-  if (Number(current.other_finesse_repair_count || 0) > 0) {
-    finesseDetails.push(`${integer(current.other_finesse_repair_count)} Other Repaired`);
+  const otherRepaired = Number(current.other_finesse_repair_count || 0) + Number(current.other_paint_fty_repair_count || 0);
+  if (otherRepaired > 0) {
+    finesseDetails.push(`${integer(otherRepaired)} Other Repaired`);
   }
   const cards = [
     ['Preliminary OEE', percent(composite(current)), 'provisional · not standard OEE', palette.purple],

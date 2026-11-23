@@ -341,7 +341,16 @@ def _metric_fields(row: Mapping[str, Any]) -> Dict[str, int]:
         "hours_scheduled": "hours_scheduled",
         "paint_hours": "paint_hours",
     }
-    return {target: _integer(row.get(source)) for source, target in source_to_snapshot.items()}
+    fields = {target: _integer(row.get(source)) for source, target in source_to_snapshot.items()}
+    # A paint repair whose part belongs to none of FUKA, Bumpers or Fairings (for example a service part) is counted in
+    # paint_fty_repair_count but in no family count. Carry the difference as its own Other bucket so the breakdown adds up;
+    # a negative remainder (the families add up to more than the total) is refused by validation.
+    fields["other_paint_fty_repair_count"] = fields["paint_fty_repair_count"] - (
+        fields["fuka_paint_fty_repair_count"]
+        + fields["fairing_paint_fty_repair_count"]
+        + fields["bumper_paint_fty_repair_count"]
+    )
+    return fields
 
 
 def _daily_row(row: Mapping[str, Any]) -> Dict[str, Any]:

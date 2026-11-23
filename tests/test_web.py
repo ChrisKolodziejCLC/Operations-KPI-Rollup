@@ -400,6 +400,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "FUKA Repaired" in javascript
             assert "Fairings Repaired" in javascript
             assert "Bumpers Repaired" in javascript
+            assert "other_paint_fty_repair_count" in javascript and "otherRepaired" in javascript
             assert "Other Repaired" in javascript
             assert "current.ppy_repaint_count" in javascript
             assert "reject_ppy_approved" in javascript

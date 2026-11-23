@@ -133,7 +133,7 @@ def enrich_metric_row(row: Dict[str, Any]) -> Dict[str, Any]:
         ) + (as_decimal(row.get("fairing_finesse_repair_count")) if has_receiving_finesse else ZERO)
         enriched["combined_finesse_other_repair_count"] = (
             as_decimal(row.get("other_finesse_repair_count")) if has_receiving_finesse else ZERO
-        )
+        ) + as_decimal(row.get("other_paint_fty_repair_count"))
         enriched["finesse_percentage"] = safe_ratio(combined_repairs, combined_rejects)
     else:
         enriched["combined_finesse_repair_count"] = None

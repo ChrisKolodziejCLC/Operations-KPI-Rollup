@@ -105,3 +105,30 @@ def test_recovered_report_day_composite_is_provisional_legacy_formula():
 
     assert enriched["paint_plan_composite"] == expected
     assert enriched["paint_plan_composite"].quantize(Decimal("0.001")) == Decimal("0.917")
+
+
+
+def test_combined_finesse_other_adds_the_paint_side_other_bucket():
+    enriched = enrich_metric_row({
+        "paint_fty_repair_count": 5,
+        "fuka_paint_fty_repair_count": 4,
+        "bumper_paint_fty_repair_count": 0,
+        "fairing_paint_fty_repair_count": 0,
+        "other_paint_fty_repair_count": 1,
+        "reject_fty_rejected_count": 24,
+        "finesse_rejected_count": 41,
+        "finesse_repair_count": 27,
+        "finesse_repaint_count": 12,
+        "bumper_finesse_repair_count": 8,
+        "fairing_finesse_repair_count": 17,
+        "other_finesse_repair_count": 2,
+    })
+    assert enriched["combined_finesse_repair_count"] == Decimal("32")
+    assert enriched["combined_finesse_other_repair_count"] == Decimal("3")
+    family_total = (
+        enriched["combined_finesse_fuka_repair_count"]
+        + enriched["combined_finesse_bumper_repair_count"]
+        + enriched["combined_finesse_fairing_repair_count"]
+        + enriched["combined_finesse_other_repair_count"]
+    )
+    assert family_total == enriched["combined_finesse_repair_count"]

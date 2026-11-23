@@ -479,7 +479,13 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
                     raise ValueError(f"{collection} final family totals do not equal final_total")
                 if sum(int(row[field]) for field in ("final_fuka_approved", "final_bumper_approved", "final_fairing_approved")) != int(row.get("final_approved", 0)):
                     raise ValueError(f"{collection} final family approvals do not equal final_approved")
-                if sum(int(row[field]) for field in ("fuka_paint_fty_repair_count", "fairing_paint_fty_repair_count", "bumper_paint_fty_repair_count")) != int(row["paint_fty_repair_count"]):
+                family_repairs = sum(int(row[field]) for field in ("fuka_paint_fty_repair_count", "fairing_paint_fty_repair_count", "bumper_paint_fty_repair_count"))
+                if "other_paint_fty_repair_count" in row:
+                    # A paint repair outside FUKA, Bumpers and Fairings (for example a service part) is carried as its own Other bucket.
+                    if int(row["other_paint_fty_repair_count"]) < 0:
+                        raise ValueError(f"{collection} finesse family repair counts exceed paint_fty_repair_count")
+                    family_repairs += int(row["other_paint_fty_repair_count"])
+                if family_repairs != int(row["paint_fty_repair_count"]):
                     raise ValueError(f"{collection} finesse family repair counts do not equal paint_fty_repair_count")
                 if int(row["paint_fty_repair_count"]) > int(row.get("reject_fty_rejected_count", 0)):
                     raise ValueError(f"{collection} finesse repairs exceed first-pass rejected outcomes")
