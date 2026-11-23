@@ -92,3 +92,12 @@ footer{display:flex;justify-content:space-between;gap:1rem;padding:1rem max(2rem
 .names-toggle{display:flex;align-items:center;gap:.45rem;color:var(--navy);font-weight:800;white-space:nowrap}
 .names-toggle[hidden]{display:none}
 .names-toggle input{min-height:auto;width:1.15rem;height:1.15rem}
+.table-heading{margin:1.1rem 0 0;color:var(--navy);font-size:.9rem;font-weight:900}
+.table-heading+.table-wrap{margin-top:.5rem}
+.assembly-table td:nth-child(n+2){text-align:right}
+.assembly-table tr:last-child td{border-top:2px solid #b6c7d0;font-weight:900;background:#f3f7f9}
+.chart-footnote[hidden],.table-wrap[hidden]{display:none}
+.assembly-table td:first-child{position:sticky;left:0;z-index:1;background:#fff}
+.assembly-table tr:nth-child(even) td:first-child{background:#fbfcfd}
+.assembly-table tr:last-child td:first-child{background:#f3f7f9}
+.assembly-table th:first-child{left:0;z-index:3}

@@ -927,6 +927,152 @@ function renderFinesse(snapshot) {
   ], details, 'No finesse part detail is available for the selected day.');
 }
 
+// ---------- assembly production: counts by work center and operator ----------
+// Counts only. QPTS records the operator who finished each piece (AssembledLogin) and the workstation it was built at
+// (GPAssyLogin, the work center), but not when a build started, so no assembly time is shown here yet.
+// Operator rows are served only after Windows sign-in; the open wallboard port receives an empty list and a note.
+const NO_OPERATOR_LABEL = 'No operator recorded';
+const NO_WORK_CENTER_LABEL = 'No work center recorded';
+const ASSEMBLY_UNAVAILABLE = 'Assembly counts are not available for this snapshot.';
+const ASSEMBLY_NOTE = 'Counts only: pieces assembled, and the N71-6171 bumpers among them. QPTS records the operator who finished each piece and the work center (workstation) it was built at, but not when a build started, so no assembly time is shown yet. Weeks run Sunday\u2013Saturday; * marks the week in progress. Days active counts days with at least one piece.';
+
+function assemblyAvailable(snapshot) {
+  const section = snapshot.assembly;
+  return section && section.available !== false && Array.isArray(section.work_centers) ? section : null;
+}
+
+const assemblyLabel = (entity, emptyLabel) => entity.key === null || entity.key === undefined || entity.key === '' ? emptyLabel : String(entity.key);
+
+function assemblyTrendRows(entities, weeks, emptyLabel) {
+  const rows = [];
+  entities.forEach((entity) => {
+    entity.weeks.forEach((week, index) => {
+      rows.push({date: weeks[index], entity: assemblyLabel(entity, emptyLabel), pieces: Number(week.pieces || 0)});
+    });
+  });
+  return rows;
+}
+
+function assemblyColumns(firstLabel, section, reportDate) {
+  const columns = [
+    {key: 'label', label: firstLabel, format: plainId},
+    {key: 'day_pieces', label: 'Selected day', format: integer},
+    {key: 'day_bumpers', label: 'Bumpers (day)', format: integer}
+  ];
+  section.weeks.forEach((week, index) => {
+    columns.push({key: 'week' + index, label: 'Wk ' + dateLabel(week) + (periodIsOpen(week, 'week', reportDate) ? '*' : ''), format: integer});
+  });
+  columns.push(
+    {key: 'total_pieces', label: '13-wk pieces', format: integer},
+    {key: 'total_bumpers', label: '13-wk bumpers', format: integer},
+    {key: 'days', label: 'Days active', format: integer},
+    {key: 'daily_average', label: 'Avg / active day', format: (value) => decimal(value, 1)}
+  );
+  return columns;
+}
+
+function assemblyTableRows(entities, emptyLabel, totals, totalLabel) {
+  const rows = entities.map((entity) => {
+    const row = {
+      label: assemblyLabel(entity, emptyLabel),
+      day_pieces: entity.day.pieces,
+      day_bumpers: entity.day.bumpers,
+      total_pieces: entity.total.pieces,
+      total_bumpers: entity.total.bumpers,
+      days: entity.total.days,
+      daily_average: entity.total.daily_average
+    };
+    entity.weeks.forEach((week, index) => { row['week' + index] = week.pieces; });
+    return row;
+  });
+  const all = {
+    label: totalLabel,
+    day_pieces: totals.day.pieces,
+    day_bumpers: totals.day.bumpers,
+    total_pieces: sum(totals.weeks, 'pieces'),
+    total_bumpers: sum(totals.weeks, 'bumpers'),
+    days: null,
+    daily_average: null
+  };
+  totals.weeks.forEach((week, index) => { all['week' + index] = week.pieces; });
+  rows.push(all);
+  return rows;
+}
+
+function renderAssemblyDay(selector, entities, emptyLabel) {
+  const rows = entities.filter((entity) => entity.day.pieces > 0).map((entity) => ({label: assemblyLabel(entity, emptyLabel), pieces: entity.day.pieces, bumpers: entity.day.bumpers}));
+  if (!rows.length) {
+    emptyState($(selector), 'No pieces were assembled on the selected day.');
+    return;
+  }
+  renderRankBars(selector, rows, 'pieces', 'label', palette.blue, (row) => integer(row.pieces) + (row.bumpers ? ' (' + integer(row.bumpers) + (Number(row.bumpers) === 1 ? ' bumper)' : ' bumpers)') : ''));
+}
+
+function renderAssemblyTrend(selector, entities, section, emptyLabel, reportDate, ariaLabel) {
+  renderPeriodStack($(selector), {
+    rows: assemblyTrendRows(entities, section.weeks, emptyLabel),
+    grain: 'week',
+    reportDate: reportDate,
+    entityField: 'entity',
+    fields: ['pieces'],
+    volumeField: 'pieces',
+    value: (bucket) => bucket.pieces,
+    format: integer,
+    trend: true,
+    ariaLabel: ariaLabel
+  });
+}
+
+function renderAssembly(snapshot) {
+  const section = assemblyAvailable(snapshot);
+  const reportDate = snapshot.report_date;
+  const kpis = $('#assembly-kpis');
+  clear(kpis);
+  const operatorWrap = $('#assembly-operator-wrap');
+  const operatorNote = $('#assembly-operator-note');
+  $('#assembly-footnote').textContent = ASSEMBLY_NOTE;
+  if (!section) {
+    ['#assembly-day-work-centers', '#assembly-day-operators', '#assembly-trend-work-centers', '#assembly-trend-operators'].forEach((selector) => emptyState($(selector), ASSEMBLY_UNAVAILABLE));
+    renderTable('#assembly-work-center-table', [{key: 'label', label: 'Work center'}], [], ASSEMBLY_UNAVAILABLE);
+    operatorWrap.hidden = true;
+    operatorNote.hidden = true;
+    return;
+  }
+  const totals = section.totals;
+  const operators = (section.operators || []).filter((entity) => entity.key !== null);
+  const operatorsSeen = operators.length;
+  const activeOperators = operators.filter((entity) => entity.day.pieces > 0).length;
+  const workCentersSeen = section.work_centers.filter((entity) => entity.key !== null).length;
+  const activeWorkCenters = section.work_centers.filter((entity) => entity.key !== null && entity.day.pieces > 0).length;
+  const thisWeek = totals.weeks[totals.weeks.length - 1] || {pieces: 0, bumpers: 0};
+  [
+    ['Pieces assembled', integer(totals.day.pieces), integer(totals.day.bumpers) + ' N71-6171 bumpers', palette.blue],
+    ['Active work centers', integer(activeWorkCenters), 'of ' + integer(workCentersSeen) + ' used in 13 weeks', palette.teal],
+    section.operators_visible
+      ? ['Active operators', integer(activeOperators), 'of ' + integer(operatorsSeen) + ' recorded in 13 weeks', palette.purple]
+      : ['Active operators', '\u2014', section.operators_note || 'Appear after Windows sign-in', palette.purple],
+    ['This week so far', integer(thisWeek.pieces), integer(thisWeek.bumpers) + ' bumpers', palette.green],
+    ['Last 13 weeks', integer(sum(totals.weeks, 'pieces')), integer(sum(totals.weeks, 'bumpers')) + ' bumpers', palette.amber]
+  ].forEach((card) => kpis.appendChild(summaryCard(card[0], card[1], card[2], card[3])));
+  renderAssemblyDay('#assembly-day-work-centers', section.work_centers, NO_WORK_CENTER_LABEL);
+  renderAssemblyTrend('#assembly-trend-work-centers', section.work_centers, section, NO_WORK_CENTER_LABEL, reportDate, 'Pieces assembled by work center, last 13 weeks');
+  renderTable('#assembly-work-center-table', assemblyColumns('Work center', section, reportDate), assemblyTableRows(section.work_centers, NO_WORK_CENTER_LABEL, totals, 'All work centers'), 'No assembly rows are available for this snapshot.');
+  if (section.operators_visible) {
+    renderAssemblyDay('#assembly-day-operators', section.operators, NO_OPERATOR_LABEL);
+    renderAssemblyTrend('#assembly-trend-operators', section.operators, section, NO_OPERATOR_LABEL, reportDate, 'Pieces assembled by operator, last 13 weeks');
+    renderTable('#assembly-operator-table', assemblyColumns('Operator', section, reportDate), assemblyTableRows(section.operators, NO_OPERATOR_LABEL, totals, 'All operators'), 'No assembly rows are available for this snapshot.');
+    operatorWrap.hidden = false;
+    operatorNote.hidden = true;
+  } else {
+    const note = section.operators_note || 'Operator rows appear after Windows sign-in.';
+    emptyState($('#assembly-day-operators'), note);
+    emptyState($('#assembly-trend-operators'), note);
+    operatorWrap.hidden = true;
+    operatorNote.hidden = false;
+    operatorNote.textContent = note;
+  }
+}
+
 function render(snapshot) {
   activeSnapshot = snapshot;
   const view = namesOn ? namedSnapshot(snapshot) : snapshot;
@@ -935,6 +1081,7 @@ function render(snapshot) {
   renderPainter(view);
   renderRepaint(view);
   renderFinesse(view);
+  renderAssembly(view);
   renderTrends(view);
   setStatus('Drill-down data loaded for ' + dateLabel(snapshot.report_date) + '.');
 }

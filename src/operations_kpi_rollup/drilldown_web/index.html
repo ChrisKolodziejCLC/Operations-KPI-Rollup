@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Operations KPI Drill-down</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/drilldown/styles.css?v=0.38.0-chart-clarity-r1">
+  <link rel="stylesheet" href="/drilldown/styles.css?v=0.47.0-assembly-r1">
 </head>
 <body>
   <header class="masthead">
@@ -89,12 +89,37 @@
         <div class="table-wrap"><table id="finesse-table"></table></div>
       </div>
     </details>
+    <details class="panel">
+      <summary>
+        <span>Assembly production</span>
+        <small>Pieces and bumpers by work center and operator, selected day and 13 weeks</small>
+      </summary>
+      <div class="panel-body">
+        <div id="assembly-kpis" class="summary-grid"></div>
+        <div class="chart-grid">
+          <figure class="chart-card"><figcaption>Pieces by work center <small>Selected day</small></figcaption><div id="assembly-day-work-centers" class="rank-bars"></div></figure>
+          <figure class="chart-card"><figcaption>Pieces by operator <small>Selected day</small></figcaption><div id="assembly-day-operators" class="rank-bars"></div></figure>
+        </div>
+        <section class="trend-section" aria-label="Assembly production trends"><h3>Last 13 weeks <small>Sunday–Saturday weeks; * marks the week in progress</small></h3>
+          <div class="trend-grid">
+            <figure class="chart-card"><figcaption>Pieces by work center <small>Last 13 weeks</small></figcaption><div id="assembly-trend-work-centers" class="chart"></div></figure>
+            <figure class="chart-card"><figcaption>Pieces by operator <small>Last 13 weeks</small></figcaption><div id="assembly-trend-operators" class="chart"></div></figure>
+          </div>
+        </section>
+        <p id="assembly-footnote" class="chart-footnote" role="note"></p>
+        <h3 class="table-heading">By work center</h3>
+        <div class="table-wrap"><table id="assembly-work-center-table" class="assembly-table"></table></div>
+        <h3 class="table-heading">By operator</h3>
+        <p id="assembly-operator-note" class="chart-footnote" role="note" hidden></p>
+        <div id="assembly-operator-wrap" class="table-wrap" hidden><table id="assembly-operator-table" class="assembly-table"></table></div>
+      </div>
+    </details>
   </main>
 
   <footer>
     <span>Operations KPI Rollup · Drill-down</span>
-    <span>0.38.0-chart-clarity</span>
+    <span>0.47.0-assembly</span>
   </footer>
-  <script src="/drilldown/app.js?v=0.38.0-chart-clarity-r1" defer></script>
+  <script src="/drilldown/app.js?v=0.47.0-assembly-r1" defer></script>
 </body>
 </html>

@@ -361,3 +361,38 @@ def test_assembly_details_procedure_uses_the_reviewed_filters_and_the_two_login_
     assert "NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(100), e.AssembledLogin))), N'') AS operator" in definition
     assert "NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(100), e.GPAssyLogin))), N'') AS workstation" in definition
     assert "DROP TABLE #AssemblyScans;" in definition and definition.count("COUNT(DISTINCT part_id)") == 2
+
+
+def test_drilldown_page_has_an_assembly_panel_wired_to_the_snapshot_section():
+    page = (ROOT / "src/operations_kpi_rollup/drilldown_web/index.html").read_text(encoding="utf-8")
+    script = (ROOT / "src/operations_kpi_rollup/drilldown_web/app.js").read_text(encoding="utf-8")
+    css = (ROOT / "src/operations_kpi_rollup/drilldown_web/styles.css").read_text(encoding="utf-8")
+    for element in (
+        "assembly-kpis", "assembly-day-work-centers", "assembly-day-operators", "assembly-trend-work-centers",
+        "assembly-trend-operators", "assembly-footnote", "assembly-work-center-table", "assembly-operator-table",
+        "assembly-operator-wrap", "assembly-operator-note",
+    ):
+        assert 'id="' + element + '"' in page
+        assert "#" + element in script
+    assert "Assembly production" in page and "By work center" in page and "By operator" in page
+    assert "renderAssembly(view);" in script and "function renderAssembly(snapshot)" in script
+    assert "snapshot.assembly" in script and "section.operators_visible" in script and "section.operators_note" in script
+    assert "No operator recorded" in script and "No work center recorded" in script
+    assert "Assembly counts are not available for this snapshot." in script
+    assert ".assembly-table" in css and ".table-wrap[hidden]" in css
+    assert "?v=0.47.0-assembly-r1" in page and "0.38.0-chart-clarity-r1" not in page
+
+
+def test_drilldown_assembly_panel_shows_counts_only_and_no_assembly_time():
+    script = (ROOT / "src/operations_kpi_rollup/drilldown_web/app.js").read_text(encoding="utf-8")
+    block = script[script.index("// ---------- assembly production"):script.index("function render(snapshot)")]
+    for column in ("Selected day", "Bumpers (day)", "13-wk pieces", "13-wk bumpers", "Days active", "Avg / active day"):
+        assert column in block
+    lowered = block.lower()
+    for banned in ("build time", "minutes", "assembly time:", "start_time", "duration"):
+        assert banned not in lowered.replace("no assembly time is shown yet", "").replace("not when a build started", "")
+    assert "not when a build started" in block
+    assert "operators_visible" in block and "operators_note" in block
+    # Operator logins are shown exactly as recorded: the roster name lookup does not cover them.
+    names = script[script.index("function snapshotIds(snapshot)"):script.index("async function loadNames")]
+    assert "assembly" not in names
