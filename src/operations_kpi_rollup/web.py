@@ -466,13 +466,20 @@ class Handler(BaseHTTPRequestHandler):
             )
         elif path == "/api/drilldown/refresh" and self.drilldown is not None:
             self._post_refresh(
-                self.drilldown.refresh,
+                self._drilldown_refresh,
                 (ValueError, RestrictedRefreshError),
                 "The drill-down refresh failed. Check the service journal for the bounded diagnostic.",
                 True,
             )
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
+
+    def _drilldown_refresh(self, report_date: date, force: bool = False) -> Dict[str, Any]:
+        """Refresh response for the drill-down: the open wallboard port never receives assembly operator rows, here or in the GET view."""
+        snapshot = self.drilldown.refresh(report_date, force=force)
+        if snapshot and not self.signed_in:
+            snapshot = redact_assembly_operators(snapshot)
+        return snapshot
 
     def _post_refresh(self, refresh, expected_errors, failure_message: str, noindex: bool = False) -> None:
         if self.headers.get("X-Operations-KPI-Action") != "refresh":

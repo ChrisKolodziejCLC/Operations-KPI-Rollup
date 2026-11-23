@@ -446,3 +446,49 @@ def test_drilldown_panel_tells_the_viewer_how_to_fill_a_saved_day_that_predates_
     assert "This saved day predates the assembly counts. Refresh it to build them." in script
     block = script[script.index("function renderAssembly(snapshot)"):script.index("function render(snapshot)")]
     assert "const saved = snapshot.assembly;" in block and "!saved ? ASSEMBLY_PREDATES" in block and "saved.reason" in block
+
+
+def _post(port, path, body, headers=None):
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    payload = json.dumps(body).encode("utf-8")
+    all_headers = {"Content-Type": "application/json", "X-Operations-KPI-Action": "refresh"}
+    all_headers.update(headers or {})
+    connection.request("POST", path, body=payload, headers=all_headers)
+    response = connection.getresponse()
+    data = response.read()
+    status = response.status
+    connection.close()
+    return status, json.loads(data)
+
+
+def test_the_open_port_refresh_response_never_carries_operator_rows(tmp_path):
+    state = AppState("fixture", tmp_path / "snapshots", EXAMPLE)
+    drilldown = _drilldown_state(tmp_path)
+    server = create_server("127.0.0.1", 0, state, drilldown)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        port = server.server_address[1]
+        for force in (False, True):
+            status, body = _post(port, "/api/drilldown/refresh", {"report_date": REPORT_DATE.isoformat(), "force": force})
+            assert status == 200, body
+            section = body["assembly"]
+            assert section["operators"] == [] and section["operators_visible"] is False and section["operators_note"] == OPERATORS_HIDDEN_NOTE
+            assert section["work_centers"], "work-center rows stay on the open port"
+            assert "op." not in json.dumps(section)
+        # The cached copy is a different object: the sign-in listener still gets the operator rows.
+        cached = drilldown.snapshot(REPORT_DATE)["assembly"]
+        assert cached["operators_visible"] is True and cached["operators"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_the_web_handlers_route_every_drilldown_snapshot_response_through_the_redaction():
+    source = (ROOT / "src/operations_kpi_rollup/web.py").read_text(encoding="utf-8")
+    assert "self._drilldown_refresh," in source and "self.drilldown.refresh," not in source
+    block = source[source.index("def _drilldown_refresh("):source.index("def _post_refresh(")]
+    assert "redact_assembly_operators(snapshot)" in block and "not self.signed_in" in block
+    # The only places the drill-down state hands a snapshot to a client are the GET view and this refresh response.
+    assert source.count("self.drilldown.refresh(") == 1 and source.count("drilldown.snapshot(") == 1
