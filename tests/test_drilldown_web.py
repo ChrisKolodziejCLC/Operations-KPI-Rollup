@@ -1,10 +1,11 @@
 import json
 import re
 import os
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 import stat
 import threading
+from zoneinfo import ZoneInfo
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -116,12 +117,16 @@ def test_standard_drilldown_is_served_without_any_identity(tmp_path):
         status, _, css = perform(base + "/drilldown/styles.css")
         assert status == 200 and b".pilot-badge" in css
 
+        before_day = datetime.now(ZoneInfo("America/Chicago")).date().isoformat()
         status, headers, body = perform(base + "/api/drilldown/health")
         health = json.loads(body)
         assert status == 200
         assert health["service"] == "operations-kpi-rollup-drilldown"
         assert health["refresh_boundary"] == "standard-wallboard-view"
         assert health["viewer"] is None
+        assert health["business_timezone"] == "America/Chicago"
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", health["business_date"])
+        assert health["business_date"] in {before_day, datetime.now(ZoneInfo("America/Chicago")).date().isoformat()}
         assert headers["Cache-Control"] == "no-store"
 
         status, _, body = perform(base + "/api/drilldown/snapshot")
@@ -267,7 +272,8 @@ def test_public_wallboard_query_still_excludes_detail_result_sets(monkeypatch):
 def test_drilldown_page_always_opens_on_todays_date():
     script = (SRC / "drilldown_web" / "app.js").read_text(encoding="utf-8")
     start = script[script.index("async function start()"):]
-    assert "localDateISO()" in start
+    assert "businessToday()" in start
+    assert "localDateISO()" not in start
     assert "health.report_date" not in start
 
 

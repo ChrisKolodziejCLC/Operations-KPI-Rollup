@@ -15,8 +15,8 @@ import threading
 import time
 from typing import Any, Dict, Mapping, Optional, Sequence
 from urllib.parse import parse_qs, urlsplit
-from zoneinfo import ZoneInfo
 
+from .business_time import business_clock_fields, business_timezone_name, business_today, business_zone
 from .restricted import (
     CURRENT_RESTRICTED_METHOD_VERSION,
     RESTRICTED_HISTORY_START,
@@ -190,11 +190,10 @@ class RestrictedState:
         return self._clone(snapshot)
 
     def _today(self) -> date:
-        zone = ZoneInfo(os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis"))
-        return datetime.now(zone).date()
+        return business_today()
 
     def _snapshot_age_seconds(self, snapshot: Dict[str, Any]) -> float:
-        zone = ZoneInfo(os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis"))
+        zone = business_zone()
         observed = datetime.fromisoformat(str(snapshot["generated_at"]))
         if observed.tzinfo is None:
             observed = observed.replace(tzinfo=zone)
@@ -305,6 +304,8 @@ class RestrictedState:
             "last_refresh_source": self._last_refresh_source,
             "last_query_duration_seconds": self._last_query_duration_seconds,
             "last_refresh_error": self._last_refresh_error,
+            "business_date": business_clock_fields()["business_date"],
+            "business_timezone": business_timezone_name(),
             "viewer": {"user": viewer.get("user", ""), "name": viewer.get("name", "")} if viewer else None,
         }
 

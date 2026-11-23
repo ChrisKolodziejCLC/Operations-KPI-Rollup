@@ -90,6 +90,8 @@ let autoRefreshRunning = false;
 let autoRefreshInProgress = false;
 let nextAutoRefreshAt = null;
 let serverClockOffsetMs = 0;
+let businessDate = null;
+let businessTimeZone = null;
 let activeSnapshot = null;
 let selectedChartKey = 'loaded';
 let selectedChartLabel = 'Carts / Pieces Loaded';
@@ -131,6 +133,21 @@ const fullDateLabel = (value) => new Date(`${value}T12:00:00`).toLocaleDateStrin
 const clockTimeLabel = (value) => value
   ? new Date(value).toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'})
   : 'No time';
+
+// "Today" is the plant's day and the server owns it (/api/health business_date, the same Central day BRAK and the
+// emailed report use). A viewer's own computer clock is only a fallback for a server that does not report one.
+const businessToday = () => businessDate || localDateISO();
+const snapshotStamp = (value) => {
+  const when = new Date(value);
+  if (!Number.isFinite(when.getTime())) return 'time unavailable';
+  try {
+    return businessTimeZone
+      ? when.toLocaleString(undefined, {timeZone: businessTimeZone, timeZoneName: 'short'})
+      : when.toLocaleString();
+  } catch (_) {
+    return when.toLocaleString();
+  }
+};
 
 function rangeLabel(rows) {
   const dates = rows.map(row => row.date).filter(Boolean).sort();
@@ -2323,7 +2340,7 @@ function render(snapshot) {
   displayedReportDate = snapshot.report_date;
   $('#report-date').textContent = `Report date ${fullDateLabel(snapshot.report_date)}`;
   $('#report-range').textContent = rangeLabel(snapshot.daily);
-  $('#generated-at').textContent = `Snapshot ${new Date(snapshot.generated_at).toLocaleString()}`;
+  $('#generated-at').textContent = `Snapshot ${snapshotStamp(snapshot.generated_at)}`;
   $('#date-input').value = snapshot.report_date;
   updateNavigationState();
   renderCards(snapshot);
@@ -2366,6 +2383,8 @@ function applyHealth(health) {
   $('#health-state').textContent = `${health.status} · ${health.mode} mode`;
   autoRefreshRunning = Boolean(health.auto_refresh_running);
   autoRefreshInProgress = Boolean(health.refresh_in_progress);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(health.business_date || ''))) businessDate = health.business_date;
+  if (typeof health.business_timezone === 'string' && health.business_timezone) businessTimeZone = health.business_timezone;
   const serverTime = health.server_time ? new Date(health.server_time) : null;
   serverClockOffsetMs = serverTime && Number.isFinite(serverTime.getTime()) ? serverTime.getTime() - Date.now() : 0;
   const parsed = health.next_auto_refresh_at ? new Date(health.next_auto_refresh_at) : null;
@@ -2410,7 +2429,8 @@ async function loadCachedReport(reportDate, quiet = false) {
 
 function updateNavigationState() {
   const selected = $('#date-input').value;
-  const today = localDateISO();
+  const today = businessToday();
+  $('#date-input').max = today;
   $('#previous-day-button').disabled = refreshInProgress || !selected || selected <= EARLIEST_REPORT_DATE;
   $('#next-day-button').disabled = refreshInProgress || !selected || selected >= today;
   $('#today-button').disabled = refreshInProgress;
@@ -2441,7 +2461,7 @@ async function refreshReport(reportDate = $('#date-input').value, quiet = false)
 }
 
 async function moveReportDate(days) {
-  const selected = $('#date-input').value || localDateISO();
+  const selected = $('#date-input').value || businessToday();
   const target = shiftDate(selected, days);
   $('#date-input').value = target;
   updateNavigationState();
@@ -2449,22 +2469,23 @@ async function moveReportDate(days) {
 }
 
 async function initialize() {
-  const today = localDateISO();
+  await loadHealth();
+  const today = businessToday();
   $('#date-input').max = today;
   $('#date-input').value = today;
   $('#date-input').addEventListener('change', updateNavigationState);
   $('#refresh-button').addEventListener('click', () => refreshReport());
   $('#previous-day-button').addEventListener('click', () => moveReportDate(-1));
   $('#next-day-button').addEventListener('click', () => moveReportDate(1));
-  $('#today-button').addEventListener('click', () => { $('#date-input').value = localDateISO(); refreshReport(localDateISO()); });
+  $('#today-button').addEventListener('click', () => { const today = businessToday(); $('#date-input').value = today; refreshReport(today); });
   $('#wallboard-button').addEventListener('click', () => { const url = new URL(location.href); url.searchParams.set('wallboard', '1'); location.href = url.toString(); });
   const wallboard = new URLSearchParams(location.search).get('wallboard') === '1';
   document.body.classList.toggle('wallboard', wallboard);
   updateNavigationState();
   if (wallboard) {
     await loadLatest(true);
-    await loadCachedReport(localDateISO(), true);
-    setInterval(() => loadCachedReport(localDateISO(), true), WALLBOARD_POLL_MS);
+    await loadCachedReport(businessToday(), true);
+    setInterval(() => loadCachedReport(businessToday(), true), WALLBOARD_POLL_MS);
   } else {
     const loadedToday = await loadCachedReport(today);
     if (!loadedToday) await loadLatest();

@@ -82,6 +82,8 @@ const palette = {
 };
 const seriesColors = CHART_SERIES_COLORS;
 const EARLIEST_REPORT_DATE = '2026-09-08';
+let businessDate = null;
+let businessTimeZone = null;
 let activeSnapshot = null;
 
 // Names view: shown only to a signed-in, allowlisted Windows session (the server decides). IDs stay the default
@@ -210,6 +212,20 @@ const shiftDate = (value, days) => {
   const shifted = new Date(value + 'T12:00:00');
   shifted.setDate(shifted.getDate() + days);
   return localDateISO(shifted);
+};
+// "Today" is the plant's day and the server owns it (/api/drilldown/health business_date, the same Central day BRAK and
+// the emailed report use). A viewer's own computer clock is only a fallback for a server that does not report one.
+const businessToday = () => businessDate || localDateISO();
+const snapshotStamp = (value) => {
+  const when = new Date(value);
+  if (!Number.isFinite(when.getTime())) return 'time unavailable';
+  try {
+    return businessTimeZone
+      ? when.toLocaleString(undefined, {timeZone: businessTimeZone, timeZoneName: 'short'})
+      : when.toLocaleString();
+  } catch (_) {
+    return when.toLocaleString();
+  }
 };
 const sum = (rows, field) => rows.reduce((total, row) => total + Number(row[field] || 0), 0);
 
@@ -915,7 +931,7 @@ function render(snapshot) {
   activeSnapshot = snapshot;
   const view = namesOn ? namedSnapshot(snapshot) : snapshot;
   $('#report-date').value = snapshot.report_date;
-  $('#generated-at').textContent = 'Generated ' + new Date(snapshot.generated_at).toLocaleString();
+  $('#generated-at').textContent = 'Generated ' + snapshotStamp(snapshot.generated_at);
   renderPainter(view);
   renderRepaint(view);
   renderFinesse(view);
@@ -978,14 +994,25 @@ async function refreshDate() {
   }
 }
 
+async function loadBusinessClock() {
+  try {
+    const health = await fetchJson('/api/drilldown/health');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(health.business_date || ''))) businessDate = health.business_date;
+    if (typeof health.business_timezone === 'string' && health.business_timezone) businessTimeZone = health.business_timezone;
+  } catch (_) {
+    // Keep the last known plant day; with none, the date falls back to this computer's own.
+  }
+}
+
 async function start() {
   await initNames();
+  await loadBusinessClock();
   const dateInput = $('#report-date');
   dateInput.min = EARLIEST_REPORT_DATE;
-  dateInput.max = localDateISO();
+  dateInput.max = businessToday();
   try {
     // Always open on today: the service's latest snapshot can be a past day another viewer browsed.
-    const reportDate = localDateISO();
+    const reportDate = businessToday();
     dateInput.value = reportDate;
     await loadDate(reportDate);
   } catch (error) {
@@ -1001,13 +1028,19 @@ $('#previous-day').addEventListener('click', () => {
   $('#report-date').value = value < EARLIEST_REPORT_DATE ? EARLIEST_REPORT_DATE : value;
   loadDate($('#report-date').value);
 });
-$('#next-day').addEventListener('click', () => {
+$('#next-day').addEventListener('click', async () => {
+  await loadBusinessClock();
+  const today = businessToday();
   const value = shiftDate($('#report-date').value, 1);
-  $('#report-date').value = value > localDateISO() ? localDateISO() : value;
+  $('#report-date').max = today;
+  $('#report-date').value = value > today ? today : value;
   loadDate($('#report-date').value);
 });
-$('#today').addEventListener('click', () => {
-  $('#report-date').value = localDateISO();
+$('#today').addEventListener('click', async () => {
+  await loadBusinessClock();
+  const today = businessToday();
+  $('#report-date').max = today;
+  $('#report-date').value = today;
   loadDate($('#report-date').value);
 });
 

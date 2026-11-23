@@ -7,8 +7,8 @@ from decimal import Decimal
 import os
 import re
 from typing import Any, Dict, Iterable, List, Mapping, Optional
-from zoneinfo import ZoneInfo
 
+from .business_time import business_timezone_name, business_zone
 from .context import validate_snapshot
 from .odbc import execute_operations_rollup, execute_process_times, execute_quality_charts
 from .process_times import process_time_section, unavailable_section
@@ -888,8 +888,8 @@ def snapshot_from_rollup(
     if any(row is None for row in report_chart_days.values()):
         raise ValueError("A chart daily window does not contain the report date.")
 
-    timezone_name = os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis")
-    zone = ZoneInfo(timezone_name)
+    timezone_name = business_timezone_name()
+    zone = business_zone()
     observed_at = generated_at or datetime.now(zone)
     if observed_at.tzinfo is None:
         observed_at = observed_at.replace(tzinfo=zone)

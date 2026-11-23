@@ -11,8 +11,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Mapping, Optional
-from zoneinfo import ZoneInfo
 
+from .business_time import business_now
 from .odbc import execute_restricted_rollup
 
 
@@ -224,7 +224,7 @@ def build_restricted_snapshot(
             }
         )
 
-    observed_at = generated_at or datetime.now(ZoneInfo("America/Indiana/Indianapolis"))
+    observed_at = generated_at or business_now()
     snapshot: Dict[str, Any] = {
         "contract_version": RESTRICTED_CONTRACT_VERSION,
         "classification": RESTRICTED_CLASSIFICATION,

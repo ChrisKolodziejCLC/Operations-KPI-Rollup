@@ -303,6 +303,9 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
         assert health["refresh_in_progress"] is False
         assert health["next_auto_refresh_at"] is None
         assert datetime.fromisoformat(health["server_time"]).tzinfo is not None
+        # The pages follow the server's day, not their own computer's clock.
+        assert health["business_date"] == datetime.fromisoformat(health["server_time"]).date().isoformat()
+        assert health["business_timezone"] == "America/Chicago"
 
         status, snapshot = request_json(base + "/api/snapshot")
         assert status == 200
@@ -460,9 +463,10 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert javascript.index("splitMetricCard('Carts / Pieces painted'") < javascript.index("'Repaint %'")
             assert javascript.index("'Repaint %'") < javascript.index("'Finesse Effectiveness'")
             assert javascript.index("['Pieces shipped'") < javascript.index("container.append(trailerCountCard(")
-            assert "loadCachedReport(localDateISO(), true)" in javascript
+            assert "loadCachedReport(businessToday(), true)" in javascript
             assert "const loadedToday = await loadCachedReport(today);" in javascript
             assert "if (!loadedToday) await loadLatest();" in javascript
+            assert "refreshReport(businessToday(), true)" not in javascript
             assert "refreshReport(localDateISO(), true)" not in javascript
             assert "X-Operations-KPI-Refresh-Key" not in javascript
             assert "sessionStorage" not in javascript

@@ -12,7 +12,7 @@ Environment=PYTHONPATH=/opt/clc/operations-kpi-rollup/current/src
 Environment=KPI_DATA_MODE=live
 Environment=KPI_BIND_HOST=0.0.0.0
 Environment=KPI_PORT=5193
-Environment=KPI_TIMEZONE=America/Indiana/Indianapolis
+Environment=KPI_TIMEZONE=America/Chicago
 Environment=KPI_SNAPSHOT_DIR=/var/lib/operations-kpi-rollup/snapshots
 Environment=KPI_SQL_CREDENTIAL_NAME=operations-kpi-qpts-ro
 Environment=KPI_SQL_EXPECTED_SERVER=brak

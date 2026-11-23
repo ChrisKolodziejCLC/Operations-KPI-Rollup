@@ -19,8 +19,8 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlsplit
-from zoneinfo import ZoneInfo
 
+from .business_time import business_clock_fields, business_now, business_timezone_name, business_today, business_zone
 from .context import validate_snapshot
 from .process_times import normalize_stored_process_time
 from .quality_charts import normalize_stored_quality_charts
@@ -145,12 +145,10 @@ class AppState:
             return self._clone(self._snapshot)
 
     def _today(self) -> date:
-        timezone_name = os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis")
-        return datetime.now(ZoneInfo(timezone_name)).date()
+        return business_today()
 
     def _snapshot_age_seconds(self, snapshot: Dict[str, Any]) -> float:
-        timezone_name = os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis")
-        zone = ZoneInfo(timezone_name)
+        zone = business_zone()
         observed = datetime.fromisoformat(str(snapshot["generated_at"]))
         if observed.tzinfo is None:
             observed = observed.replace(tzinfo=zone)
@@ -182,16 +180,13 @@ class AppState:
                 self._last_refresh_error = error
             if duration_seconds is not None:
                 self._last_query_duration_seconds = round(duration_seconds, 3)
-                self._last_query_completed_at = datetime.now(
-                    ZoneInfo(os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis"))
-                ).isoformat(timespec="seconds")
+                self._last_query_completed_at = business_now().isoformat(timespec="seconds")
 
     def health(self) -> Dict[str, Any]:
         current = self.snapshot()
         current_day = self.snapshot(self._today())
-        timezone_name = os.environ.get("KPI_TIMEZONE", "America/Indiana/Indianapolis")
-        zone = ZoneInfo(timezone_name)
-        server_time = datetime.now(zone)
+        zone = business_zone()
+        clock = business_clock_fields()
         next_auto_refresh_at = None
         if self.mode == "live" and current_day is not None:
             try:
@@ -210,7 +205,9 @@ class AppState:
             "report_date": current.get("report_date") if current else None,
             "generated_at": current.get("generated_at") if current else None,
             "refresh_boundary": "private-lan-bounded" if self.mode == "live" else "fixture-only",
-            "server_time": server_time.isoformat(timespec="seconds"),
+            "server_time": clock["server_time"],
+            "business_date": clock["business_date"],
+            "business_timezone": clock["business_timezone"],
             "refresh_freshness_seconds": self.refresh_freshness_seconds,
             "auto_refresh_seconds": self.auto_refresh_seconds if self.mode == "live" else None,
             "auto_refresh_running": bool(self._auto_refresh_thread and self._auto_refresh_thread.is_alive()),
@@ -351,7 +348,7 @@ class AppServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPI/0.45.1"
+    server_version = "OperationsKPI/0.46.0"
     sys_version = ""
 
     @property
