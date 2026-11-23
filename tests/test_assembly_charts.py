@@ -265,10 +265,17 @@ def test_assembly_chart_procedure_copies_the_reviewed_bumper_and_set_rules():
         "CASE WHEN LTRIM(CONVERT(nvarchar(255), e.[Part Number])) LIKE N'N71-6171%' THEN 1 ELSE 0 END AS is_bumper",
         "OR LTRIM(RTRIM(CONVERT(nvarchar(255), e.Description))) = N'Chassis Fairing'",
         "AND NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(255), e.[Sequence]))), N'') IS NOT NULL",
-        "HAVING COUNT(DISTINCT e.[Part ID]) = 4",
         "ISNULL(e.Model, N'') <> N'Service'",
     ):
         assert rule in definition and rule in rollup
+    # The exactly-four-distinct-pieces rule is the same; the procedure applies it as of the end of each day and for the report date.
+    assert "HAVING COUNT(DISTINCT e.[Part ID]) = 4" in rollup
+    assert "HAVING COUNT(DISTINCT part_id) = 4" in definition
+    assert "SELECT COUNT(DISTINCT set_pieces.part_id)" in definition
+    assert "AND set_pieces.assembled_at < DATEADD(day, 1, CONVERT(datetime2(0), set_days.day_assembled))" in definition
+    assert ") = 4\n        GROUP BY set_days.day_assembled" in definition
+    for temp in ("#AssembledPieces", "#SetPieces", "#SetDays", "#CompleteSets"):
+        assert "DROP TABLE " + temp + ";" in definition
 
 
 def test_snapshot_validation_accepts_the_assembly_charts_section():
@@ -282,3 +289,24 @@ def test_snapshot_validation_accepts_the_assembly_charts_section():
         validate_snapshot(snapshot)
     snapshot["assembly_charts"] = unavailable_section("not deployed")
     validate_snapshot(snapshot)
+
+def test_wallboard_script_renders_the_assembly_charts_for_the_two_tiles():
+    script = (ROOT / "src" / "operations_kpi_rollup" / "web" / "app.js").read_text(encoding="utf-8")
+    assert "const ASSEMBLY_TILES = {" in script
+    assert "'complete-assy-sets': {" in script and "'assembled-bumpers': {" in script
+    for key in ("sets", "pieces", "bumpers"):
+        assert "{key:'%s'," % key in script
+    assert "function renderAssemblyCharts(snapshot, tileKey) {" in script
+    assert "snapshot.assembly_charts" in script
+    assert "This saved snapshot predates the assembly charts." in script
+    assert "section.reason || 'The assembly charts are not available right now.'" in script
+    # The tile click reaches the renderer before the yield tiles, and the 13-week bars show the per-assembly-day average.
+    dispatcher = script[script.index("function renderMetricCharts(snapshot) {"):]
+    assert dispatcher.index("ASSEMBLY_TILES[selectedChartKey]") < dispatcher.index("YIELD_TILES[selectedChartKey]")
+    assert "renderAssemblyCharts(snapshot, selectedChartKey); return;" in dispatcher
+    block = script[script.index("const ASSEMBLY_TILES = {"):script.index("function renderMetricCharts(snapshot) {")]
+    assert "field:'daily_average'" in block and "field:'value'" in block and "omitNull:true" in block and "chartType:'bar'" in block
+    assert "data_available: Number(row.represented_days || 0) > 0" in block
+    assert "total over" in block and "assembly days" in block
+    for forbidden in ("login", "user", "worker", "employee", "painter", "part_id"):
+        assert forbidden not in block.lower()

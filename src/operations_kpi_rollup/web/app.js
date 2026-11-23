@@ -2128,6 +2128,97 @@ function processTimeCard(snapshot) {
   );
 }
 
+const ASSEMBLY_TILES = {
+  'complete-assy-sets': {
+    summary: 'Hourly and 13-week Complete assy sets and pieces assembled. A set counts in the hour its fourth piece is scanned assembled, and every set value is the same calculation as the tile for that date. The 13-week bars show the average per assembly day, with the weekly total in the tooltip.',
+    metrics: [
+      {key:'sets', label:'Complete assy sets', color:palette.teal, unit:'sets',
+        definition:'Four-piece fairing sets, counted in the hour and week their last piece was scanned assembled'},
+      {key:'pieces', label:'Pieces assembled', color:palette.blue, unit:'pieces',
+        definition:'Every non-service piece scanned assembled, by scan time'}
+    ]
+  },
+  'assembled-bumpers': {
+    summary: 'Hourly and 13-week Assembled bumpers (N71-6171 bumpers scanned assembled). Every value is the same calculation as the tile for that date. The 13-week bars show the average per assembly day, with the weekly total in the tooltip.',
+    metrics: [
+      {key:'bumpers', label:'Assembled bumpers', color:palette.amber, unit:'bumpers',
+        definition:'N71-6171 bumpers scanned assembled, by scan time'}
+    ]
+  }
+};
+
+function assemblyHourlySummary(rows, metric) {
+  const total = rows.reduce((sum, row) => sum + Number(row.value || 0), 0);
+  const active = rows.filter(row => Number(row.value || 0) > 0);
+  const peak = active.reduce((best, row) => (!best || Number(row.value) > Number(best.value)) ? row : best, null);
+  const first = active.length ? active[0] : null, last = active.length ? active[active.length - 1] : null;
+  return chartSummaryPanel(metric.label + ' selected-day hourly summary', [
+    {label:'Day total', value:integer(total), detail:active.length + ' active hours'},
+    {label:'Peak hour', value:peak ? integer(peak.value) : 'No Data', detail:peak ? hourBucketLabel(peak.bucket) + ' bucket' : 'Nothing assembled'},
+    {label:'First hour', value:first ? hourBucketLabel(first.bucket) : 'No Data', detail:first ? integer(first.value) + ' ' + metric.unit : 'Nothing assembled'},
+    {label:'Last hour', value:last ? hourBucketLabel(last.bucket) : 'No Data', detail:last ? integer(last.value) + ' ' + metric.unit : 'Nothing assembled'}
+  ]);
+}
+
+function assemblyWeeklySummary(rows, metric) {
+  const completed = rows.filter(row => row.data_available && !row.is_partial && row.daily_average !== null && row.daily_average !== undefined);
+  const days = completed.reduce((sum, row) => sum + Number(row.represented_days || 0), 0);
+  const total = completed.reduce((sum, row) => sum + Number(row.total || 0), 0);
+  const latest = completed.length ? completed[completed.length - 1] : null;
+  const trend = loadedLinearTrend(rows, 'daily_average');
+  return chartSummaryPanel(metric.label + ' 13-week summary', [
+    {label:'Period average', value:days ? decimal(total / days) : 'No Data',
+      detail:days ? days + ' assembly days in ' + completed.length + ' full weeks' : 'No completed assembly days'},
+    {label:'Latest full week', value:latest ? decimal(latest.daily_average) : 'No Data',
+      detail:latest ? dateLabel(latest.bucket) + ' · ' + integer(latest.total) + ' ' + metric.unit + ' over ' + latest.represented_days + ' days' : 'No completed week'},
+    {label:'Trend', value:trend ? (Math.abs(trend.slope) < .05 ? 'Flat' : (trend.slope > 0 ? 'Up' : 'Down')) : 'No Data',
+      detail:trend ? (trend.slope >= 0 ? '+' : '') + decimal(trend.slope) + ' per week' : 'Need two completed weeks'}
+  ]);
+}
+
+function renderAssemblyCharts(snapshot, tileKey) {
+  const content = $('#metric-chart-content'); content.replaceChildren();
+  const tile = ASSEMBLY_TILES[tileKey], section = snapshot.assembly_charts;
+  const placeholder = message => {
+    const empty = document.createElement('div'); empty.className = 'chart-placeholder';
+    empty.append(text(message)); content.append(empty);
+  };
+  if (!section) { placeholder('This saved snapshot predates the assembly charts. Load or refresh this date to build them.'); return; }
+  if (section.available === false) { placeholder(section.reason || 'The assembly charts are not available right now.'); return; }
+  const reportDay = fullDateLabel(snapshot.report_date);
+  let partialWeek = false, lastSection = null;
+  tile.metrics.forEach(metric => {
+    const series = section.series?.[metric.key];
+    if (!series) return;
+    const weekly = series.weekly_13.map(row => Object.assign({}, row, {data_available: Number(row.represented_days || 0) > 0}));
+    const group = metricChartSection(metric.label, metric.definition);
+    group.grid.append(
+      loadedChartCard(metric.label + ' by hour', reportDay, series.hourly, {
+        field:'value', label:metric.label, color:metric.color, trend:false, formatValue:wholeNumber, verticalLabels:true, showTick:() => true,
+        ariaLabel:'Hourly ' + metric.label + ' for ' + reportDay,
+        bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
+        summaryBuilder:rows => assemblyHourlySummary(rows, metric)
+      }),
+      loadedChartCard(metric.label + ' · 13 weeks', 'Sunday–Saturday · average per assembly day', weekly, {
+        field:'daily_average', label:'Daily average ' + metric.unit, color:metric.color, trend:true, omitNull:true, chartType:'bar',
+        formatValue:decimal, verticalLabels:true, showTick:() => true,
+        ariaLabel:'Thirteen-week average ' + metric.label + ' per assembly day with linear trend',
+        bucketLabel:row => dateLabel(row.bucket), bucketTitle:row => fullDateLabel(row.bucket) + ' through ' + fullDateLabel(row.bucket_end),
+        tooltipSuffix:row => ' · ' + integer(row.total) + ' total over ' + integer(row.represented_days) + ' assembly days',
+        summaryBuilder:rows => assemblyWeeklySummary(rows, metric)
+      })
+    );
+    content.append(group.section);
+    lastSection = group.section;
+    if (weekly.some(row => row.is_partial)) partialWeek = true;
+  });
+  if (partialWeek && lastSection) {
+    const note = document.createElement('span'); note.className = 'chart-partial-note';
+    note.append(text('The selected week is partial and is displayed but excluded from the trendline.'));
+    lastSection.append(note);
+  }
+}
+
 function renderMetricCharts(snapshot) {
   $('#metric-chart-title').textContent = selectedChartLabel;
   const summary = $('#metric-chart-summary');
@@ -2160,6 +2251,10 @@ function renderMetricCharts(snapshot) {
       color:palette.green,
       lowerIsBetter:false
     }); return;
+  }
+  if (ASSEMBLY_TILES[selectedChartKey]) {
+    summary.textContent = ASSEMBLY_TILES[selectedChartKey].summary;
+    renderAssemblyCharts(snapshot, selectedChartKey); return;
   }
   if (YIELD_TILES[selectedChartKey]) {
     summary.textContent = YIELD_TILES[selectedChartKey].summary;
