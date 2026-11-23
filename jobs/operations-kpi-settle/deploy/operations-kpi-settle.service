@@ -1,0 +1,29 @@
+[Unit]
+Description=Operations KPI nightly settle: re-read the week's days into the dashboard's saved copies
+After=network-online.target operations-kpi-rollup.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+Environment=SETTLE_BASE_URL=http://127.0.0.1:5193
+Environment=SETTLE_TIMEZONE=America/Chicago
+WorkingDirectory=/opt/clc/operations-kpi-settle/current
+ExecStart=/usr/bin/python3 /opt/clc/operations-kpi-settle/current/settle_past_days.py
+TimeoutStartSec=40min
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1
+UMask=0077
