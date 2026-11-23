@@ -307,6 +307,8 @@ def test_wallboard_script_renders_the_assembly_charts_for_the_two_tiles():
     block = script[script.index("const ASSEMBLY_TILES = {"):script.index("function renderMetricCharts(snapshot) {")]
     assert "field:'daily_average'" in block and "field:'value'" in block and "omitNull:true" in block and "chartType:'bar'" in block
     assert "data_available: Number(row.represented_days || 0) > 0" in block
+    assert "data_available: true" in block  # hourly rows need the flag or the chart draws nothing
+    assert "const assemblyUnit = (count, metric) =>" in block
     assert "total over" in block and "assembly days" in block
     for forbidden in ("login", "user", "worker", "employee", "painter", "part_id"):
         assert forbidden not in block.lower()

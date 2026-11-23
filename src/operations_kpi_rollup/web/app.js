@@ -2132,20 +2132,22 @@ const ASSEMBLY_TILES = {
   'complete-assy-sets': {
     summary: 'Hourly and 13-week Complete assy sets and pieces assembled. A set counts in the hour its fourth piece is scanned assembled, and every set value is the same calculation as the tile for that date. The 13-week bars show the average per assembly day, with the weekly total in the tooltip.',
     metrics: [
-      {key:'sets', label:'Complete assy sets', color:palette.teal, unit:'sets',
+      {key:'sets', label:'Complete assy sets', color:palette.teal, unit:'sets', singular:'set',
         definition:'Four-piece fairing sets, counted in the hour and week their last piece was scanned assembled'},
-      {key:'pieces', label:'Pieces assembled', color:palette.blue, unit:'pieces',
+      {key:'pieces', label:'Pieces assembled', color:palette.blue, unit:'pieces', singular:'piece',
         definition:'Every non-service piece scanned assembled, by scan time'}
     ]
   },
   'assembled-bumpers': {
     summary: 'Hourly and 13-week Assembled bumpers (N71-6171 bumpers scanned assembled). Every value is the same calculation as the tile for that date. The 13-week bars show the average per assembly day, with the weekly total in the tooltip.',
     metrics: [
-      {key:'bumpers', label:'Assembled bumpers', color:palette.amber, unit:'bumpers',
+      {key:'bumpers', label:'Assembled bumpers', color:palette.amber, unit:'bumpers', singular:'bumper',
         definition:'N71-6171 bumpers scanned assembled, by scan time'}
     ]
   }
 };
+
+const assemblyUnit = (count, metric) => Number(count) === 1 ? metric.singular : metric.unit;
 
 function assemblyHourlySummary(rows, metric) {
   const total = rows.reduce((sum, row) => sum + Number(row.value || 0), 0);
@@ -2155,8 +2157,8 @@ function assemblyHourlySummary(rows, metric) {
   return chartSummaryPanel(metric.label + ' selected-day hourly summary', [
     {label:'Day total', value:integer(total), detail:active.length + ' active hours'},
     {label:'Peak hour', value:peak ? integer(peak.value) : 'No Data', detail:peak ? hourBucketLabel(peak.bucket) + ' bucket' : 'Nothing assembled'},
-    {label:'First hour', value:first ? hourBucketLabel(first.bucket) : 'No Data', detail:first ? integer(first.value) + ' ' + metric.unit : 'Nothing assembled'},
-    {label:'Last hour', value:last ? hourBucketLabel(last.bucket) : 'No Data', detail:last ? integer(last.value) + ' ' + metric.unit : 'Nothing assembled'}
+    {label:'First hour', value:first ? hourBucketLabel(first.bucket) : 'No Data', detail:first ? integer(first.value) + ' ' + assemblyUnit(first.value, metric) : 'Nothing assembled'},
+    {label:'Last hour', value:last ? hourBucketLabel(last.bucket) : 'No Data', detail:last ? integer(last.value) + ' ' + assemblyUnit(last.value, metric) : 'Nothing assembled'}
   ]);
 }
 
@@ -2170,7 +2172,7 @@ function assemblyWeeklySummary(rows, metric) {
     {label:'Period average', value:days ? decimal(total / days) : 'No Data',
       detail:days ? days + ' assembly days in ' + completed.length + ' full weeks' : 'No completed assembly days'},
     {label:'Latest full week', value:latest ? decimal(latest.daily_average) : 'No Data',
-      detail:latest ? dateLabel(latest.bucket) + ' · ' + integer(latest.total) + ' ' + metric.unit + ' over ' + latest.represented_days + ' days' : 'No completed week'},
+      detail:latest ? dateLabel(latest.bucket) + ' · ' + integer(latest.total) + ' ' + assemblyUnit(latest.total, metric) + ' over ' + latest.represented_days + (Number(latest.represented_days) === 1 ? ' day' : ' days') : 'No completed week'},
     {label:'Trend', value:trend ? (Math.abs(trend.slope) < .05 ? 'Flat' : (trend.slope > 0 ? 'Up' : 'Down')) : 'No Data',
       detail:trend ? (trend.slope >= 0 ? '+' : '') + decimal(trend.slope) + ' per week' : 'Need two completed weeks'}
   ]);
@@ -2190,11 +2192,12 @@ function renderAssemblyCharts(snapshot, tileKey) {
   tile.metrics.forEach(metric => {
     const series = section.series?.[metric.key];
     if (!series) return;
+    const hourly = series.hourly.map(row => Object.assign({}, row, {data_available: true}));
     const weekly = series.weekly_13.map(row => Object.assign({}, row, {data_available: Number(row.represented_days || 0) > 0}));
     const group = metricChartSection(metric.label, metric.definition);
     group.grid.append(
-      loadedChartCard(metric.label + ' by hour', reportDay, series.hourly, {
-        field:'value', label:metric.label, color:metric.color, trend:false, formatValue:wholeNumber, verticalLabels:true, showTick:() => true,
+      loadedChartCard(metric.label + ' by hour', reportDay, hourly, {
+        field:'value', label:metric.label, color:metric.color, trend:false, omitNull:true, chartType:'bar', formatValue:wholeNumber, verticalLabels:true, showTick:() => true,
         ariaLabel:'Hourly ' + metric.label + ' for ' + reportDay,
         bucketLabel:row => hourBucketLabel(row.bucket), bucketTitle:row => hourBucketLabel(row.bucket),
         summaryBuilder:rows => assemblyHourlySummary(rows, metric)
