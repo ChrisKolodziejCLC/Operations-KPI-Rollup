@@ -33,16 +33,17 @@ SUBJECT_PREFIX_FOR_NOTICES = "[FlowForge] "
 SUBJECT = "Daily Parts Shipped - GP"
 DEFAULT_DASHBOARD_URL = "http://127.0.0.1:5193"
 DASHBOARD_URL_PATTERN = re.compile(r"^http://(127\.0\.0\.1|localhost):\d{2,5}/?$")
-# The dashboard's day follows its own clock (KPI_TIMEZONE, Eastern). A saved day counts as a whole day only if it was saved at or after
-# 23:00 dashboard time on that day (its last automatic save is about 23:50) or later (someone refreshed that day afterwards).
-DASHBOARD_TIMEZONE = "America/Indiana/Indianapolis"
-DAY_COMPLETE_FROM_HOUR = 23
+# The dashboard's day is the plant's Central day (KPI_TIMEZONE America/Chicago since v0.46.0): the same 12:00 AM through 11:59 PM day BRAK, the rollup
+# procedure and this email use. A saved day counts as a whole day only if it was saved after that day was over (at or after midnight Central at its
+# end); the nightly settle job (01:30 Central) saves every finished day of the week, ninety minutes before this job runs.
+DASHBOARD_TIMEZONE = "America/Chicago"
 DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 SUMMARY_LEAD = "FlowForge shipped count summary for"
 COLUMN_LABELS = ("Ship Date", "Day", "Shipped Count", "Trailers Loaded", "Trailers Departed")
 HEAD_STYLE = "padding:6px 10px;border:1px solid #cccccc;background:#f2f2f2;"
 CELL_STYLE = "padding:6px 10px;border:1px solid #cccccc;"
-FOOTNOTE = ("Trailers Loaded is the number of different trailers the shipped parts went out on that day (service parts are not counted). "
+FOOTNOTE = ("Each day is the plant's Central day, 12:00 AM through 11:59 PM. "
+            "Trailers Loaded is the number of different trailers the shipped parts went out on that day (service parts are not counted). "
             "Trailers Departed is the number of trailers the drivers logged as leaving that day.")
 FOOTNOTE_DASHBOARD = "These are the Operations KPI dashboard's saved numbers for each day, so this email matches the dashboard. " + FOOTNOTE
 
@@ -259,9 +260,9 @@ def day_from_snapshot(snapshot, day):
     if saved_at.tzinfo is None:
         saved_at = saved_at.replace(tzinfo=zone)
     day_date = datetime.date.fromisoformat(day)
-    day_complete = datetime.datetime.combine(day_date, datetime.time(DAY_COMPLETE_FROM_HOUR), tzinfo=zone)
-    if saved_at < day_complete:
-        raise PermanentError("the KPI dashboard's saved %s was taken at %s, before that day was over"
+    day_over = datetime.datetime.combine(day_date + datetime.timedelta(days=1), datetime.time(0), tzinfo=zone)
+    if saved_at < day_over:
+        raise PermanentError("the KPI dashboard's saved %s was taken at %s Central, before that day was over"
                              % (day, saved_at.astimezone(zone).strftime("%Y-%m-%d %H:%M")))
     row = next((item for item in snapshot.get("daily") or [] if isinstance(item, dict) and item.get("date") == day), None)
     if row is None:

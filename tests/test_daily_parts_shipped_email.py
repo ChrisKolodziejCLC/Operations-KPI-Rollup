@@ -287,8 +287,10 @@ class AttemptTests(unittest.TestCase):
 
 
 def saved_day(day, shipped, loaded, departed, saved_at=None):
-    """What the dashboard's /api/snapshot?report_date=<day> returns, cut down to what the job reads."""
-    return {"report_date": day, "generated_at": saved_at or day + "T23:54:42-05:00", "schema_version": 1,
+    """What the dashboard's /api/snapshot?report_date=<day> returns, cut down to what the job reads.
+    By default it is the nightly settle job's copy: saved at 01:30 Central, after that day was over."""
+    after = (datetime.date.fromisoformat(day) + datetime.timedelta(days=1)).isoformat()
+    return {"report_date": day, "generated_at": saved_at or after + "T01:30:12-06:00", "schema_version": 1,
             "daily": [{"date": day, "parts_shipped": shipped, "trailers_prepared": loaded, "trailers_shipped": departed}]}
 
 
@@ -312,7 +314,7 @@ class DashboardDayTests(unittest.TestCase):
     def test_the_numbers_come_straight_from_the_saved_day(self):
         row = job.day_from_snapshot(SAVED["2026-11-18"], "2026-11-18")
         self.assertEqual((row["day"], row["shipped"], row["loaded"], row["departed"]), ("Wednesday", 528, 8, 6))
-        self.assertEqual(row["saved_at"], "2026-11-18T23:54:42-05:00")
+        self.assertEqual(row["saved_at"], "2026-11-19T01:30:12-06:00")
 
     def test_a_day_saved_later_is_fine(self):
         row = job.day_from_snapshot(SAVED["2026-11-17"], "2026-11-17")
@@ -328,16 +330,35 @@ class DashboardDayTests(unittest.TestCase):
             job.day_from_snapshot(early, "2026-11-18")
         self.assertIn("before that day was over", str(caught.exception))
 
-    def test_the_cutoff_is_in_the_dashboard_time_zone(self):
-        # 22:30 Eastern is 21:30 Central; both are before 23:00 Eastern.
+    def test_the_cutoff_is_the_end_of_the_central_day(self):
+        # Saved at 23:30 Central on the day itself (00:30 Eastern the next morning): the day was not over yet.
+        with self.assertRaises(job.PermanentError) as caught:
+            job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-18T23:30:00-06:00"), "2026-11-18")
+        self.assertIn("before that day was over", str(caught.exception))
+        self.assertIn("Central", str(caught.exception))
         with self.assertRaises(job.PermanentError):
-            job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-18T22:30:00-05:00"), "2026-11-18")
-        job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-18T23:00:00-05:00"), "2026-11-18")
-        # 22:30 Central is 23:30 Eastern: late enough.
-        job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-18T22:30:00-06:00"), "2026-11-18")
+            job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-19T00:30:00-05:00"), "2026-11-18")  # 23:30 Central
+        # Exactly midnight Central, and anything after it, is a finished day.
+        job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-19T00:00:00-06:00"), "2026-11-18")
+        job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-19T01:00:00-05:00"), "2026-11-18")  # 00:00 Central
+        job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-19T01:30:12-06:00"), "2026-11-18")
+
+    def test_the_old_eastern_rule_no_longer_decides(self):
+        # 23:54 Eastern on the day (22:54 Central) used to be good enough; it is not any more.
+        with self.assertRaises(job.PermanentError):
+            job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-18T23:54:42-05:00"), "2026-11-18")
+        self.assertEqual(job.DASHBOARD_TIMEZONE, "America/Chicago")
+        with open(os.path.join(JOB_DIR, "shipped_count_email.py"), encoding="utf-8") as source:
+            self.assertNotIn("Indianapolis", source.read())
+
+    def test_the_footnote_names_the_central_day(self):
+        self.assertIn("Each day is the plant's Central day, 12:00 AM through 11:59 PM.", job.FOOTNOTE)
+        self.assertIn(job.FOOTNOTE, job.FOOTNOTE_DASHBOARD)
 
     def test_a_save_time_without_a_zone_counts_as_dashboard_time(self):
-        job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-18T23:54:42"), "2026-11-18")
+        job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-19T01:30:12"), "2026-11-18")
+        with self.assertRaises(job.PermanentError):
+            job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-18T23:54:42"), "2026-11-18")
         with self.assertRaises(job.PermanentError):
             job.day_from_snapshot(saved_day("2026-11-18", 1, 1, 1, "2026-11-18T09:00:00"), "2026-11-18")
 

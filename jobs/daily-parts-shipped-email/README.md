@@ -15,8 +15,8 @@ repository that sends mail.
    (`http://127.0.0.1:5193`). This is a plain read; it never makes the dashboard refresh or save anything. From that day's row
    it takes three numbers: `parts_shipped`, `trailers_prepared` (shown as Trailers Loaded) and `trailers_shipped` (shown as
    Trailers Departed).
-3. Checks each day: the dashboard answered for that day, the day was saved at or after 11 PM dashboard time (Eastern) on that
-   day or later (a whole day, not a mid-day save), and the three numbers are whole numbers. A day with no saved copy, or one saved
+3. Checks each day: the dashboard answered for that day, the day was saved after it was over (at or after midnight Central at
+   its end, so it is a whole day with any late corrections in it), and the three numbers are whole numbers. A day with no saved copy, or one saved
    before the day was over, stops the send.
 4. Builds the email itself (HTML and plain text, the same look as the old procedure email plus the two trailer columns and a
    short footnote). The previous-day number is the report date's row and the week total is the sum of the days shown.
@@ -31,8 +31,10 @@ repository that sends mail.
 ### How the dashboard saves days
 
 The dashboard refreshes the current day every few minutes and keeps each refresh as an immutable saved file; the latest saved
-copy of a day is what it shows for that day. Its day follows its own clock (`KPI_TIMEZONE`, Eastern), so its last automatic save of a
-day is about 23:50 Eastern, an hour before BRAK's Central date rolls over. If someone refreshes a past day in the dashboard later,
+copy of a day is what it shows for that day. Since v0.46.0 its day is the plant's Central day (`KPI_TIMEZONE` America/Chicago, the same
+day BRAK uses), so its last automatic save of a day is about 23:55 Central, just before the day is over. The nightly settle job
+(`jobs/operations-kpi-settle`, 01:30 Central) saves every day of the week again once it is finished, which picks up late corrections
+in BRAK, and this job insists on such a copy. If someone refreshes a past day in the dashboard later,
 that day is saved again and the dashboard, and the next email, show the refreshed numbers. Changing how the dashboard saves days
 or what a day row contains changes this email, so check this job's tests when you do.
 
