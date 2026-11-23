@@ -8,10 +8,11 @@ import os
 import re
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
-from .business_time import business_timezone_name, business_zone
+from .business_time import business_timezone_name, business_today, business_zone
 from .context import validate_snapshot
-from .odbc import execute_operations_rollup, execute_process_times, execute_quality_charts
+from .odbc import execute_assembly_charts, execute_operations_rollup, execute_process_times, execute_quality_charts
 from .process_times import process_time_section, unavailable_section
+from .assembly_charts import assembly_charts_section, unavailable_section as assembly_charts_unavailable
 from .quality_charts import quality_charts_section, safe_defect_description, unavailable_section as quality_charts_unavailable
 
 
@@ -1068,6 +1069,27 @@ def _quality_charts_for_snapshot(report_date: date, generated_at: Optional[datet
         return quality_charts_unavailable("The quality-chart procedure could not be read (" + error.__class__.__name__ + ").")
 
 
+def _assembly_charts_for_snapshot(report_date: date, generated_at: Optional[datetime], snapshot: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """Assembly charts are optional: unset hash means the feature is not deployed; a failure never blocks the wallboard.
+
+    The tiles and this procedure run seconds apart, so the current day (still changing) is not cross-checked; a finished
+    day must equal its tiles, and a mismatch only makes this section unavailable."""
+    if not os.environ.get("KPI_ASSEMBLY_CHARTS_PROCEDURE_HASH", "").strip():
+        return None
+    try:
+        section = assembly_charts_section(execute_assembly_charts(report_date), report_date, generated_at)
+        if report_date < business_today():
+            row = next((day for day in snapshot.get("daily", []) if day.get("date") == report_date.isoformat()), None)
+            if row is not None and (
+                row.get("complete_assy_sets") != section["daily_totals"]["sets"]
+                or row.get("assembled_bumper_count") != section["daily_totals"]["bumpers"]
+            ):
+                return assembly_charts_unavailable("The assembly charts do not add up to the tiles for this day; refresh it to recompute.")
+        return section
+    except Exception as error:  # noqa: BLE001 - the rest of the wallboard must keep working
+        return assembly_charts_unavailable("The assembly-chart procedure could not be read (" + error.__class__.__name__ + ").")
+
+
 def refresh_live_snapshot(report_date: date) -> Dict[str, Any]:
     snapshot = snapshot_from_rollup(report_date, execute_operations_rollup(report_date))
     changed = False
@@ -1082,6 +1104,10 @@ def refresh_live_snapshot(report_date: date) -> Dict[str, Any]:
     charts = _quality_charts_for_snapshot(report_date, generated_at)
     if charts is not None:
         snapshot["quality_charts"] = charts
+        changed = True
+    assembly = _assembly_charts_for_snapshot(report_date, generated_at, snapshot)
+    if assembly is not None:
+        snapshot["assembly_charts"] = assembly
         changed = True
     if changed:
         validate_snapshot(snapshot)

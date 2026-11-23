@@ -3,6 +3,7 @@ from typing import Any, Dict, Iterable, List
 
 from .metrics import as_decimal, enrich_metric_row, format_decimal, format_int, format_percent, safe_ratio
 from .process_times import validate_process_time_section
+from .assembly_charts import validate_assembly_charts_section
 from .quality_charts import validate_quality_charts_section
 
 
@@ -1154,6 +1155,8 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> None:
         validate_process_time_section(snapshot["process_time"])
     if "quality_charts" in snapshot:
         validate_quality_charts_section(snapshot["quality_charts"])
+    if "assembly_charts" in snapshot:
+        validate_assembly_charts_section(snapshot["assembly_charts"])
 
 
 def _sort_by(rows: Iterable[Dict[str, Any]], key: str) -> List[Dict[str, Any]]:

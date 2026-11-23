@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlsplit
 from .business_time import business_clock_fields, business_now, business_timezone_name, business_today, business_zone
 from .context import validate_snapshot
 from .process_times import normalize_stored_process_time
+from .assembly_charts import normalize_stored_assembly_charts
 from .quality_charts import normalize_stored_quality_charts
 from .drilldown import DrilldownState, create_drilldown_state, disabled_event
 from .live import CURRENT_METHOD_VERSION, refresh_live_snapshot
@@ -112,6 +113,7 @@ class AppState:
             snapshot = json.loads(source.read_text(encoding="utf-8"))
             normalize_stored_process_time(snapshot)
             normalize_stored_quality_charts(snapshot)
+            normalize_stored_assembly_charts(snapshot)
             validate_snapshot(snapshot)
             self._remember(snapshot)
 
@@ -130,6 +132,7 @@ class AppState:
             snapshot = json.loads(source.read_text(encoding="utf-8"))
             normalize_stored_process_time(snapshot)
             normalize_stored_quality_charts(snapshot)
+            normalize_stored_assembly_charts(snapshot)
             validate_snapshot(snapshot)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise RefreshError(f"The saved {date_text} snapshot is invalid.") from exc
@@ -264,6 +267,7 @@ class AppState:
                 snapshot = json.loads(self.fixture_path.read_text(encoding="utf-8"))
                 normalize_stored_process_time(snapshot)
                 normalize_stored_quality_charts(snapshot)
+                normalize_stored_assembly_charts(snapshot)
                 validate_snapshot(snapshot)
                 if snapshot["report_date"] != report_date.isoformat():
                     raise RefreshError("Fixture mode can only rebuild its recorded report date.")
