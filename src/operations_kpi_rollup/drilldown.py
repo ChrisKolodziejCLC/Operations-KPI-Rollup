@@ -30,9 +30,13 @@ class DrilldownRefreshError(RestrictedRefreshError):
     """Raised for bounded, user-presentable drill-down refresh problems."""
 
 
+def _assembly_details_pinned() -> bool:
+    return bool(os.environ.get("KPI_ASSEMBLY_DETAILS_PROCEDURE_HASH", "").strip())
+
+
 def _assembly_details_for_snapshot(report_date: date) -> Optional[Dict[str, Any]]:
     """Assembly counts are optional: an unset hash means the feature is not deployed; a failure never blocks the drill-down."""
-    if not os.environ.get("KPI_ASSEMBLY_DETAILS_PROCEDURE_HASH", "").strip():
+    if not _assembly_details_pinned():
         return None
     try:
         return assembly_details_section(execute_assembly_details(report_date), report_date)
@@ -58,6 +62,17 @@ class DrilldownState(RestrictedState):
             "KPI_DRILLDOWN_INITIAL_DELAY_SECONDS", 20.0, 0.0, 600.0
         )
         super().__init__(mode, snapshot_dir, fixture_path)
+
+    def snapshot(self, report_date: Optional[date] = None) -> Optional[Dict[str, Any]]:
+        """A saved day written before the assembly counts existed is treated as not saved once the procedure is pinned.
+
+        The page then builds that day on demand, exactly as it does for a day with no saved copy, so the Assembly production
+        panel fills in without anyone pressing Refresh. A failed build still stores an assembly section (marked unavailable),
+        so a day is never rebuilt in a loop, and the older saved files stay on disk untouched."""
+        snapshot = super().snapshot(report_date)
+        if report_date is not None and snapshot is not None and "assembly" not in snapshot and _assembly_details_pinned():
+            return None
+        return snapshot
 
     def _fetch_live(self, report_date: date) -> Dict[str, Any]:
         snapshot = build_restricted_snapshot(report_date, execute_standard_drilldown(report_date))

@@ -396,3 +396,53 @@ def test_drilldown_assembly_panel_shows_counts_only_and_no_assembly_time():
     # Operator logins are shown exactly as recorded: the roster name lookup does not cover them.
     names = script[script.index("function snapshotIds(snapshot)"):script.index("async function loadNames")]
     assert "assembly" not in names
+
+
+def _saved_day_without_assembly(tmp_path):
+    directory = tmp_path / "drilldown"
+    state = DrilldownState("live", directory)
+    old = _base_snapshot()
+    state._persist(old)
+    state._remember(old)
+    return state, old
+
+
+def test_a_saved_day_without_assembly_counts_is_rebuilt_once_the_procedure_is_pinned(monkeypatch, tmp_path):
+    state, old = _saved_day_without_assembly(tmp_path)
+    monkeypatch.delenv("KPI_ASSEMBLY_DETAILS_PROCEDURE_HASH", raising=False)
+    assert state.snapshot(REPORT_DATE)["report_date"] == REPORT_DATE.isoformat()  # feature off: the saved copy is served as before
+    monkeypatch.setenv("KPI_ASSEMBLY_DETAILS_PROCEDURE_HASH", "ab" * 32)
+    assert state.snapshot(REPORT_DATE) is None  # pinned: treated as not saved, so the page builds the day on demand
+    assert state.snapshot() is not None  # the latest-snapshot view (health) is untouched
+    rebuilt = copy.deepcopy(old)
+    rebuilt["assembly"] = _section()
+    monkeypatch.setattr(state, "_fetch_live", lambda report_date: rebuilt)
+    fresh = state.refresh(REPORT_DATE)  # a past day: no force needed, the missing section is what triggers the build
+    assert fresh["assembly"]["available"] is True
+    assert state.snapshot(REPORT_DATE)["assembly"]["available"] is True  # served from memory now, no second build
+    assert len(list((tmp_path / "drilldown").glob(REPORT_DATE.isoformat() + "__*.json"))) == 2  # the older saved file is kept
+
+
+def test_a_failed_assembly_build_is_stored_as_unavailable_and_never_rebuilt_in_a_loop(monkeypatch, tmp_path):
+    state, old = _saved_day_without_assembly(tmp_path)
+    monkeypatch.setenv("KPI_ASSEMBLY_DETAILS_PROCEDURE_HASH", "ab" * 32)
+    calls = []
+
+    def build(report_date):
+        calls.append(report_date)
+        snapshot = copy.deepcopy(old)
+        snapshot["assembly"] = unavailable_section("The assembly-details procedure could not be read (RuntimeError).")
+        return snapshot
+
+    monkeypatch.setattr(state, "_fetch_live", build)
+    state.refresh(REPORT_DATE)
+    state.refresh(REPORT_DATE)
+    assert calls == [REPORT_DATE]
+    assert state.snapshot(REPORT_DATE)["assembly"]["available"] is False
+
+
+def test_drilldown_panel_tells_the_viewer_how_to_fill_a_saved_day_that_predates_the_counts():
+    script = (ROOT / "src/operations_kpi_rollup/drilldown_web/app.js").read_text(encoding="utf-8")
+    assert "This saved day predates the assembly counts. Refresh it to build them." in script
+    block = script[script.index("function renderAssembly(snapshot)"):script.index("function render(snapshot)")]
+    assert "const saved = snapshot.assembly;" in block and "!saved ? ASSEMBLY_PREDATES" in block and "saved.reason" in block

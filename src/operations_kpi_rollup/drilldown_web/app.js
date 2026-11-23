@@ -934,6 +934,7 @@ function renderFinesse(snapshot) {
 const NO_OPERATOR_LABEL = 'No operator recorded';
 const NO_WORK_CENTER_LABEL = 'No work center recorded';
 const ASSEMBLY_UNAVAILABLE = 'Assembly counts are not available for this snapshot.';
+const ASSEMBLY_PREDATES = 'This saved day predates the assembly counts. Refresh it to build them.';
 const ASSEMBLY_NOTE = 'Counts only: pieces assembled, and the N71-6171 bumpers among them. QPTS records the operator who finished each piece and the work center (workstation) it was built at, but not when a build started, so no assembly time is shown yet. Weeks run Sunday\u2013Saturday; * marks the week in progress. Days active counts days with at least one piece.';
 
 function assemblyAvailable(snapshot) {
@@ -1032,8 +1033,10 @@ function renderAssembly(snapshot) {
   const operatorNote = $('#assembly-operator-note');
   $('#assembly-footnote').textContent = ASSEMBLY_NOTE;
   if (!section) {
-    ['#assembly-day-work-centers', '#assembly-day-operators', '#assembly-trend-work-centers', '#assembly-trend-operators'].forEach((selector) => emptyState($(selector), ASSEMBLY_UNAVAILABLE));
-    renderTable('#assembly-work-center-table', [{key: 'label', label: 'Work center'}], [], ASSEMBLY_UNAVAILABLE);
+    const saved = snapshot.assembly;
+    const message = !saved ? ASSEMBLY_PREDATES : (typeof saved.reason === 'string' && saved.reason ? saved.reason : ASSEMBLY_UNAVAILABLE);
+    ['#assembly-day-work-centers', '#assembly-day-operators', '#assembly-trend-work-centers', '#assembly-trend-operators'].forEach((selector) => emptyState($(selector), message));
+    renderTable('#assembly-work-center-table', [{key: 'label', label: 'Work center'}], [], message);
     operatorWrap.hidden = true;
     operatorNote.hidden = true;
     return;
