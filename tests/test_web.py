@@ -336,7 +336,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "0.35.0-chart-refinements-r1" in html
+            assert "/app.js?v=0.47.1-live-refresh-r1" in html and "/styles.css?v=0.47.1-live-refresh-r1" in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html

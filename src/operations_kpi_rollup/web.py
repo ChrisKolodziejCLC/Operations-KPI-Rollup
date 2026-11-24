@@ -353,7 +353,7 @@ class AppServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPI/0.47.0"
+    server_version = "OperationsKPI/0.47.1"
     sys_version = ""
     # The open wallboard port never serves operator logins; the Windows sign-in listener (AuthHandler) does.
     signed_in = False

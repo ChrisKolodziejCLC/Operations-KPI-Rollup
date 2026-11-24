@@ -95,6 +95,11 @@ let businessTimeZone = null;
 let activeSnapshot = null;
 let selectedChartKey = 'loaded';
 let selectedChartLabel = 'Carts / Pieces Loaded';
+// The normal (non-wallboard) view follows the plant's current day: it picks up every new saved snapshot by itself.
+const STALE_AFTER_MS = 25 * 60 * 1000;
+let followToday = true;
+let liveRefreshBusy = false;
+let wallboardMode = false;
 
 const $ = (selector) => document.querySelector(selector);
 const svgNode = (name, attributes = {}) => {
@@ -2443,6 +2448,26 @@ function render(snapshot) {
   updateNavigationState();
   renderCards(snapshot);
   renderMetricCharts(snapshot);
+  renderFreshness();
+}
+
+// The Snapshot stamp turns amber and says how old the data is when the current day's snapshot has not been renewed for 25 minutes
+// (the server renews it every 10 minutes), so a stuck refresh is visible instead of silent.
+function renderFreshness() {
+  const node = $('#generated-at');
+  if (!node || !activeSnapshot) return;
+  const base = `Snapshot ${snapshotStamp(activeSnapshot.generated_at)}`;
+  let stale = false;
+  let text = base;
+  if (activeSnapshot.report_date === businessToday()) {
+    const age = (Date.now() + serverClockOffsetMs) - new Date(activeSnapshot.generated_at).getTime();
+    if (Number.isFinite(age) && age > STALE_AFTER_MS) {
+      stale = true;
+      text = `${base} · ${Math.floor(age / 60000)} min old`;
+    }
+  }
+  if (node.textContent !== text) node.textContent = text;
+  node.classList.toggle('stale', stale);
 }
 
 async function api(path, options = {}) {
@@ -2453,6 +2478,7 @@ async function api(path, options = {}) {
 }
 
 function renderRefreshCountdown() {
+  renderFreshness();
   const node = $('#refresh-countdown');
   node.classList.toggle('refreshing', autoRefreshInProgress);
   if (autoRefreshInProgress) {
@@ -2488,6 +2514,9 @@ function applyHealth(health) {
   const parsed = health.next_auto_refresh_at ? new Date(health.next_auto_refresh_at) : null;
   nextAutoRefreshAt = parsed && Number.isFinite(parsed.getTime()) ? parsed : null;
   renderRefreshCountdown();
+  // A new saved snapshot for today exists on the server: show it now instead of waiting for the next poll.
+  if (followToday && !wallboardMode && activeSnapshot && health.generated_at && health.report_date === businessToday()
+      && (activeSnapshot.report_date !== health.report_date || activeSnapshot.generated_at !== health.generated_at)) refreshLiveView();
 }
 
 async function loadHealth() {
@@ -2525,6 +2554,23 @@ async function loadCachedReport(reportDate, quiet = false) {
   }
 }
 
+// Normal view only (the wallboard view has its own poll): re-read today's saved snapshot and render it when it is newer than the one on screen.
+async function refreshLiveView() {
+  if (wallboardMode || !followToday || refreshInProgress || liveRefreshBusy) return;
+  liveRefreshBusy = true;
+  try {
+    const snapshot = await api(`/api/snapshot?report_date=${encodeURIComponent(businessToday())}`);
+    if (!followToday || refreshInProgress) return;
+    if (activeSnapshot && activeSnapshot.report_date === snapshot.report_date && activeSnapshot.generated_at === snapshot.generated_at) return;
+    render(snapshot);
+    setStatus(`${fullDateLabel(snapshot.report_date)} updated automatically · snapshot ${snapshotStamp(snapshot.generated_at)}.`);
+  } catch (_) {
+    // Keep what is on screen; the next poll retries.
+  } finally {
+    liveRefreshBusy = false;
+  }
+}
+
 function updateNavigationState() {
   const selected = $('#date-input').value;
   const today = businessToday();
@@ -2538,6 +2584,7 @@ function updateNavigationState() {
 async function refreshReport(reportDate = $('#date-input').value, quiet = false) {
   if (refreshInProgress) return false;
   if (!reportDate) { setStatus('Choose a report date.', true); return false; }
+  followToday = reportDate === businessToday();
   refreshInProgress = true; updateNavigationState();
   if (!quiet) setStatus(`Loading ${fullDateLabel(reportDate)} from the bounded read-only rollup…`);
   try {
@@ -2571,7 +2618,7 @@ async function initialize() {
   const today = businessToday();
   $('#date-input').max = today;
   $('#date-input').value = today;
-  $('#date-input').addEventListener('change', updateNavigationState);
+  $('#date-input').addEventListener('change', () => { followToday = $('#date-input').value === businessToday(); updateNavigationState(); });
   $('#refresh-button').addEventListener('click', () => refreshReport());
   $('#previous-day-button').addEventListener('click', () => moveReportDate(-1));
   $('#next-day-button').addEventListener('click', () => moveReportDate(1));
@@ -2579,6 +2626,7 @@ async function initialize() {
   $('#wallboard-button').addEventListener('click', () => { const url = new URL(location.href); url.searchParams.set('wallboard', '1'); location.href = url.toString(); });
   const wallboard = new URLSearchParams(location.search).get('wallboard') === '1';
   document.body.classList.toggle('wallboard', wallboard);
+  wallboardMode = wallboard;
   updateNavigationState();
   if (wallboard) {
     await loadLatest(true);
@@ -2587,6 +2635,7 @@ async function initialize() {
   } else {
     const loadedToday = await loadCachedReport(today);
     if (!loadedToday) await loadLatest();
+    setInterval(refreshLiveView, WALLBOARD_POLL_MS);
   }
   setInterval(loadHealth, HEALTH_POLL_MS);
   setInterval(renderRefreshCountdown, COUNTDOWN_TICK_MS);

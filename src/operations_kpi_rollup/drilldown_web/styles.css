@@ -101,3 +101,5 @@ footer{display:flex;justify-content:space-between;gap:1rem;padding:1rem max(2rem
 .assembly-table tr:nth-child(even) td:first-child{background:#fbfcfd}
 .assembly-table tr:last-child td:first-child{background:#f3f7f9}
 .assembly-table th:first-child{left:0;z-index:3}
+
+#generated-at.stale{color:#ffcf7a;font-weight:800}

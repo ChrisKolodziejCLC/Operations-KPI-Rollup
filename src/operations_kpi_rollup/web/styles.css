@@ -234,3 +234,5 @@ body.wallboard .metric-card .dual-yield-detail{font-size:.68rem}
 .pareto-cumulative{text-align:right;color:var(--muted);font-size:.68rem}
 .pareto-total{margin:.65rem .25rem 0;color:var(--muted);font-size:.68rem}
 .pareto-empty{padding:1.2rem .25rem;color:var(--muted);font-size:.8rem}
+
+#generated-at.stale{color:#ffcf7a;font-weight:800}

@@ -190,6 +190,11 @@ function offerNamesSignIn() {
   if (signIn.origin !== location.origin) link.hidden = false;
 }
 let busy = false;
+// Open on today and the page keeps following the plant's current day: each new saved snapshot appears by itself.
+const LIVE_POLL_MS = 30 * 1000;
+const STALE_AFTER_MS = 25 * 60 * 1000;
+let followToday = true;
+let liveBusy = false;
 
 const $ = (selector) => document.querySelector(selector);
 const svgNode = (name, attributes) => {
@@ -1081,12 +1086,31 @@ function render(snapshot) {
   const view = namesOn ? namedSnapshot(snapshot) : snapshot;
   $('#report-date').value = snapshot.report_date;
   $('#generated-at').textContent = 'Generated ' + snapshotStamp(snapshot.generated_at);
+  renderFreshness();
   renderPainter(view);
   renderRepaint(view);
   renderFinesse(view);
   renderAssembly(view);
   renderTrends(view);
   setStatus('Drill-down data loaded for ' + dateLabel(snapshot.report_date) + '.');
+}
+
+// The Generated stamp turns amber and says how old the data is when the current day's snapshot has not been renewed for 25 minutes.
+function renderFreshness() {
+  const node = $('#generated-at');
+  if (!node || !activeSnapshot) return;
+  const base = 'Generated ' + snapshotStamp(activeSnapshot.generated_at);
+  let stale = false;
+  let text = base;
+  if (activeSnapshot.report_date === businessToday()) {
+    const age = Date.now() - new Date(activeSnapshot.generated_at).getTime();
+    if (Number.isFinite(age) && age > STALE_AFTER_MS) {
+      stale = true;
+      text = base + ' \u00b7 ' + Math.floor(age / 60000) + ' min old';
+    }
+  }
+  if (node.textContent !== text) node.textContent = text;
+  node.classList.toggle('stale', stale);
 }
 
 async function fetchJson(url, options) {
@@ -1110,6 +1134,7 @@ function requestRefresh(reportDate, force) {
 
 async function loadDate(reportDate) {
   if (busy) return;
+  followToday = reportDate === businessToday();
   setBusy(true);
   setStatus('Loading drill-down snapshot…');
   try {
@@ -1144,6 +1169,25 @@ async function refreshDate() {
   }
 }
 
+// Re-read today's saved snapshot (never builds one) and show it when it is newer than the one on screen.
+async function pollLive() {
+  if (busy || liveBusy || !followToday) return;
+  liveBusy = true;
+  try {
+    await loadBusinessClock();
+    const reportDate = businessToday();
+    const snapshot = await fetchJson('/api/drilldown/snapshot?report_date=' + encodeURIComponent(reportDate));
+    if (busy || !followToday) return;
+    if (activeSnapshot && activeSnapshot.report_date === snapshot.report_date && activeSnapshot.generated_at === snapshot.generated_at) return;
+    await renderWithNames(snapshot);
+    setStatus('Drill-down data for ' + dateLabel(snapshot.report_date) + ' updated automatically.');
+  } catch (_) {
+    // Keep what is on screen; the next poll retries (a missing copy is built only when someone loads or refreshes the day).
+  } finally {
+    liveBusy = false;
+  }
+}
+
 async function loadBusinessClock() {
   try {
     const health = await fetchJson('/api/drilldown/health');
@@ -1168,6 +1212,8 @@ async function start() {
   } catch (error) {
     setStatus(error.message, true);
   }
+  setInterval(pollLive, LIVE_POLL_MS);
+  setInterval(renderFreshness, 10 * 1000);
 }
 
 $('#load-date').addEventListener('click', () => loadDate($('#report-date').value));
