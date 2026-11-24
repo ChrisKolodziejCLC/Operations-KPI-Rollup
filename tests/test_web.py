@@ -6,6 +6,7 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 import operations_kpi_rollup.web as web
+from operations_kpi_rollup import __version__
 from operations_kpi_rollup.live import CURRENT_METHOD_VERSION
 from operations_kpi_rollup.web import AppState, _is_private_address, create_server
 
@@ -336,7 +337,7 @@ def test_fixture_wallboard_serves_and_persists_refresh(tmp_path, monkeypatch):
             assert "Next" in html
             assert 'id="report-range"' in html
             assert "refresh-key" not in html
-            assert "/app.js?v=0.47.1-live-refresh-r1" in html and "/styles.css?v=0.47.1-live-refresh-r1" in html
+            assert "/app.js?v=" + __version__ in html and "/styles.css?v=" + __version__ in html
             assert 'id="refresh-countdown"' in html
             assert 'id="cards"' in html
             assert 'id="metric-chart-panel"' in html

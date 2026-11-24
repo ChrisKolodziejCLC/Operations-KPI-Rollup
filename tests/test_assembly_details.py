@@ -380,7 +380,8 @@ def test_drilldown_page_has_an_assembly_panel_wired_to_the_snapshot_section():
     assert "No operator recorded" in script and "No work center recorded" in script
     assert "Assembly counts are not available for this snapshot." in script
     assert ".assembly-table" in css and ".table-wrap[hidden]" in css
-    assert "?v=0.47.1-live-refresh-r1" in page and "0.38.0-chart-clarity-r1" not in page
+    from operations_kpi_rollup import __version__
+    assert "?v=" + __version__ in page and "0.38.0-chart-clarity-r1" not in page
 
 
 def test_drilldown_assembly_panel_shows_counts_only_and_no_assembly_time():

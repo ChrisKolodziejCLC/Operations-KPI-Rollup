@@ -100,6 +100,9 @@ const STALE_AFTER_MS = 25 * 60 * 1000;
 let followToday = true;
 let liveRefreshBusy = false;
 let wallboardMode = false;
+// The version of the service this script came with; every health reply carries the running version (see checkAppVersion).
+const PAGE_VERSION = '0.47.2';
+let versionReloadPending = false;
 
 const $ = (selector) => document.querySelector(selector);
 const svgNode = (name, attributes = {}) => {
@@ -2517,6 +2520,7 @@ function applyHealth(health) {
   // A new saved snapshot for today exists on the server: show it now instead of waiting for the next poll.
   if (followToday && !wallboardMode && activeSnapshot && health.generated_at && health.report_date === businessToday()
       && (activeSnapshot.report_date !== health.report_date || activeSnapshot.generated_at !== health.generated_at)) refreshLiveView();
+  checkAppVersion(health);
 }
 
 async function loadHealth() {
@@ -2552,6 +2556,20 @@ async function loadCachedReport(reportDate, quiet = false) {
     if (!quiet) setStatus(error.message, true);
     return false;
   }
+}
+
+// The service reports the version it runs in every health reply. A page loaded from an older version reloads itself once for each new
+// version (after a random 1-10 s so screens do not all reload together), so open wallboards pick up a release without anyone touching them.
+// The guard is the page's own address: the reload lands on ?v=<version>, so a tab never reloads twice for one version (no loop, no browser storage).
+function checkAppVersion(health) {
+  const served = health && typeof health.app_version === 'string' ? health.app_version : '';
+  if (!served || served === PAGE_VERSION || versionReloadPending) return;
+  const url = new URL(location.href);
+  if (url.searchParams.get('v') === served) return;
+  versionReloadPending = true;
+  setStatus('Version ' + served + ' is available. Reloading this page.');
+  url.searchParams.set('v', served);
+  setTimeout(() => location.replace(url.toString()), 1000 + Math.random() * 9000);
 }
 
 // Normal view only (the wallboard view has its own poll): re-read today's saved snapshot and render it when it is newer than the one on screen.

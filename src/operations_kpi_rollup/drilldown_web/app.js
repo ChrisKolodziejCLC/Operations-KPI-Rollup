@@ -195,6 +195,9 @@ const LIVE_POLL_MS = 30 * 1000;
 const STALE_AFTER_MS = 25 * 60 * 1000;
 let followToday = true;
 let liveBusy = false;
+// The version of the service this script came with; every health reply carries the running version (see checkAppVersion).
+const PAGE_VERSION = '0.47.2';
+let versionReloadPending = false;
 
 const $ = (selector) => document.querySelector(selector);
 const svgNode = (name, attributes) => {
@@ -1188,9 +1191,24 @@ async function pollLive() {
   }
 }
 
+// The service reports the version it runs in every health reply. A page loaded from an older version reloads itself once for each new
+// version (after a random 1-10 s so screens do not all reload together), so open wallboards pick up a release without anyone touching them.
+// The guard is the page's own address: the reload lands on ?v=<version>, so a tab never reloads twice for one version (no loop, no browser storage).
+function checkAppVersion(health) {
+  const served = health && typeof health.app_version === 'string' ? health.app_version : '';
+  if (!served || served === PAGE_VERSION || versionReloadPending) return;
+  const url = new URL(location.href);
+  if (url.searchParams.get('v') === served) return;
+  versionReloadPending = true;
+  setStatus('Version ' + served + ' is available. Reloading this page.');
+  url.searchParams.set('v', served);
+  setTimeout(() => location.replace(url.toString()), 1000 + Math.random() * 9000);
+}
+
 async function loadBusinessClock() {
   try {
     const health = await fetchJson('/api/drilldown/health');
+    checkAppVersion(health);
     if (/^\d{4}-\d{2}-\d{2}$/.test(String(health.business_date || ''))) businessDate = health.business_date;
     if (typeof health.business_timezone === 'string' && health.business_timezone) businessTimeZone = health.business_timezone;
   } catch (_) {

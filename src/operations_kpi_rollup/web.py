@@ -20,6 +20,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlsplit
 
+from . import __version__
 from .business_time import business_clock_fields, business_now, business_timezone_name, business_today, business_zone
 from .context import validate_snapshot
 from .process_times import normalize_stored_process_time
@@ -205,6 +206,7 @@ class AppState:
         return {
             "status": "ok" if current else "ready_no_snapshot",
             "service": "operations-kpi-rollup",
+            "app_version": __version__,
             "mode": self.mode,
             "report_date": current.get("report_date") if current else None,
             "generated_at": current.get("generated_at") if current else None,
@@ -353,7 +355,7 @@ class AppServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OperationsKPI/0.47.1"
+    server_version = "OperationsKPI/" + __version__
     sys_version = ""
     # The open wallboard port never serves operator logins; the Windows sign-in listener (AuthHandler) does.
     signed_in = False

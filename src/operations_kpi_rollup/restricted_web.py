@@ -16,6 +16,7 @@ import time
 from typing import Any, Dict, Mapping, Optional, Sequence
 from urllib.parse import parse_qs, urlsplit
 
+from . import __version__
 from .business_time import business_clock_fields, business_timezone_name, business_today, business_zone
 from .restricted import (
     CURRENT_RESTRICTED_METHOD_VERSION,
@@ -295,6 +296,7 @@ class RestrictedState:
         return {
             "status": "ok" if current else "ready_no_snapshot",
             "service": self.SERVICE_NAME,
+            "app_version": __version__,
             "mode": self.mode,
             "method_version": CURRENT_RESTRICTED_METHOD_VERSION,
             "report_date": current.get("report_date") if current else None,
